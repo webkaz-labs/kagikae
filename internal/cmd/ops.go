@@ -220,7 +220,9 @@ func (app *App) saveActive(updates map[string]string, explicitProfile string) er
 // so a busy lock is skipped rather than escalated: the other process is doing
 // exactly this work.
 func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
-	l, err := app.acquireNamedLock("backups", "")
+	// The busy message is never printed (a busy lock returns silently below), but
+	// it is the error's text wherever the error is inspected.
+	l, err := app.acquireNamedLock("backups", "another kae process is pruning backups; retry shortly")
 	if err != nil {
 		// Only a *busy* lock is someone else doing this work. Anything else — an
 		// unwritable lock dir, a full disk — means nothing will prune, ever, and

@@ -60,18 +60,18 @@ var jaErrors = map[string]string{
 	"account %s/%s is selected by global isolated mode; stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, then run: kae account rename %s %s %s":                                                                                       "アカウント %s/%s はグローバル独立モードで選択されています。その独立ホームを使っているプロセス（kae run -i の子プロセスや kae use -i で有効にしたターミナルを含む）をすべて止めてから kae use -s %s %s を実行し、続けて kae account rename %s %s %s を実行してください",
 
 	// Saved data in the secret store.
-	"identity payload %s is missing from the secret store": "ログイン識別子の保存データ %s がシークレットストアにありません",
+	"identity payload %s is missing from the secret store": "アカウント記録の保存データ %s がシークレットストアにありません",
 	"backup payload %s is missing from the secret store":   "バックアップの保存データ %s がシークレットストアにありません",
 	"snapshot payload %s is missing; %s":                   "スナップショットの保存データ %s がありません。%s",
 	"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two payload shapes are not interchangeable; run: kae use %s <account> instead":       "%s/%s は %s %q からバックアップしましたが、%s は現在それを %s %q に保存しており、2 つの保存データの形式に互換性がありません。代わりに kae use %s <account> を実行してください",
-	"account %s/%s captured %s as %q but this environment resolves it as %q, and the two payload shapes are not interchangeable; under the current driver, %s": "アカウント %s/%s は %s を %q として登録しましたが、この環境では %q として解決されます。2 つの保存データの形式に互換性がありません。現在のドライバーでは、%s",
+	"account %s/%s captured %s as %q but this environment resolves it as %q, and the two payload shapes are not interchangeable; under the current driver, %s": "アカウント %s/%s は認証要素 %s を %q として登録しましたが、この環境では %q として解決されます。2 つの保存データの形式に互換性がありません。現在のドライバーでは、%s",
 
 	// kae add and its login identity.
 	"the identity value has no usable characters":                                                                                  "ログイン識別子の値に使える文字がありません",
-	"--identity %q has no usable account-name characters; to give a name, run: kae add %s <account>":                               "--identity %q にはアカウント名に使える文字がありません。名前を指定するには kae add %s <account> を実行してください",
-	"kae add %s cannot auto-detect an account name; to give one, run: kae add %s <account> (or pass --identity <value>)":           "kae add %s はアカウント名を自動で検出できません。名前を指定するには kae add %s <account> を実行してください（または --identity <value> を指定してください）",
+	"--identity %q has no usable account-name characters; to give a name, run: kae add %s <account>":                               "--identity %q にはアカウント名に使える文字がありません。アカウント名を指定するには kae add %s <account> を実行してください",
+	"kae add %s cannot auto-detect an account name; to give one, run: kae add %s <account> (or pass --identity <value>)":           "kae add %s はアカウント名を自動で検出できません。アカウント名を指定するには kae add %s <account> を実行してください（または --identity <value> を指定してください）",
 	"could not detect the %s login identity (%v); to give an account name, run: kae add %s <account> (or pass --identity <value>)": "%s のログイン識別子を検出できませんでした（%v）。アカウント名を指定するには kae add %s <account> を実行してください（または --identity <value> を指定してください）",
-	"the detected %s identity %q has no usable account-name characters; to give one, run: kae add %s <account>":                    "検出した %s のログイン識別子 %q にはアカウント名に使える文字がありません。名前を指定するには kae add %s <account> を実行してください",
+	"the detected %s identity %q has no usable account-name characters; to give one, run: kae add %s <account>":                    "検出した %s のログイン識別子 %q にはアカウント名に使える文字がありません。アカウント名を指定するには kae add %s <account> を実行してください",
 	"--restore needs the login flow; it cannot be combined with --no-login":                                                        "--restore にはログインの手順が必要なため、--no-login と同時に指定できません",
 	"--dry-run applies to --no-login snapshots only":                                                                               "--dry-run は --no-login によるスナップショットにだけ使えます",
 	"the kae add login flow does not support %s yet (see docs/CLI.md)":                                                             "kae add のログイン手順はまだ %s に対応していません（docs/CLI.md を参照してください）",
@@ -141,7 +141,7 @@ var jaErrors = map[string]string{
 	"this directory is not bound; run: kae pin":                                                                                                       "このディレクトリは固定されていません。kae pin を実行してください",
 	"%s has no per-directory isolation mechanism":                                                                                                     "%s にはディレクトリ単位で環境を分ける仕組みがありません",
 	"%s has no per-directory isolation mechanism; nothing to re-bind":                                                                                 "%s にはディレクトリ単位で環境を分ける仕組みがないため、固定し直すものはありません",
-	"%s is not bound in this directory; re-bind the profile to include it":                                                                            "このディレクトリでは %s が固定されていません。そのツールを含めてプロファイルを固定し直してください",
+	"%s is not bound in this directory; re-bind the profile to include it":                                                                            "このディレクトリでは %s が固定されていません。そのツールを含むプロファイルでこのディレクトリを固定し直してください",
 	"fragment %s has an unrecognized mode %q":                                                                                                         "フラグメント %s のモード %q を認識できません",
 	"unknown per-directory bind kind %q":                                                                                                              "不明なディレクトリ固定の種類です: %q",
 	"the real %s home resolves to the bond dir itself; unset %s and retry":                                                                            "%s の実ホームが shared ディレクトリ自身を指しています。環境変数 %s を解除してから再試行してください",

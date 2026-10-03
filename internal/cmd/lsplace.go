@@ -16,6 +16,7 @@ import (
 // `kae cd` take all of them but pins and current (registerPlaceFlags), and add pick.
 type lsFlags struct {
 	pins, current              bool
+	full                       bool
 	at                         atFlag
 	project, below, home, root bool
 	shared, isolated           bool

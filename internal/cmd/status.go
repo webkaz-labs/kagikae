@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"sort"
 	"strings"
@@ -76,12 +77,12 @@ type statusReport struct {
 
 func CmdStatus(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("status", flags, false, nil)
+	opts, ok := parseFullCommand("status", flags)
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s status [--json]", toolName)
+		return usageError("usage: %s status [-f|--full] [--json]", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runStatus(ctx, app, opts)
@@ -366,7 +367,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		}
 		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color), notes})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Limit", "Notes"}, rows, color)
+	printAccountTable([]string{"Tool", "Account", columnIdentity, columnDriver, "Auth", "Credential", "Limit", "Notes"}, rows, opts.Full, color)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
@@ -412,12 +413,12 @@ type accountsReport struct {
 
 func CmdAccounts(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("accounts", flags, false, nil)
+	opts, ok := parseFullCommand("accounts", flags)
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s accounts [--json]", toolName)
+		return usageError("usage: %s accounts [-f|--full] [--json]", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runAccounts(ctx, app, opts)
@@ -459,8 +460,17 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 			limitCell(item.Usage, now, color), item.CapturedAt,
 		})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit", "Captured"}, rows, color)
+	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit", "Captured"}, rows, opts.Full, color)
 	return constants.ExitOK
+}
+
+// parseFullCommand is parseCommon for a command whose one extra flag is
+// --full (status and accounts).
+func parseFullCommand(name string, flags []string) (commonOpts, bool) {
+	var full bool
+	opts, ok := parseCommon(name, flags, false, func(fs *flag.FlagSet) { registerFullFlag(fs, &full) })
+	opts.Full = full
+	return opts, ok
 }
 
 // orDash renders an empty optional cell as "-" so a blank reads as "not set"

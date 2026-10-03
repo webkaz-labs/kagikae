@@ -168,30 +168,25 @@ const (
 // printAccountTable prints one of the account tables — status, accounts and the
 // Accounts table of ls. Without full it drops the Identity and Driver columns
 // before printTable measures the width, so the narrower table is the one that is
-// fitted to the terminal or stacked.
+// fitted to the terminal or stacked. Every row has one cell per header column,
+// as each caller builds it; a shorter row is a caller bug and panics here.
 func printAccountTable(header []string, rows [][]string, full, color bool) {
 	if !full {
-		keep := make([]int, 0, len(header))
+		var keep []int
 		for i, h := range header {
 			if h != columnIdentity && h != columnDriver {
 				keep = append(keep, i)
 			}
 		}
-		pick := func(cells []string) []string {
-			out := make([]string, 0, len(keep))
-			for _, i := range keep {
-				if i < len(cells) {
-					out = append(out, cells[i])
-				}
+		narrowed := make([][]string, 0, len(rows)+1)
+		for _, cells := range append([][]string{header}, rows...) {
+			out := make([]string, len(keep))
+			for k, i := range keep {
+				out[k] = cells[i]
 			}
-			return out
+			narrowed = append(narrowed, out)
 		}
-		header = pick(header)
-		narrowed := make([][]string, len(rows))
-		for j, row := range rows {
-			narrowed[j] = pick(row)
-		}
-		rows = narrowed
+		header, rows = narrowed[0], narrowed[1:]
 	}
 	printTable(header, rows, color)
 }

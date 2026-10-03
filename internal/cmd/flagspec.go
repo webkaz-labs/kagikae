@@ -32,6 +32,15 @@ func registerFullFlag(fs *flag.FlagSet, full *bool) {
 	fs.BoolVar(full, "f", false, "alias for --full")
 }
 
+// parseFullCommand is parseCommon for a command whose one extra flag is
+// --full (status and accounts).
+func parseFullCommand(name string, flags []string) (commonOpts, bool) {
+	var full bool
+	opts, ok := parseCommon(name, flags, false, func(fs *flag.FlagSet) { registerFullFlag(fs, &full) })
+	opts.Full = full
+	return opts, ok
+}
+
 func registerLsFlags(fs *flag.FlagSet, f *lsFlags) {
 	fs.BoolVar(&f.pins, "pins", false, "list every directory bound with kae pin (alias of kae ls pin)")
 	registerFullFlag(fs, &f.full)

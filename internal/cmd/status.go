@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"sort"
 	"strings"
@@ -462,15 +461,6 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 	}
 	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit", "Captured"}, rows, opts.Full, color)
 	return constants.ExitOK
-}
-
-// parseFullCommand is parseCommon for a command whose one extra flag is
-// --full (status and accounts).
-func parseFullCommand(name string, flags []string) (commonOpts, bool) {
-	var full bool
-	opts, ok := parseCommon(name, flags, false, func(fs *flag.FlagSet) { registerFullFlag(fs, &full) })
-	opts.Full = full
-	return opts, ok
 }
 
 // orDash renders an empty optional cell as "-" so a blank reads as "not set"

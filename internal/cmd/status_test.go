@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -160,6 +161,9 @@ func accountTableRunners(ctx context.Context, app *App) map[string]func(commonOp
 		"status":   func(o commonOpts) int { return runStatus(ctx, app, o) },
 		"accounts": func(o commonOpts) int { return runAccounts(ctx, app, o) },
 		"ls":       func(o commonOpts) int { return runLs(ctx, app, o) },
+		"ls claude": func(o commonOpts) int {
+			return runLsRequest(ctx, app, o, lsRequest{target: constants.ToolClaude})
+		},
 	}
 }
 
@@ -198,14 +202,16 @@ func TestAccountTablesHideIdentityAndDriverUnlessFull(t *testing.T) {
 	app := testApp(t, nil)
 	seedIdentityAccount(t, app)
 	wantFull := map[string]string{
-		"status":   "Tool Account Identity Driver Auth Credential Limit Notes",
-		"accounts": "Tool Account Identity Active Driver Credential Limit Captured",
-		"ls":       "Tool Account Identity Active Driver Credential Limit",
+		"status":    "Tool Account Identity Driver Auth Credential Limit Notes",
+		"accounts":  "Tool Account Identity Active Driver Credential Limit Captured",
+		"ls":        "Tool Account Identity Active Driver Credential Limit",
+		"ls claude": "Tool Account Identity Active Driver Credential Limit",
 	}
 	wantDefault := map[string]string{
-		"status":   "Tool Account Auth Credential Limit Notes",
-		"accounts": "Tool Account Active Credential Limit Captured",
-		"ls":       "Tool Account Active Credential Limit",
+		"status":    "Tool Account Auth Credential Limit Notes",
+		"accounts":  "Tool Account Active Credential Limit Captured",
+		"ls":        "Tool Account Active Credential Limit",
+		"ls claude": "Tool Account Active Credential Limit",
 	}
 	for name, run := range accountTableRunners(context.Background(), app) {
 		code, out := captureStdout(t, func() int { return run(commonOpts{Format: formatText}) })
@@ -395,5 +401,59 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	_, text := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText, NoColor: true}) })
 	if !strings.Contains(text, "Credential") || !strings.Contains(text, "2 day(s) left") {
 		t.Fatalf("status table lost the credential column:\n%s", text)
+	}
+}
+
+// isolateProcessEnv points the process environment at app's temp roots, for a
+// test that goes through Root and so builds its App with newApp: HOME and every
+// XDG root, and no inherited tool-home variable (scripts/smoke-run.sh clears the
+// same set). claude uses the file driver, so no keychain is read.
+func isolateProcessEnv(t *testing.T, app *App) {
+	t.Helper()
+	t.Setenv("HOME", app.Env.Home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(app.Paths.ConfigDir))
+	t.Setenv("XDG_DATA_HOME", filepath.Dir(app.Paths.DataDir))
+	t.Setenv("XDG_STATE_HOME", filepath.Dir(app.Paths.StateDir))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Dir(app.Paths.RuntimeDir))
+	t.Setenv(constants.EnvKaeClaudeDriver, "file")
+	for _, name := range []string{
+		"CODEX_HOME", "CLAUDE_CONFIG_DIR", "COPILOT_HOME", "CLAUDE_SECURESTORAGE_CONFIG_DIR",
+		"OPENCODE_AUTH_CONTENT", "MISE_CONFIG_DIR", "KAE_PROFILE", "KAE_FINGERPRINT",
+	} {
+		t.Setenv(name, "") // registers the restore
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// CmdLs carries --full from its own flag set into the account table: through
+// Root, -f and --full on ls account and ls <tool> add Identity and Driver, and
+// plain ls leaves them out.
+func TestLsFullThroughRoot(t *testing.T) {
+	chdirTemp(t)
+	app := testApp(t, nil)
+	seedIdentityAccount(t, app)
+	writeFile(t, app.ConfigPath, "[security]\nsecret_backend = \"file\"\n")
+	isolateProcessEnv(t, app)
+	cases := []struct {
+		args []string
+		full bool
+	}{
+		{[]string{"ls", "--full", "account", "--no-color"}, true},
+		{[]string{"ls", "-f", "account", "--no-color"}, true},
+		{[]string{"ls", "--full", "claude", "--no-color"}, true},
+		{[]string{"ls", "account", "--no-color"}, false},
+		{[]string{"ls", "claude", "--no-color"}, false},
+	}
+	for _, c := range cases {
+		code, out := captureStdout(t, func() int { return Root(c.args) })
+		mustExit(t, constants.ExitOK, code, out)
+		header := headerLine(t, out)
+		hasIdentity := strings.Contains(header, columnIdentity)
+		hasDriver := strings.Contains(header, columnDriver)
+		if hasIdentity != c.full || hasDriver != c.full {
+			t.Errorf("Root(%q) header %q: Identity %v, Driver %v, want %v", c.args, header, hasIdentity, hasDriver, c.full)
+		}
 	}
 }

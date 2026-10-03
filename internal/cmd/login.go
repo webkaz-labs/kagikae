@@ -91,7 +91,7 @@ func CmdAdd(ctx context.Context, args []string) int {
 	explicitName := ""
 	if len(positionals) == 2 {
 		explicitName = positionals[1]
-		if err := validateToolAccount(tool, explicitName, "account"); err != nil {
+		if err := validateToolAccount(tool, explicitName); err != nil {
 			return finish(opts, err)
 		}
 	}

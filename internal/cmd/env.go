@@ -99,7 +99,7 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 		return usageError("usage: %s env set <tool> <account> KEY=VALUE... (or one bare KEY with the value on stdin)", toolName)
 	}
 	tool, accountName := positionals[0], positionals[1]
-	tool, err := canonicalToolAccount(tool, accountName, "account")
+	tool, err := canonicalToolAccount(tool, accountName)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -158,7 +158,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 		return usageError("usage: %s env unset <tool> <account> [KEY...]", toolName)
 	}
 	tool, accountName := positionals[0], positionals[1]
-	tool, err := canonicalToolAccount(tool, accountName, "account")
+	tool, err := canonicalToolAccount(tool, accountName)
 	if err != nil {
 		return finish(opts, err)
 	}

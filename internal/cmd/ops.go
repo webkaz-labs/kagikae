@@ -75,12 +75,12 @@ func toolPrefixMatches(prefix string) []string {
 // id (resolveToolArg) and validates the tool/account pair, returning the
 // canonical tool to store. Use it at command entry points that take a <tool>
 // <account> pair so a prefix like "cl" never reaches a data path.
-func canonicalToolAccount(tool, name, nameKind string) (string, error) {
+func canonicalToolAccount(tool, name string) (string, error) {
 	canonical, err := resolveToolArg(tool)
 	if err != nil {
 		return "", err
 	}
-	if err := validateToolAccount(canonical, name, nameKind); err != nil {
+	if err := validateToolAccount(canonical, name); err != nil {
 		return "", err
 	}
 	return canonical, nil
@@ -101,13 +101,13 @@ func validateTool(tool string) error {
 	return nil
 }
 
-// validateToolAccount checks CLI-provided tool and account/profile names.
-func validateToolAccount(tool, name, nameKind string) error {
+// validateToolAccount checks a CLI-provided tool and account name.
+func validateToolAccount(tool, name string) error {
 	if err := validateTool(tool); err != nil {
 		return err
 	}
 	if !config.ValidName(name) {
-		return errf(constants.ExitUsage, "invalid %s name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", nameKind, name)
+		return errf(constants.ExitUsage, "invalid account name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", name)
 	}
 	return nil
 }

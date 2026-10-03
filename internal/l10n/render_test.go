@@ -85,3 +85,16 @@ func TestRenderFallsBackToEnglishOnACatalogMiss(t *testing.T) {
 		t.Fatalf("catalog miss: %q", got)
 	}
 }
+
+func TestRenderOfANilErrorMatchesFmt(t *testing.T) {
+	var typedNil *testMessage
+	for _, err := range []error{nil, typedNil} {
+		if got, want := Render(err), fmt.Sprint(err); got != want {
+			t.Errorf("Render(%#v) = %q, fmt prints %q", err, got, want)
+		}
+	}
+	withJapanese(t, map[string]string{"wraps %v": "包みます %v"})
+	if got := Render(newTestMessage("wraps %v", error(typedNil))); got != "包みます <nil>" {
+		t.Errorf("a nil message argument: %q", got)
+	}
+}

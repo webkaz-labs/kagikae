@@ -1,6 +1,9 @@
 package l10n
 
-import "fmt"
+import (
+	"fmt"
+	"reflect"
+)
 
 // Message is a kae message carried as a value before it is shown: its English
 // format and arguments. Error() renders the English text, which is what JSON,
@@ -24,7 +27,14 @@ func Sprintf(format string, args ...any) string {
 
 // Render renders err for a person. A Message renders in the process's language;
 // any other error is an external or not yet migrated one and renders verbatim.
+// A nil error, or a nil pointer in an error, renders `<nil>` as fmt's %v does.
 func Render(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+	if v := reflect.ValueOf(err); v.Kind() == reflect.Pointer && v.IsNil() {
+		return "<nil>"
+	}
 	m, ok := err.(Message)
 	if !ok {
 		return err.Error()

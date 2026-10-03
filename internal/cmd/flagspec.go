@@ -187,10 +187,16 @@ func flagCompletions(cmd string) []string {
 func valuedFlagCompletions(cmd string) []string {
 	var out []string
 	flagSetFor(cmd).VisitAll(func(f *flag.Flag) {
-		if value, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && value.IsBoolFlag() {
-			return
+		if flagTakesValue(f) {
+			out = append(out, "-"+f.Name, "--"+f.Name)
 		}
-		out = append(out, "-"+f.Name, "--"+f.Name)
 	})
 	return out
+}
+
+// flagTakesValue reports whether the flag package reads the argument after f as
+// its value: every flag but a boolean one.
+func flagTakesValue(f *flag.Flag) bool {
+	value, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return !ok || !value.IsBoolFlag()
 }

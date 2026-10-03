@@ -12,6 +12,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
@@ -33,6 +34,13 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "kae tests: cannot clear %s: %v\n", key, err)
 			os.Exit(1)
 		}
+	}
+	// Assertions on human text assert the English rendering; neither KAE_LANG nor
+	// the developer's locale may reach them (docs/VALIDATION.md § Output language
+	// in tests). A test that renders Japanese calls l10ntest.UseJapanese.
+	if err := l10ntest.PinEnglish(); err != nil {
+		fmt.Fprintf(os.Stderr, "kae tests: cannot pin English: %v\n", err)
+		os.Exit(1)
 	}
 	if root, inside, err := tempDirGitWorktree(os.TempDir()); err != nil {
 		fmt.Fprintf(os.Stderr, "kae tests: cannot verify TMPDIR isolation: %v\n", err)

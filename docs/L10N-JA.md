@@ -28,6 +28,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | driver | ドライバー | 決定 | 既存なし。adapter（アダプター）と区別できる語。利用者向け出力にはほぼ出ない |
 | artifact | 認証要素 | 決定 | 「成果物」は誤解を招くので使わない。JSON の artifact kind トークンは訳さない |
 | companion | 周辺ツール | 決定 | コマンド名 `kae companion` は訳さない。PRODUCT.ja.md の用語表は英語の `companion` のままで、出力文字列では「周辺ツール」を使う |
+| companion knob | 設定項目 | 決定 | `kae companion add` に渡す KEY（`email` や `GH_TOKEN`）。KEY の名前は訳さない |
 | place | 場所 | 確定 | 初出では「場所」を定義する形（GUIDE.ja.md）を踏襲する |
 | session row | セッション記録の行 | 決定 | GUIDE.ja.md の「セッション記録を置く `projects/` 以下の行」に合わせる |
 | session / transcript | セッション / セッション記録 | 確定 | |
@@ -41,6 +42,8 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | credential | 認証情報 | 確定 | 「資格情報」「クレデンシャル」は使わない |
 | auth / authentication | 認証 | 確定 | |
 | credential store | 認証ストア | 確定 | 短縮の「ストア」は文脈が自明なときだけ |
+| secret store | シークレットストア | 決定 | kae が保存コピーを置くバックエンド（キーチェーン、libsecret、ファイル）。ツール側の認証ストアと混ぜない |
+| payload | 保存データ | 決定 | シークレットストアに置いたスナップショット・バックアップ・ログイン識別子の中身。「ペイロード」は使わない |
 | isolation store / working store | 作業ストア | 確定 | |
 | bound directory | 固定したディレクトリ | 決定 | 英語の散文は bound directory / bind に統一する（pin はコマンド名 `kae pin` だけ）。「固定ディレクトリ」とは書かない。PRODUCT.ja.md の「ディレクトリ固定」は機能名として残す。日本語では bound と pinned の区別が出ない |
 | bind（動詞） | 固定する | 確定 | |
@@ -63,6 +66,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | restore / rollback | 復元 / `kae rollback` | 確定 | rollback はコマンド名なので訳さない。「復旧」は障害対応の見出し語（「認証の復旧」）として復元と区別する |
 | tombstone | 失効マーカー | 決定 | ツール自身が、自分のログインが失効したと記録するために上書きした認証情報 |
 | identity cache | ログイン中アカウントの記録 | 決定 | credential ではなく account の証拠であることが読める。短縮は「アカウント記録」 |
+| login identity | ログイン識別子 | 決定 | ツールが報告するログインの識別値（メールアドレスや UUID）。identity cache（ログイン中アカウントの記録）とは別 |
 | supersedes / orderable | 訳さない | 決定 | 述語名は利用者向けでない。文では「新しい」「新旧を決められない」と書く |
 | dry-run | `--dry-run` | 確定 | 名詞としては「変更予定の確認」。「ドライラン」は使わない |
 | lock | ロック | 確定 | 「ロック競合」 |

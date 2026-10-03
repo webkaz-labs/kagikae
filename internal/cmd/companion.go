@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -344,12 +345,12 @@ func companionToken(ctx context.Context, app *App, args []string) int {
 	}
 	be, err := app.secretBackend()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "kae:", err)
+		fmt.Fprintln(os.Stderr, "kae:", l10n.Render(err))
 		return exitOf(err)
 	}
 	value, found, err := be.Get(ctx, companion.SecretRef(args[0], args[1], args[2]))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "kae:", err)
+		fmt.Fprintln(os.Stderr, "kae:", l10n.Render(err))
 		return exitOf(err)
 	}
 	if !found {

@@ -148,7 +148,7 @@ func buildProfileSet(_ context.Context, app *App, opts commonOpts, name, tool, a
 	if !config.ValidName(name) {
 		return nil, errf(constants.ExitUsage, "invalid profile name %q", name)
 	}
-	if err := validateToolAccount(tool, accountName, "account"); err != nil {
+	if err := validateToolAccount(tool, accountName); err != nil {
 		return nil, err
 	}
 	if err := app.requireConfigFile(); err != nil {

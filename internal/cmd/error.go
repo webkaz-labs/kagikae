@@ -16,6 +16,27 @@ func usageError(format string, args ...any) int {
 	return constants.ExitUsage
 }
 
+// message is a fragment of a kae message carried as a value (l10n.Message): a
+// did-you-mean suffix or a remedy that another message embeds as an argument, so
+// a human sink renders it in the parent's language. It is not a failure and has
+// no exit code. The zero message renders "" in every language.
+type message struct {
+	format  string
+	args    []any
+	english string
+}
+
+func (m message) Error() string { return m.english }
+
+// MessageFormat makes message an l10n.Message.
+func (m message) MessageFormat() (string, []any) { return m.format, m.args }
+
+// msgf builds a message. It hands its unchanged format and args to fmt.Sprintf,
+// which keeps it a `go vet` printf wrapper.
+func msgf(format string, args ...any) message {
+	return message{format: format, args: args, english: fmt.Sprintf(format, args...)}
+}
+
 // unsupportedShellFormat is the usage error for a shell kae has no completion for.
 const unsupportedShellFormat = "unsupported shell %q (supported: bash, zsh, fish)"
 

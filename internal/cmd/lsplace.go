@@ -10,6 +10,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // lsFlags is every flag `kae ls` takes beyond the common ones; `kae open` and
@@ -300,7 +301,7 @@ func firstExit(code, next int) int {
 // reportGroupError prints a group's error in human output and returns its exit
 // code; the other groups are still shown.
 func reportGroupError(err error) int {
-	fmt.Fprintln(os.Stderr, "kae:", err)
+	fmt.Fprintln(os.Stderr, "kae:", l10n.Render(err))
 	return exitOf(err)
 }
 

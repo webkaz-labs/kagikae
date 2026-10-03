@@ -25,7 +25,7 @@ import (
 // when the new account set matches no named profile). Sessions and settings are
 // never disturbed.
 func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string, noLink bool) int {
-	tool, err := canonicalToolAccount(tool, accountName, "account")
+	tool, err := canonicalToolAccount(tool, accountName)
 	if err != nil {
 		return finish(opts, err)
 	}

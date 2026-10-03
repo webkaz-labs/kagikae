@@ -56,6 +56,7 @@ const (
 var formatSinks = map[string]int{ // key -> format argument index
 	cmdPkg + ".errf":                       1,
 	cmdPkg + ".usageError":                 0,
+	cmdPkg + ".msgf":                       0,
 	cmdPkg + ".App.acquireNamed":           2,
 	cmdPkg + ".App.acquireNamedLock":       1,
 	cmdPkg + ".App.acquireNamedSharedLock": 1,

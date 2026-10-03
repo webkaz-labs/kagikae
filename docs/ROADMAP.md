@@ -76,13 +76,17 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
    setting `KAE_LANG=en`; `usageError` takes the sink form VALIDATION states. With
    it, the `kae:` line a failing command ends on, usage
-   errors, did-you-mean suggestions and the common errors.
+   errors, did-you-mean suggestions and the common errors. The common errors are
+   the `errf`, `usageError` and lock-busy messages of `internal/cmd`, the
+   `account`, `add`, `use`, `pin`, `preservation`, `ls`, `completion` and
+   `uninstall` errors among them, except those that still embed composed English,
+   which stage 4 takes.
 2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
 4. The remaining human output, including the messages that still take an already
    composed English sentence as an argument (the `why` of the snapshot-unchanged
-   warnings, `verifiedCaptureRemedy`); the catalog test cannot see them, so each
+   warnings); the catalog test cannot see them, so each
    becomes a message value or a set of constant formats before its stage ships.
    Stage 2 takes the ones inside `kae: warning:` lines. The `fmt.Errorf` and
    `errors.New` errors in `internal/cmd` or below that no earlier stage made values

@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
@@ -170,5 +172,206 @@ func TestEnglishPinHoldsForTheProcess(t *testing.T) {
 	}
 	if l10n.Current() != l10n.English {
 		t.Fatal("Root under the pin must select English")
+	}
+}
+
+// stageOneCase is one failure from localization stage 1 (docs/ROADMAP.md): the
+// `kae:` line a failing command ends on, a usage error, a did-you-mean suffix or a
+// common error, with its English and Japanese renderings.
+type stageOneCase struct {
+	name   string
+	run    func(t *testing.T) (int, string)
+	en, ja string
+}
+
+// stageOneCases builds the cases on fresh Apps, so the English and the Japanese
+// pass each start from the same state.
+func stageOneCases(t *testing.T) []stageOneCase {
+	ctx := context.Background()
+	text := commonOpts{Format: formatText}
+	tools := strings.Join(constants.Tools, ", ")
+	uncaptured, noConfig, busy := testApp(t, nil), testApp(t, nil), testApp(t, nil)
+	broken := testApp(t, nil)
+	broken.ConfigErr = errors.New("boom")
+	return []stageOneCase{
+		{
+			name: "unknown command",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"zzzzzz"}) })
+			},
+			en: "unknown command: zzzzzz (see kae help)\n",
+			ja: "不明なコマンドです: zzzzzz（kae help を参照してください）\n",
+		},
+		{
+			name: "unknown command with a suggestion",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"statu"}) })
+			},
+			en: "unknown command: statu (see kae help) — did you mean \"status\"?\n",
+			ja: "不明なコマンドです: statu（kae help を参照してください）。もしかして: \"status\"\n",
+		},
+		{
+			name: "removed command",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"login"}) })
+			},
+			en: "kae login was removed in v0.5.0; run: kae add <tool> <account>\n",
+			ja: "kae login は v0.5.0 で削除されました。kae add <tool> <account> を実行してください\n",
+		},
+		{
+			// The replacement's explanation is part of the format, not an English argument.
+			name: "removed command with an explained replacement",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"apply"}) })
+			},
+			en: "kae apply was removed in v0.8.0; run: kae use [--quiet] (bare use resolves the profile)\n",
+			ja: "kae apply は v0.8.0 で削除されました。kae use [--quiet] を実行してください（引数なしの kae use がプロファイルを解決します）\n",
+		},
+		{
+			name: "usage error",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int {
+					if _, ok := parseCommon("status", []string{"--format", "yaml"}, false, nil); ok {
+						return constants.ExitOK
+					}
+					return constants.ExitUsage
+				})
+			},
+			en: "unsupported format: yaml\n",
+			ja: "対応していない出力形式です: yaml\n",
+		},
+		{
+			name: "unknown tool with a suggestion",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return runSwitch(ctx, testApp(t, nil), text, "cluade", "main") })
+			},
+			en: "kae: unknown tool \"cluade\" (tools: " + tools + ") — did you mean \"claude\"?\n",
+			ja: "kae: 不明なツールです: \"cluade\"（ツール: " + tools + "）。もしかして: \"claude\"\n",
+		},
+		{
+			name: "account not captured",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return runSwitch(ctx, uncaptured, text, "claude", "side") })
+			},
+			en: "kae: account claude/side is not captured; first verify the live claude login belongs to account side " +
+				"and uses the intended global store; only then, to re-capture, run: kae add --no-login claude side; " +
+				"if logged out or uncertain, see docs/CLI.md Recovery guidance before capture\n",
+			ja: "kae: アカウント claude/side は登録されていません。まず claude の現在のログインがアカウント side のもので、" +
+				"意図したグローバルの認証ストアを使っていることを確認してください。確認できた場合に限り、登録し直すには " +
+				"kae add --no-login claude side を実行してください。ログアウトしている場合や確信が持てない場合は、" +
+				"登録する前に docs/CLI.md の Recovery guidance を参照してください\n",
+		},
+		{
+			name: "config not found",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return finish(text, noConfig.requireConfigFile()) })
+			},
+			en: "kae: config ~/.config/kagikae/config.toml not found; run: kae init\n",
+			ja: "kae: 設定ファイル ~/.config/kagikae/config.toml が見つかりません。kae init を実行してください\n",
+		},
+		{
+			// kae ls reports a group's error itself rather than through finish.
+			name: "ls with a broken config",
+			run: func(t *testing.T) (int, string) {
+				chdirTo(t, t.TempDir())
+				code, _, stderr := captureBoth(t, func() int { return runLs(ctx, broken, text) })
+				return code, stderr
+			},
+			en: "kae: invalid config " + broken.ConfigPath + ": boom\n",
+			ja: "kae: 設定ファイル " + broken.ConfigPath + " が不正です: boom\n",
+		},
+		{
+			name: "companion knob",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int {
+					_, _, err := parseCompanionKnobs(companion.Spec{}, nil, strings.NewReader(""))
+					return finish(text, err)
+				})
+			},
+			en: "kae: no knobs given\n",
+			ja: "kae: 設定項目が指定されていません\n",
+		},
+		{
+			name: "lock busy",
+			run: func(t *testing.T) (int, string) {
+				held, err := lock.Acquire(busy.Paths.LocksDir(), lockNameConfig)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer held.Release()
+				return captureStderr(t, func() int {
+					_, err := busy.acquireConfigLock()
+					return finish(text, err)
+				})
+			},
+			en: "kae: another kae process is editing the config; retry shortly\n",
+			ja: "kae: 別の kae プロセスが設定ファイルを編集しています。しばらくしてから再試行してください\n",
+		},
+	}
+}
+
+func TestStageOneErrorsRenderInTheSelectedLanguage(t *testing.T) {
+	english := map[string]int{}
+	for _, c := range stageOneCases(t) {
+		code, stderr := c.run(t)
+		if stderr != c.en {
+			t.Errorf("%s in English:\n got %q\nwant %q", c.name, stderr, c.en)
+		}
+		english[c.name] = code
+	}
+	t.Run("Japanese", func(t *testing.T) {
+		l10ntest.UseJapanese(t)
+		for _, c := range stageOneCases(t) {
+			code, stderr := c.run(t)
+			if stderr != c.ja {
+				t.Errorf("%s in Japanese:\n got %q\nwant %q", c.name, stderr, c.ja)
+			}
+			if code != english[c.name] {
+				t.Errorf("%s: exit %d in Japanese, %d in English", c.name, code, english[c.name])
+			}
+		}
+	})
+}
+
+func TestStageOneErrorsStayEnglishUnderJSONAndKaeLangEn(t *testing.T) {
+	const suggestion = "unknown command: statu (see kae help) — did you mean \"status\"?\n"
+	l10ntest.UseJapanese(t)
+
+	// --json: the usage error on stderr and the JSON message stay English.
+	code, stderr := captureStderr(t, func() int { return Root([]string{"statu", "--json"}) })
+	if code != constants.ExitUsage || stderr != suggestion {
+		t.Errorf("JSON-mode usage error: exit %d, %q", code, stderr)
+	}
+	// Root selected English for its JSON-mode command line; select Japanese again
+	// so the JSON report below is English because of JSON mode, not the language.
+	l10n.Set(l10n.Japanese)
+	app := testApp(t, nil)
+	code, stdout := captureStdout(t, func() int {
+		return runSwitch(context.Background(), app, commonOpts{Format: formatJSON}, "claude", "side")
+	})
+	var report errorReport
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("JSON error report: %v\n%s", err, stdout)
+	}
+	if code != constants.ExitNotFound || !strings.HasPrefix(report.Message, "account claude/side is not captured; first verify") {
+		t.Errorf("the JSON error report must be English: exit %d, %q", code, report.Message)
+	}
+
+	// KAE_LANG=en outranks the Japanese the test selected.
+	t.Setenv(l10n.EnvVar, "en")
+	code, stderr = captureStderr(t, func() int { return Root([]string{"statu"}) })
+	if code != constants.ExitUsage || stderr != suggestion {
+		t.Errorf("KAE_LANG=en: exit %d, %q", code, stderr)
+	}
+}
+
+func TestDidYouMeanWithoutACandidateRendersNothing(t *testing.T) {
+	none := didYouMean("zzzzzz", []string{"status"})
+	if none.Error() != "" || l10n.Render(none) != "" {
+		t.Fatalf("English: %q, %q", none.Error(), l10n.Render(none))
+	}
+	l10ntest.UseJapanese(t)
+	if got := l10n.Render(none); got != "" {
+		t.Fatalf("Japanese: %q", got)
 	}
 }

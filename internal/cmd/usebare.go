@@ -24,7 +24,7 @@ type bareUseReport struct {
 // CmdApply is a removed-command pointer: `apply` folded into bare `kae use` in
 // v0.8.0. Exit 64 names the replacement for one release.
 func CmdApply(_ context.Context, _ []string) int {
-	return removedCommand("apply", "v0.8.0", "kae use [--quiet] (bare use resolves the profile)")
+	return usageError("kae %s was removed in %s; run: kae use [--quiet] (bare use resolves the profile)", "apply", "v0.8.0")
 }
 
 // runUseBare is bare `kae use`: resolve the profile (--profile/-P, then

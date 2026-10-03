@@ -97,7 +97,7 @@ func Root(args []string) int {
 	case "capture":
 		return removedCommand(args[0], "v0.5.0", "kae add --no-login <tool> <account>")
 	case "current":
-		return removedCommand(args[0], "v0.5.0", "kae (the bare status summary)")
+		return usageError("kae %s was removed in %s; run: kae (the bare status summary)", args[0], "v0.5.0")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
 	case "ls":
@@ -313,7 +313,9 @@ Tools: ` + strings.Join(constants.Tools, ", "))
 }
 
 // removedCommand reports a removed or renamed command and names its
-// replacement (kept for one release).
+// replacement (kept for one release). replacement is inserted verbatim in every
+// language, so it holds only a command line; a replacement that needs explaining
+// gets its own constant format instead (see "current" in Root and CmdApply).
 func removedCommand(old, version, replacement string) int {
 	return usageError("kae %s was removed in %s; run: %s", old, version, replacement)
 }

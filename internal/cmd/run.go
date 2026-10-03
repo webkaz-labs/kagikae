@@ -389,7 +389,7 @@ func (app *App) resolveTargets(target, name string) ([]runTarget, string, error)
 		}
 		return targets, name, nil
 	}
-	tool, err := canonicalToolAccount(target, name, "account")
+	tool, err := canonicalToolAccount(target, name)
 	if err != nil {
 		return nil, "", err
 	}

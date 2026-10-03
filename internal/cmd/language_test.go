@@ -256,7 +256,7 @@ func stageOneCases(t *testing.T) []stageOneCase {
 				"and uses the intended global store; only then, to re-capture, run: kae add --no-login claude side; " +
 				"if logged out or uncertain, see docs/CLI.md Recovery guidance before capture\n",
 			ja: "kae: アカウント claude/side は登録されていません。まず claude の現在のログインがアカウント side のもので、" +
-				"意図したグローバルの認証ストアを使っていることを確認してください。そのうえで登録し直すには " +
+				"意図したグローバルの認証ストアを使っていることを確認してください。確認できた場合に限り、登録し直すには " +
 				"kae add --no-login claude side を実行してください。ログアウトしている場合や確信が持てない場合は、" +
 				"登録する前に docs/CLI.md の Recovery guidance を参照してください\n",
 		},

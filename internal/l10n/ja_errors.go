@@ -6,7 +6,7 @@ package l10n
 var jaErrors = map[string]string{
 	// Shared fragments.
 	" — did you mean %q?": "。もしかして: %q",
-	"first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture": "まず %s の現在のログインがアカウント %s のもので、意図したグローバルの認証ストアを使っていることを確認してください。そのうえで登録し直すには kae add --no-login %s %s を実行してください。ログアウトしている場合や確信が持てない場合は、登録する前に docs/CLI.md の Recovery guidance を参照してください",
+	"first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture": "まず %s の現在のログインがアカウント %s のもので、意図したグローバルの認証ストアを使っていることを確認してください。確認できた場合に限り、登録し直すには kae add --no-login %s %s を実行してください。ログアウトしている場合や確信が持てない場合は、登録する前に docs/CLI.md の Recovery guidance を参照してください",
 
 	// Command line and configuration.
 	"unknown command: %s (see kae help)%s":                                                             "不明なコマンドです: %s（kae help を参照してください）%s",
@@ -22,14 +22,14 @@ var jaErrors = map[string]string{
 	"unsupported shell %q (supported: bash, zsh, fish)":                                                "対応していないシェルです: %q（対応: bash、zsh、fish）",
 	"unknown tool %q":                                                                                  "不明なツールです: %q",
 	"unknown tool %q (tools: %s)%s":                                                                    "不明なツールです: %q（ツール: %s）%s",
-	"ambiguous tool prefix %q (matches: %s)":                                                           "ツール名の前方一致 %q があいまいです（一致: %s）",
+	"ambiguous tool prefix %q (matches: %s)":                                                           "%q で始まるツールが複数あります（一致: %s）",
 	"invalid account name %q (allowed: [a-zA-Z0-9._-], max 64 chars)":                                  "アカウント名が不正です: %q（使える文字は [a-zA-Z0-9._-]、64 文字まで）",
 	"%s was removed in v0.6.0; use %s instead (captured %s accounts on disk are left unchanged)":       "%s は v0.6.0 で削除されました。代わりに %s を使ってください（登録済みの %s のアカウントはディスク上にそのまま残ります）",
 	"editor %s exited with %d; the config is left as the editor last saved it; nothing is rolled back": "エディター %s が終了コード %d で終了しました。設定ファイルはエディターが最後に保存した内容のままで、何も元に戻していません",
-	"no profile given: pass -P <name>, set %s, or set default_profile in config":                       "プロファイルが指定されていません。-P <name> を指定するか、%s か設定ファイルの default_profile を設定してください",
+	"no profile given: pass -P <name>, set %s, or set default_profile in config":                       "プロファイルが指定されていません。-P <name> を指定するか、環境変数 %s か設定ファイルの default_profile を設定してください",
 
 	// Lock contention.
-	"another kae process is switching %s; retry shortly":                                                  "別の kae プロセスが %s を切り替えています。しばらくしてから再試行してください",
+	"another kae process is switching %s; retry shortly":                                                  "別の kae プロセスが %s のアカウントを切り替えています。しばらくしてから再試行してください",
 	"another kae process is changing %s isolated account paths; retry shortly":                            "別の kae プロセスが %s の独立環境のアカウントパスを変更しています。しばらくしてから再試行してください",
 	"another kae process is using or changing %s isolated account paths; stop it or retry after it exits": "別の kae プロセスが %s の独立環境のアカウントパスを使用中または変更中です。そのプロセスを止めるか、終了してから再試行してください",
 	"another kae process is editing the config; retry shortly":                                            "別の kae プロセスが設定ファイルを編集しています。しばらくしてから再試行してください",
@@ -43,7 +43,7 @@ var jaErrors = map[string]string{
 
 	// kae account.
 	"unknown account subcommand %q (rm, rename, set-identity)":             "不明な account サブコマンドです: %q（rm、rename、set-identity のいずれか）",
-	"%s/%s is the active account; switch away first or rerun with --force": "%s/%s は使用中のアカウントです。先に別のアカウントに切り替えるか、--force を付けて再実行してください",
+	"%s/%s is the active account; switch away first or rerun with --force": "%s/%s は現在有効なアカウントです。先に別のアカウントに切り替えるか、--force を付けて再実行してください",
 	"account %s/%s has inconsistent secret_ref metadata":                   "アカウント %s/%s の secret_ref メタデータに矛盾があります",
 	"account %s/%s already exists":                                         "アカウント %s/%s はすでに存在します",
 	"account %s/%s is not captured":                                        "アカウント %s/%s は登録されていません",
@@ -100,7 +100,7 @@ var jaErrors = map[string]string{
 	"profile %q does not map %s":       "プロファイル %q には %s の割り当てがありません",
 	"profile %q maps no enabled tools": "プロファイル %q には有効なツールの割り当てがありません",
 	"profile %q is the default_profile; rerun with --force to remove it and clear the default": "プロファイル %q は default_profile です。削除して既定を解除するには --force を付けて再実行してください",
-	"no active accounts to save; switch first, then run: kae use <tool> <account>":             "保存できる使用中のアカウントがありません。先に kae use <tool> <account> を実行して切り替えてください",
+	"no active accounts to save; switch first, then run: kae use <tool> <account>":             "保存できる有効なアカウントがありません。先に kae use <tool> <account> を実行して切り替えてください",
 	"unknown env subcommand: %s (set, unset, list)":                                            "不明な env サブコマンドです: %s（set、unset、list のいずれか）",
 	"no value on stdin for %s":             "標準入力に %s の値がありません",
 	"invalid environment variable name %q": "環境変数名が不正です: %q",
@@ -113,7 +113,7 @@ var jaErrors = map[string]string{
 	"unknown companion subcommand: %s (add, rm, list)":                                               "不明な companion サブコマンドです: %s（add、rm、list のいずれか）",
 	"unknown companion %q (known: %s)":                                                               "不明な周辺ツールです: %q（対応: %s）",
 	"profile %q does not bind companion %q":                                                          "プロファイル %q に周辺ツール %q は設定されていません",
-	"%s is a token; pass it as a bare KEY so the value comes from stdin, not the command line":       "%s はトークンです。値はコマンドラインではなく標準入力から渡すので、=VALUE を付けずに KEY だけを指定してください",
+	"%s is a token; pass it as a bare KEY so the value comes from stdin, not the command line":       "%s はトークンです。値をコマンドラインではなく標準入力から渡すため、=VALUE を付けずに KEY だけを指定してください",
 	"%s needs a value: %s=VALUE":                                                                     "%s には値が必要です: %s=VALUE",
 	"pass either KEY=VALUE pairs (non-secret) or a single bare token KEY (value on stdin), not both": "KEY=VALUE の組（秘密でない値）か、=VALUE なしのトークンの KEY 1 つ（値は標準入力）のどちらかを指定してください。両方は指定できません",
 
@@ -126,7 +126,7 @@ var jaErrors = map[string]string{
 	"this directory is not bound; run: kae pin":                                                                                                       "このディレクトリは固定されていません。kae pin を実行してください",
 	"%s has no per-directory isolation mechanism":                                                                                                     "%s にはディレクトリ単位で環境を分ける仕組みがありません",
 	"%s has no per-directory isolation mechanism; nothing to re-bind":                                                                                 "%s にはディレクトリ単位で環境を分ける仕組みがないため、固定し直すものはありません",
-	"%s is not bound in this directory; re-bind the profile to include it":                                                                            "このディレクトリでは %s が固定されていません。それを含むようにプロファイルを固定し直してください",
+	"%s is not bound in this directory; re-bind the profile to include it":                                                                            "このディレクトリでは %s が固定されていません。そのツールを含めてプロファイルを固定し直してください",
 	"fragment %s has an unrecognized mode %q":                                                                                                         "フラグメント %s のモード %q を認識できません",
 	"unknown per-directory bind kind %q":                                                                                                              "不明なディレクトリ固定の種類です: %q",
 	"the real %s home resolves to the bond dir itself; unset %s and retry":                                                                            "%s の実ホームが shared ディレクトリ自身を指しています。環境変数 %s を解除してから再試行してください",
@@ -135,7 +135,7 @@ var jaErrors = map[string]string{
 	"%s exists without a kagikae marker block; append the --print output manually or add the markers %q ... %q":                                       "%s に kagikae のマーカーで囲んだブロックがありません。--print の出力を手動で追記するか、%q と %q のマーカーを追加してください",
 	"kae mise init renders auth mode only (mode %q is no longer supported); to bind a directory instead, run: kae pin -s|-i|-t":                       "kae mise init が出力するのは auth モードだけです（モード %q には対応しなくなりました）。代わりにディレクトリを固定するには kae pin -s|-i|-t を実行してください",
 	"this directory is not bound, so there is no bound store to log in to; to refresh a global account, run: kae add --restore <tool> <account>":      "このディレクトリは固定されていないため、ログイン先の固定したストアがありません。グローバルのアカウントを更新するには kae add --restore <tool> <account> を実行してください",
-	"this directory's %s store is missing (%s), so kae cannot tell where its login would land; to re-bind it at its current path, run: kae pin %s %s": "このディレクトリの %s のストアがない（%s）ため、kae はログインの書き込み先を判断できません。現在のパスで固定し直すには kae pin %s %s を実行してください",
+	"this directory's %s store is missing (%s), so kae cannot tell where its login would land; to re-bind it at its current path, run: kae pin %s %s": "このディレクトリの %s のストア（%s）がないため、kae はログインの書き込み先を判断できません。現在のパスで固定し直すには kae pin %s %s を実行してください",
 	"the binding changed before login; retry after confirming the bound account":                                                                      "ログイン前に固定の内容が変わりました。固定したアカウントを確認してから再試行してください",
 	"cannot preserve the existing credential; the login flow was not started":                                                                         "既存の認証情報を保全できないため、ログイン手順を開始しませんでした",
 	"the binding changed before login; the login flow was not started":                                                                                "ログイン前に固定の内容が変わったため、ログイン手順を開始しませんでした",
@@ -148,12 +148,12 @@ var jaErrors = map[string]string{
 	"unknown preservation action %q": "不明な preservation の操作です: %q",
 	"preservation ID not found":      "保全記録の ID が見つかりません",
 	"invalid preservation ID":        "保全記録の ID が不正です",
-	"preservation capacity is full; list preserved copies and explicitly remove an unwanted ID before retrying":                      "保全記録が上限に達しています。保全したコピーを一覧し、不要な ID を明示的に削除してから再試行してください",
+	"preservation capacity is full; list preserved copies and explicitly remove an unwanted ID before retrying":                      "保全記録が上限に達しています。保全したコピーの一覧を確認し、不要な ID を明示的に削除してから再試行してください",
 	"preserving the current credential would remove the selected restore ID; explicitly remove an unwanted other ID before retrying": "現在の認証情報を保全すると、復元に選んだ ID が削除されます。ほかの不要な ID を明示的に削除してから再試行してください",
 	"preservation inventory is incomplete; inspect the listed records before retrying":                                               "保全記録の一覧が不完全です。一覧に出た記録を確認してから再試行してください",
 	"preservation storage operation failed": "保全記録の保存先の操作に失敗しました",
 	"this may be the only surviving credential copy; deletion requires explicit confirmation (use --yes with this ID to acknowledge)": "これは残っている唯一の認証情報のコピーかもしれません。削除には明示的な確認が必要です（了承する場合は、この ID と --yes を指定してください）",
-	"the original binding or credential location changed or cannot be confirmed; no credential was restored":                          "元の固定の内容または認証情報の場所が変わったか確認できないため、認証情報を復元しませんでした",
+	"the original binding or credential location changed or cannot be confirmed; no credential was restored":                          "元の固定の内容または認証情報の場所が変わったため、またはそれを確認できないため、認証情報を復元しませんでした",
 	"cannot read the destination credential; no credential was restored":                                                              "復元先の認証情報を読めないため、認証情報を復元しませんでした",
 	"the binding changed during restoration; no credential was restored":                                                              "復元中に固定の内容が変わったため、認証情報を復元しませんでした",
 	"the destination credential changed during restoration; no credential was restored":                                               "復元中に復元先の認証情報が変わったため、認証情報を復元しませんでした",
@@ -162,8 +162,8 @@ var jaErrors = map[string]string{
 
 	// kae ls, kae cd and kae open.
 	"kae resolves no places for %s":                                                                             "%s に該当する場所がありません",
-	"unknown %s target: %s (targets: %s, or a tool: %s)%s":                                                      "%s の対象が不明です: %s（対象: %s、またはツール: %s）%s",
-	"ambiguous %s target %q: matches %s":                                                                        "%s の対象 %q があいまいです: %s に一致します",
+	"unknown %s target: %s (targets: %s, or a tool: %s)%s":                                                      "kae %s の対象が不明です: %s（対象: %s、またはツール: %s）%s",
+	"ambiguous %s target %q: matches %s":                                                                        "kae %s の対象 %q があいまいです: %s に一致します",
 	"--pick chooses a place in the picker and --at names one; give one":                                         "--pick はピッカーで場所を選び、--at は場所を番号で指定します。どちらか 1 つを指定してください",
 	"-s and -i are mutually exclusive":                                                                          "-s と -i は同時に指定できません",
 	"-i names an account's isolated home: kae %s -i <tool> <account>":                                           "-i はアカウントの独立ホームを指します: kae %s -i <tool> <account>",
@@ -186,8 +186,8 @@ var jaErrors = map[string]string{
 	"--at is the number kae ls <target> shows, so it needs a target: kae %s <target> --at N":                    "--at は kae ls <target> が表示する番号なので、対象が必要です: kae %s <target> --at N",
 	"account rows are not places; choose pin, repo, kae or a tool":                                              "アカウントの行は場所ではありません。pin、repo、kae、またはツールを選んでください",
 	"kae ls %s --current matches %d places; choose one with --at N: %s":                                         "kae ls %s --current に一致する場所が %d 件あります。--at N で 1 つ選んでください: %s",
-	"--root applies to a project level; place %d of kae ls %s is a %s place":                                    "--root はプロジェクトレベルにだけ使えます。kae ls %[2]s の場所 %[1]d は %[3]s の場所です",
-	"no bound directory governs %s":                                                                             "%s に適用される固定したディレクトリはありません",
+	"--root applies to a project level; place %d of kae ls %s is a %s place":                                    "--root はプロジェクトレベルにだけ使えます。kae ls %[2]s の場所 %[1]d は種類が %[3]s の場所です",
+	"no bound directory governs %s":                                                                             "%s を含む固定したディレクトリはありません",
 	"no current place for kae %s %s here":                                                                       "ここには kae %s %s の現在の場所がありません",
 	"kae ls %s lists %d place(s); there is no place %d":                                                         "kae ls %s の場所は %d 件です。場所 %d はありません",
 	"kae cd moves the shell only through the kae shell function, which eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it, run: cd \"$(kae ls %s)\"": "kae cd がシェルを移動できるのは kae のシェル関数を通したときだけです。この関数は eval \"$(kae completion zsh)\"（bash も同様。fish は kae completion fish | source）か mise のフックが定義します。関数がない場合は cd \"$(kae ls %s)\" を実行してください",

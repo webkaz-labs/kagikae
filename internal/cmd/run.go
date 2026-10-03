@@ -267,8 +267,7 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 			return nil, errf(constants.ExitUnsupported,
 				"%s has no home-isolation env var; %s supports claude and codex only", tgt.Tool, modeDesc)
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)\n",
+		warnf("%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)",
 			tgt.Tool, flagName)
 	}
 	if len(supported) == 0 {
@@ -344,10 +343,9 @@ func (app *App) toolsToRestore(ctx context.Context, be secret.Backend,
 	for _, plan := range plans {
 		if app.restoreWouldKillNewerLogin(ctx, be, meta, plan) {
 			// Warned before the write it replaces, as every warning on this path is.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s refreshed its credential during the run and %s/%s was already the active "+
-					"account, so restoring backup %s would put back a copy %s can no longer refresh; leaving "+
-					"the live %s credential as the child left it\n",
+			warnf("%s refreshed its credential during the run and %s/%s was already the active "+
+				"account, so restoring backup %s would put back a copy %s can no longer refresh; leaving "+
+				"the live %s credential as the child left it",
 				plan.Tool, plan.Tool, plan.Account, meta.ID, plan.Tool, plan.Tool)
 			continue
 		}
@@ -548,7 +546,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// cannot be killed. It becomes observable the day a second tool declares either.
 	type declinedRecapture struct {
 		plan toolPlan
-		why  string
+		why  message
 	}
 	var declined []declinedRecapture
 	for _, plan := range plans {
@@ -564,11 +562,11 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			warnLoggedOutDuringRunUnchanged(plan.Tool, plan.Account, warningsDetail(plan.Warnings))
 			continue
 		}
-		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); !why.empty() {
 			declined = append(declined, declinedRecapture{plan, why})
 			continue
 		}
-		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); !why.empty() {
 			if preserve {
 				// kae cannot order the two copies, so it may neither say the live one is
 				// finished nor let the restore below take it. Same treatment as an
@@ -596,7 +594,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			declinedPlans[i] = d.plan
 		}
 		if preMeta, err := app.createBackup(ctx, be, declinedPlans, st, constants.BackupReasonRunUnattributable); err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
+			warnf("could not back up the live state kae declined to adopt: %v", err)
 		} else {
 			preID = preMeta.ID
 		}

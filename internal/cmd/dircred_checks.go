@@ -359,7 +359,7 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 		return fmt.Sprintf("re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s",
 			dir, tool, accountName)
 	}
-	return pinLoginRemedy(tool, dir)
+	return pinLoginRemedy(tool, dir).Error()
 }
 
 // storeHoldsAccount reports whether the credential a bound store reads is confirmed
@@ -389,13 +389,13 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
 	dirs := store.dirs()
 	if dirs.Cred != "" {
-		return app.sharedStoreAttribution(ctx, be, store.Tool, dirs.Cred, acc, attributionSource{}).Why == ""
+		return app.sharedStoreAttribution(ctx, be, store.Tool, dirs.Cred, acc, attributionSource{}).Why.empty()
 	}
 	specs, err := app.dirSpecs(ctx, store.Tool, dirs)
 	if err != nil {
 		return false
 	}
-	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why == ""
+	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why.empty()
 }
 
 // pinUnsplitChecks reports a bound directory that still keeps its own copy of an
@@ -664,11 +664,11 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 // The fallback is for a tool kae has no login command for. That is the same gate
 // `kae relogin` selects candidates on (reloginTool), so this never names a command
 // that would refuse.
-func pinLoginRemedy(tool, dir string) string {
+func pinLoginRemedy(tool, dir string) message {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("to verify the bound account, in that directory run: kae status; stop other sessions using that account's credential; to log in inside that directory as the bound account, run: cd %s && kae relogin %s", dir, tool)
+		return msgf("to verify the bound account, in that directory run: kae status; stop other sessions using that account's credential; to log in inside that directory as the bound account, run: cd %s && kae relogin %s", dir, tool)
 	}
-	return fmt.Sprintf("kae cannot launch a login for %s; before manual login in %s, verify the bound account and that mise activation, trust and the tool environment select its bound store; see docs/CLI.md Recovery guidance", tool, dir)
+	return msgf("kae cannot launch a login for %s; before manual login in %s, verify the bound account and that mise activation, trust and the tool environment select its bound store; see docs/CLI.md Recovery guidance", tool, dir)
 }
 
 // dirCredentialFreshness reads one per-directory store's credential and parses it,

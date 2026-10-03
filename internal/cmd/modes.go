@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -371,9 +370,8 @@ func (app *App) pinnedGlobalScope() {
 	// sanctioned global path there, so it must not print a misleading warning.
 	kind := app.firstKaeManagedIsolation()
 	if _, perDirectory := bindModeFor(kind); perDirectory {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: this directory is bound (%s); you are changing GLOBAL state, "+
-				"which this directory will not see — to re-bind, run: kae pin\n", kind)
+		warnf("this directory is bound (%s); you are changing GLOBAL state, "+
+			"which this directory will not see — to re-bind, run: kae pin", kind)
 	}
 	app.applyGlobalScope()
 }

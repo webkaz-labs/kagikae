@@ -42,14 +42,12 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 		// (codex under the keyring store) the bound directory resolves a *different*
 		// keychain item, so it starts out with no login at all. Say that, and name
 		// the fix the user can actually apply.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot bind %s's credential to this directory, so %s may have no login "+
-				"here until you log in inside it (its settings and sessions are still isolated)\n", tool, tool)
+		warnf("kae cannot bind %s's credential to this directory, so %s may have no login "+
+			"here until you log in inside it (its settings and sessions are still isolated)", tool, tool)
 		return true
 	case exitOf(err) == constants.ExitNotFound || exitOf(err) == constants.ExitAuthMissing:
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s/%s has no captured credential, so this directory binds %s without one; "+
-				"%s; then re-bind this directory\n",
+		warnf("%s/%s has no captured credential, so this directory binds %s without one; "+
+			"%s; then re-bind this directory",
 			tool, account, tool, verifiedCaptureRemedy(tool, account))
 		return true
 	}
@@ -216,19 +214,21 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 			// as a contradiction inside one sentence. It separates the **store** (this
 			// account's, shared) from the **copy** in it (whoever's), because the one arm
 			// below says those are two different accounts four words apart.
-			consequence := ""
 			if refused.ForeignToReaders {
 				// The only keep where kae knows what happens next. Without it the command
 				// still prints its success line and nothing says the directory will go on
 				// running somebody else's login.
-				consequence = "; until you log in inside this directory it will run that other account"
+				warnf("%s — so kae kept it rather than replacing it: the store is %s/%s's and "+
+					"shared, so a copy in it is not this bind's to spend; until you log in inside "+
+					"this directory it will run that other account",
+					clause, tool, accountName)
+			} else {
+				warnf("%s — so kae kept it rather than replacing it: the store is %s/%s's and "+
+					"shared, so a copy in it is not this bind's to spend",
+					clause, tool, accountName)
 			}
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s — so kae kept it rather than replacing it: the store is %s/%s's and "+
-					"shared, so a copy in it is not this bind's to spend%s\n",
-				clause, tool, accountName, consequence)
-		case refused.Why != "":
-			fmt.Fprintf(os.Stderr, "kae: warning: %s, so this write replaces it\n", clause)
+		case !refused.Why.empty():
+			warnf("%s, so this write replaces it", clause)
 		}
 	}
 	// Nothing is written for this artifact when the copy is kept — not the credential, not
@@ -325,10 +325,9 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// Absence is what a first bind already leaves, so this makes the two states the same one.
 		if staleLabel && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
-				fmt.Fprintf(os.Stderr,
-					"kae: warning: the %s identity cache in this directory still names the account it was "+
-						"bound to before, and kae could not remove it (%v), so the "+
-						"next bind may read it as this directory's own and replace the credential kae just kept; in this directory, run: kae relogin %s\n",
+				warnf("the %s identity cache in this directory still names the account it was "+
+					"bound to before, and kae could not remove it (%v), so the "+
+					"next bind may read it as this directory's own and replace the credential kae just kept; in this directory, run: kae relogin %s",
 					tool, err, tool)
 			}
 		}
@@ -347,9 +346,8 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// A malformed `.claude.json` the tool left behind, or a momentarily unreadable
 	// secret store, is not a reason for that.
 	if err := writeDirIdentity(ctx, be, specs, acc, configDir); err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not apply %s's identity cache for account %s in this directory (%v); "+
-				"%s may display another account until you log in inside it\n",
+		warnf("could not apply %s's identity cache for account %s in this directory (%v); "+
+			"%s may display another account until you log in inside it",
 			tool, accountName, err, tool)
 	}
 	return nil
@@ -389,10 +387,9 @@ func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool
 	// consulted here the way storeAccount consults it for the sweep's own walk.
 	store := dirStore{Tool: tool, Dir: home}
 	if _, err := app.removeDirCredential(ctx, be, store, accountName, false, true); err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not migrate the pre-split %s credential in %s (%v); any copy still "+
-				"there is one nothing reads, and a refresh of it elsewhere would invalidate this "+
-				"account's\n",
+		warnf("could not migrate the pre-split %s credential in %s (%v); any copy still "+
+			"there is one nothing reads, and a refresh of it elsewhere would invalidate this "+
+			"account's",
 			tool, app.displayPath(home), err)
 	}
 }

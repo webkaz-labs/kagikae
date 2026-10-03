@@ -281,8 +281,8 @@ func warnGitExclude(paths []string, err error) string {
 	// links, or both. Naming the fragment unconditionally would send a user
 	// looking at a file that is already ignored when it is a link that is not.
 	what := strings.Join(paths, ", ")
-	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", what, err)
-	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (machine-specific; must not be committed)\n", what)
+	warnf("could not tell git to ignore %s: %v", what, err)
+	infof("the binding is in place; ignore %s yourself (machine-specific; must not be committed)", what)
 	return ""
 }
 

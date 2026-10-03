@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -182,9 +181,8 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 func (app *App) refreshPlan(ctx context.Context, plan toolPlan) toolPlan {
 	fresh, err := app.planTool(ctx, plan.Tool, plan.Account)
 	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not re-resolve %s's credential store after the child (%v); "+
-				"continuing with the store resolved before it, which may no longer be the one %s reads\n",
+		warnf("could not re-resolve %s's credential store after the child (%v); "+
+			"continuing with the store resolved before it, which may no longer be the one %s reads",
 			plan.Tool, err, plan.Tool)
 		return plan
 	}
@@ -228,7 +226,7 @@ func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 		// unwritable lock dir, a full disk — means nothing will prune, ever, and
 		// silence there is the one asymmetry in an otherwise fail-loud path.
 		if exitOf(err) != constants.ExitLockBusy {
-			fmt.Fprintf(os.Stderr, "kae: warning: could not take the backup lock: %v\n", err)
+			warnf("could not take the backup lock: %v", err)
 		}
 		return
 	}
@@ -240,7 +238,7 @@ func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 	if _, err := backup.Prune(
 		ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep, isUndoTarget,
 	); err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
+		warnf("backup pruning failed: %v", err)
 	}
 }
 
@@ -317,9 +315,8 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if only != nil && !only[u.Tool] {
 			continue
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not resolve where %s keeps its credential now (%v), so this restore "+
-				"writes the store the backup recorded without checking whether %s has moved it\n",
+		warnf("could not resolve where %s keeps its credential now (%v), so this restore "+
+			"writes the store the backup recorded without checking whether %s has moved it",
 			u.Tool, u.Err, u.Tool)
 	}
 	for _, rec := range meta.Artifacts {
@@ -337,8 +334,8 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		if warning != "" {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", warning)
+		if !warning.empty() {
+			warnMessage(warning)
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
@@ -432,13 +429,13 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // returned rather than printed so the caller that performs the write emits it once,
 // immediately before that write — the pre-rollback capture resolves the same spec
 // and must not print it a second time.
-func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning string, err error) {
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning message, err error) {
 	for _, live := range current[rec.Tool] {
 		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
 		}
 		if !rec.Present {
-			return specFromRecord(rec), fmt.Sprintf(
+			return specFromRecord(rec), msgf(
 				"%s moved its credential to %s %q, which this backup has no record of; "+
 					"kae left it in place rather than deleting a credential it has no copy of, so %s "+
 					"stays logged in as whatever wrote it",
@@ -446,14 +443,14 @@ func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) 
 			), nil
 		}
 		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
-			return artifact.Spec{}, "", errf(constants.ExitUnsafeRefused,
+			return artifact.Spec{}, message{}, errf(constants.ExitUnsafeRefused,
 				"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two "+
 					"payload shapes are not interchangeable; run: kae use %s <account> instead",
 				rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, live.Kind, live.Target, rec.Tool)
 		}
-		return live, "", nil
+		return live, message{}, nil
 	}
-	return specFromRecord(rec), "", nil
+	return specFromRecord(rec), message{}, nil
 }
 
 // isIdentityOnly answers whether a recorded artifact is identity-only according
@@ -529,11 +526,11 @@ func (app *App) restorableActiveAccount(meta backup.Meta, tool string) (string, 
 // It points at re-applying the account rather than re-running the rollback: the
 // rollback succeeds and then prunes, so its own id may already be gone, while
 // `kae use` reaches the same work from the snapshot side.
-func (app *App) reapplyHint(meta backup.Meta, tool string) string {
+func (app *App) reapplyHint(meta backup.Meta, tool string) message {
 	if acct, ok := app.restorableActiveAccount(meta, tool); ok {
-		return fmt.Sprintf("re-apply it; run: kae use %s %s", tool, acct)
+		return msgf("re-apply it; run: kae use %s %s", tool, acct)
 	}
-	return fmt.Sprintf("re-apply the %s account you want; run: kae use %s <account> (kae accounts lists them)", tool, tool)
+	return msgf("re-apply the %s account you want; run: kae use %s <account> (kae accounts lists them)", tool, tool)
 }
 
 // clearUnrecordedIdentity removes every identity-only artifact the backup has no

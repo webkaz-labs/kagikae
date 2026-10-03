@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -233,7 +232,7 @@ func (app *App) bindingsAt(dir string) []*governingBinding {
 		info, exists, err := readFragmentAt(d)
 		switch {
 		case err != nil:
-			fmt.Fprintf(os.Stderr, "kae: warning: %s is bound but its fragment could not be read (%v), so its binding is not applied here\n", d, err)
+			warnf("%s is bound but its fragment could not be read (%v), so its binding is not applied here", d, err)
 		case exists:
 			out = append(out, app.bindingFor(d, info))
 		}
@@ -467,7 +466,7 @@ func gitListedFiles(ctx context.Context) []string {
 	}
 	out, stderr, code := runner.Run(ctx, "git", args...)
 	if code != 0 {
-		fmt.Fprintf(os.Stderr, "kae: warning: could not list the repository's files (%s), so project levels below this directory are not shown\n",
+		warnf("could not list the repository's files (%s), so project levels below this directory are not shown",
 			strings.TrimSpace(runner.Snippet(stderr)))
 		return nil
 	}
@@ -617,7 +616,7 @@ func (app *App) sessionRow(pc *placeContext, tool string, user placeRow, warn bo
 	if err != nil {
 		if warn && !pc.cwdWarned {
 			pc.cwdWarned = true
-			fmt.Fprintf(os.Stderr, "kae: warning: the current directory could not be resolved (%v), so the claude session row is not listed\n", err)
+			warnf("the current directory could not be resolved (%v), so the claude session row is not listed", err)
 		}
 		return placeRow{}, false
 	}

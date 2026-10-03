@@ -192,7 +192,7 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 				return finish(opts, errf(constants.ExitUnsafeRefused, "this may be the only surviving credential copy; deletion requires explicit confirmation (use --yes with this ID to acknowledge)"))
 			}
 			if opts.Yes {
-				fmt.Fprintln(os.Stderr, "kae: warning: this may be the only surviving credential copy; deleting the explicitly selected ID")
+				warnf("this may be the only surviving credential copy; deleting the explicitly selected ID")
 			}
 			if err := store.Remove(ctx, id); err != nil {
 				return finish(opts, preservationError(err))

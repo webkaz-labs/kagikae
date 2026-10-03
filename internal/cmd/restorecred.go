@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -248,14 +246,14 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		}
 		snap := app.snapshotCredentialFreshness(ctx, be, tool, accountName)
 		live := app.attributedLiveFreshness(ctx, be, meta, tool, current[tool])
-		where, remedy := "", ""
+		var where, remedy message
 		switch {
 		case supersedes(live, recorded.Info) && supersedes(live, snap):
-			where = "the live store"
-			remedy = fmt.Sprintf("the newer copy is left only in backup %s (kae rollback --to %s)", preID, preID)
+			where = msgf("the live store")
+			remedy = msgf("the newer copy is left only in backup %s (kae rollback --to %s)", preID, preID)
 		case supersedes(snap, recorded.Info):
-			where = fmt.Sprintf("snapshot %s/%s", tool, accountName)
-			remedy = fmt.Sprintf("to apply the newer copy afterwards, run: kae use %s %s", tool, accountName)
+			where = msgf("snapshot %s/%s", tool, accountName)
+			remedy = msgf("to apply the newer copy afterwards, run: kae use %s %s", tool, accountName)
 		default:
 			continue
 		}
@@ -276,21 +274,20 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		// The remedy is the same in every case — where the other copy is, is what a user
 		// acts on — and each names `for <tool>/<account>`, so a message about the wrong tool
 		// is detectable. The ordering pair is the default so neither string is written twice.
-		cause := fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
+		cause := msgf("recorded an older %s credential for %s/%s than the one in %s",
 			tool, tool, accountName, where)
-		consequence := fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
+		consequence := msgf("so this rollback leaves %s without the copy that can still refresh", tool)
 		switch {
 		case recorded.Orderable():
 		case recorded.Info.Revoked:
-			cause = fmt.Sprintf("recorded a %s credential for %s/%s that carries no usable token, while %s holds one",
+			cause = msgf("recorded a %s credential for %s/%s that carries no usable token, while %s holds one",
 				tool, tool, accountName, where)
 		default:
-			cause = fmt.Sprintf("recorded a %s credential for %s/%s that kae cannot compare with the one in %s",
+			cause = msgf("recorded a %s credential for %s/%s that kae cannot compare with the one in %s",
 				tool, tool, accountName, where)
-			consequence = fmt.Sprintf("so kae cannot tell which of the two %s can still refresh", tool)
+			consequence = msgf("so kae cannot tell which of the two %s can still refresh", tool)
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: backup %s %s, and %s's refresh token rotates single-use, %s; %s\n",
+		warnf("backup %s %s, and %s's refresh token rotates single-use, %s; %s",
 			meta.ID, cause, tool, consequence, remedy)
 	}
 }

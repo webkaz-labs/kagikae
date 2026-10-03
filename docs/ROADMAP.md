@@ -50,8 +50,9 @@ lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
 for claude, with its R3 real-machine check recorded through § Place navigation and the
 tree mode; its codex slice stays gated on R1 and R2 there. Next is **localized human
 output (Japanese)**, requested by the operator on 2026-09-30: new and existing runtime
-human messages; [CLI.md](CLI.md) § Localization describes current behavior until it
-ships. § Agent orchestration and remote authentication — deferred exploration
+human messages; the English wording is unified and the Japanese glossary is
+[L10N-JA.md](L10N-JA.md). [CLI.md](CLI.md) § Localization describes current behavior
+until it ships. § Agent orchestration and remote authentication — deferred exploration
 follows it and still requires investigation and an explicit implementation decision.
 Localization design questions: how the locale is selected, and which
 locale the gate's and smoke blocks' English assertions run under (this machine

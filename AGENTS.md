@@ -21,6 +21,7 @@ for always-needed rules and routing; put detailed contracts in their owning docs
 | [docs/PRODUCT.ja.md](docs/PRODUCT.ja.md)  | Japanese product scope; PRODUCT.md is normative |
 | [docs/GUIDE.ja.md](docs/GUIDE.ja.md)  | Japanese daily use, recovery and safety; CLI.md is normative |
 | [docs/CONTEXT.md](docs/CONTEXT.md)  | terminology before naming; behavior belongs in the owning contract |
+| [docs/L10N-JA.md](docs/L10N-JA.md)  | writing or changing Japanese output strings: terms, style, allowed characters |
 | [docs/PRODUCT.md](docs/PRODUCT.md)  | scope and modes; read § Tool Tiers before widening tool support |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md)  | adapter mutations; § Verified Upstream Versions before changing verification metadata |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md)  | git/gh/cloud companion authentication |

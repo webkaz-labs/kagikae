@@ -59,15 +59,27 @@ var jaErrors = map[string]string{
 	"the global isolated fragment does not match state.synced, so account paths cannot be changed safely; stop every process using isolated homes, then run: kae use -s %s %s (regenerates it from state), then run: kae account rename %s %s %s":                                                                                       "グローバル独立環境のフラグメントが state.synced と一致しないため、アカウントのパスを安全に変更できません。独立ホームを使っているプロセスをすべて止めてから kae use -s %s %s を実行し（状態からフラグメントを作り直します）、続けて kae account rename %s %s %s を実行してください",
 	"account %s/%s is selected by global isolated mode; stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, then run: kae account rename %s %s %s":                                                                                       "アカウント %s/%s はグローバル独立モードで選択されています。その独立ホームを使っているプロセス（kae run -i の子プロセスや kae use -i で有効にしたターミナルを含む）をすべて止めてから kae use -s %s %s を実行し、続けて kae account rename %s %s %s を実行してください",
 
-	// kae add.
-	"--restore needs the login flow; it cannot be combined with --no-login":                                                   "--restore にはログインの手順が必要なため、--no-login と同時に指定できません",
-	"--dry-run applies to --no-login snapshots only":                                                                          "--dry-run は --no-login によるスナップショットにだけ使えます",
-	"the kae add login flow does not support %s yet (see docs/CLI.md)":                                                        "kae add のログイン手順はまだ %s に対応していません（docs/CLI.md を参照してください）",
-	"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s": "%s のログイン手順が認証を変更せずに終了したため、何も登録していません。現在のログインを保存するには kae add --no-login %s を実行してください",
-	"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s":                                   "%s/%s を登録しましたが、以前のログインの復元に失敗しました: %v。kae rollback --to %s を実行してください",
-	"compare auth after login failed, previous state restored from backup %s: %v":                                             "ログイン後の認証の比較に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
-	"detect the logged-in account failed, previous state restored from backup %s: %v":                                         "ログインしたアカウントの検出に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
-	"capture after login failed, previous state restored from backup %s: %v":                                                  "ログイン後の登録に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
+	// Saved data in the secret store.
+	"identity payload %s is missing from the secret store": "ログイン識別子の保存データ %s がシークレットストアにありません",
+	"backup payload %s is missing from the secret store":   "バックアップの保存データ %s がシークレットストアにありません",
+	"snapshot payload %s is missing; %s":                   "スナップショットの保存データ %s がありません。%s",
+	"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two payload shapes are not interchangeable; run: kae use %s <account> instead":       "%s/%s は %s %q からバックアップしましたが、%s は現在それを %s %q に保存しており、2 つの保存データの形式に互換性がありません。代わりに kae use %s <account> を実行してください",
+	"account %s/%s captured %s as %q but this environment resolves it as %q, and the two payload shapes are not interchangeable; under the current driver, %s": "アカウント %s/%s は %s を %q として登録しましたが、この環境では %q として解決されます。2 つの保存データの形式に互換性がありません。現在のドライバーでは、%s",
+
+	// kae add and its login identity.
+	"the identity value has no usable characters":                                                                                  "ログイン識別子の値に使える文字がありません",
+	"--identity %q has no usable account-name characters; to give a name, run: kae add %s <account>":                               "--identity %q にはアカウント名に使える文字がありません。名前を指定するには kae add %s <account> を実行してください",
+	"kae add %s cannot auto-detect an account name; to give one, run: kae add %s <account> (or pass --identity <value>)":           "kae add %s はアカウント名を自動で検出できません。名前を指定するには kae add %s <account> を実行してください（または --identity <value> を指定してください）",
+	"could not detect the %s login identity (%v); to give an account name, run: kae add %s <account> (or pass --identity <value>)": "%s のログイン識別子を検出できませんでした（%v）。アカウント名を指定するには kae add %s <account> を実行してください（または --identity <value> を指定してください）",
+	"the detected %s identity %q has no usable account-name characters; to give one, run: kae add %s <account>":                    "検出した %s のログイン識別子 %q にはアカウント名に使える文字がありません。名前を指定するには kae add %s <account> を実行してください",
+	"--restore needs the login flow; it cannot be combined with --no-login":                                                        "--restore にはログインの手順が必要なため、--no-login と同時に指定できません",
+	"--dry-run applies to --no-login snapshots only":                                                                               "--dry-run は --no-login によるスナップショットにだけ使えます",
+	"the kae add login flow does not support %s yet (see docs/CLI.md)":                                                             "kae add のログイン手順はまだ %s に対応していません（docs/CLI.md を参照してください）",
+	"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s":      "%s のログイン手順が認証を変更せずに終了したため、何も登録していません。現在のログインを保存するには kae add --no-login %s を実行してください",
+	"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s":                                        "%s/%s を登録しましたが、以前のログインの復元に失敗しました: %v。kae rollback --to %s を実行してください",
+	"compare auth after login failed, previous state restored from backup %s: %v":                                                  "ログイン後の認証の比較に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
+	"detect the logged-in account failed, previous state restored from backup %s: %v":                                              "ログインしたアカウントの検出に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
+	"capture after login failed, previous state restored from backup %s: %v":                                                       "ログイン後の登録に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
 
 	// kae use, kae run and kae rollback.
 	"switch %s failed, previous state restored from backup %s: %v":                                                                            "%s の切替に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
@@ -110,11 +122,14 @@ var jaErrors = map[string]string{
 	"env profile %s/%s not found; run: kae env set %s %s KEY=VALUE": "env プロファイル %s/%s が見つかりません。kae env set %s %s KEY=VALUE を実行してください",
 
 	// kae companion.
-	"unknown companion subcommand: %s (add, rm, list)":                                               "不明な companion サブコマンドです: %s（add、rm、list のいずれか）",
-	"unknown companion %q (known: %s)":                                                               "不明な周辺ツールです: %q（対応: %s）",
-	"profile %q does not bind companion %q":                                                          "プロファイル %q に周辺ツール %q は設定されていません",
-	"%s is a token; pass it as a bare KEY so the value comes from stdin, not the command line":       "%s はトークンです。値をコマンドラインではなく標準入力から渡すため、=VALUE を付けずに KEY だけを指定してください",
-	"%s needs a value: %s=VALUE":                                                                     "%s には値が必要です: %s=VALUE",
+	"unknown companion subcommand: %s (add, rm, list)":                                         "不明な companion サブコマンドです: %s（add、rm、list のいずれか）",
+	"unknown companion %q (known: %s)":                                                         "不明な周辺ツールです: %q（対応: %s）",
+	"profile %q does not bind companion %q":                                                    "プロファイル %q に周辺ツール %q は設定されていません",
+	"%s is a token; pass it as a bare KEY so the value comes from stdin, not the command line": "%s はトークンです。値をコマンドラインではなく標準入力から渡すため、=VALUE を付けずに KEY だけを指定してください",
+	"%s needs a value: %s=VALUE":                                                               "%s には値が必要です: %s=VALUE",
+	"companion %s has no knob %q":                                                              "周辺ツール %s に設定項目 %q はありません",
+	"companion %s in profile %q has no knob %q":                                                "プロファイル %[2]q の周辺ツール %[1]s に設定項目 %[3]q はありません",
+	"no knobs given": "設定項目が指定されていません",
 	"pass either KEY=VALUE pairs (non-secret) or a single bare token KEY (value on stdin), not both": "KEY=VALUE の組（秘密でない値）か、=VALUE なしのトークンの KEY 1 つ（値は標準入力）のどちらかを指定してください。両方は指定できません",
 
 	// kae pin, kae unpin, kae relogin and kae mise init.

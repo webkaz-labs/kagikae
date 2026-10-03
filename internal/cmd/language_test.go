@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
@@ -278,6 +279,17 @@ func stageOneCases(t *testing.T) []stageOneCase {
 			},
 			en: "kae: invalid config " + broken.ConfigPath + ": boom\n",
 			ja: "kae: 設定ファイル " + broken.ConfigPath + " が不正です: boom\n",
+		},
+		{
+			name: "companion knob",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int {
+					_, _, err := parseCompanionKnobs(companion.Spec{}, nil, strings.NewReader(""))
+					return finish(text, err)
+				})
+			},
+			en: "kae: no knobs given\n",
+			ja: "kae: 設定項目が指定されていません\n",
 		},
 		{
 			name: "lock busy",

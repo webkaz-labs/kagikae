@@ -326,7 +326,7 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	}
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Profile == name },
-		func(dir string) string {
+		func(dir string) message {
 			return staleProfileBindingMessage(dir, name)
 		},
 	)

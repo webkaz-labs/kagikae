@@ -108,7 +108,7 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 			if login := probeCompanionLogin(ctx, spec, inline[secretKnob]); login != "" {
 				inline[constants.CompanionKnobExpectedLogin] = login
 			} else {
-				fmt.Fprintf(os.Stderr, "kae: note: could not resolve the %s token's login for drift detection; expected_login left unset\n", id)
+				notef("could not resolve the %s token's login for drift detection; expected_login left unset", id)
 			}
 		}
 	}

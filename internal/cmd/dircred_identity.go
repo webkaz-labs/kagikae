@@ -133,7 +133,7 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		}
 		art, ok := acc.Artifacts[sp.Name]
 		if !ok || !art.Present {
-			return harvestRefusal{Why: fmt.Sprintf("no %s identity is recorded for that account", sp.Name)}
+			return harvestRefusal{Why: msgf("no %s identity is recorded for that account", sp.Name)}
 		}
 		// A target that leaves the store labels the *real* home, not this directory
 		// (a pre-v0.16.0 bind linked it there), so it says nothing about whose
@@ -149,17 +149,17 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// assert only *that* it refuses.
 		switch outside, err := identityTargetEscapes(sp.Target, configDir); {
 		case err != nil:
-			return harvestRefusal{Why: "kae could not resolve where its identity cache is"}
+			return harvestRefusal{Why: msgf("kae could not resolve where its identity cache is")}
 		case outside:
-			return harvestRefusal{Why: "its identity cache is shared with the real tool home"}
+			return harvestRefusal{Why: msgf("its identity cache is shared with the real tool home")}
 		}
 		live, err := artifact.ReadLive(ctx, sp)
 		if err != nil || !live.Present {
-			return harvestRefusal{Why: "the directory holds no identity cache to compare"}
+			return harvestRefusal{Why: msgf("the directory holds no identity cache to compare")}
 		}
 		stored, found, err := be.Get(ctx, art.SecretRef)
 		if err != nil || !found {
-			return harvestRefusal{Why: "that account's recorded identity cannot be read"}
+			return harvestRefusal{Why: msgf("that account's recorded identity cannot be read")}
 		}
 		// Evidence either way has to be a comparison of two account **records**. A payload
 		// that is well-formed JSON but not an object names no account, so it can neither
@@ -173,19 +173,19 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// strength of two sides agreeing about nothing. The gate is above the comparison so
 		// one branch of this function cannot be stricter than the other.
 		if !identityComparable(stored, live.Data) {
-			return harvestRefusal{Why: "kae cannot read the identity records it would compare"}
+			return harvestRefusal{Why: msgf("kae cannot read the identity records it would compare")}
 		}
 		if identityDiffers(sp, stored, live.Data) {
 			// The one reason that is **positive** evidence rather than missing evidence: the
 			// copy belongs to somebody else. Callers must not then tell the user to log this
 			// account in again — the credential this bind writes is fine, and a login would
 			// mint a chain that invalidates the copy kae just harvested.
-			return harvestRefusal{Why: "its identity names a different account", Conflicting: true}
+			return harvestRefusal{Why: msgf("its identity names a different account"), Conflicting: true}
 		}
 		confirmed = true
 	}
 	if !confirmed {
-		return harvestRefusal{Why: "this platform records no identity for it"}
+		return harvestRefusal{Why: msgf("this platform records no identity for it")}
 	}
 	return harvestRefusal{}
 }
@@ -243,10 +243,9 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 			// sharing a bond dir exists for — would relabel the *real* home with this
 			// directory's account, turning one directory's attribution gap into a
 			// global one. So kae declines this one write and says so.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s's identity cache in this directory is shared with the real %s home "+
-					"(%s), so kae is not writing it here; %s may display an account other than %s "+
-					"until you log in inside the directory\n",
+			warnf("%s's identity cache in this directory is shared with the real %s home "+
+				"(%s), so kae is not writing it here; %s may display an account other than %s "+
+				"until you log in inside the directory",
 				acc.Tool, acc.Tool, sp.Target, acc.Tool, acc.Name)
 			continue
 		}

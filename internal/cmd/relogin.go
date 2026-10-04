@@ -250,9 +250,8 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// TestCredentialArtifactNameMatchesEveryAdapter; an adapter that grows a spec set
 	// without its credential, or a name that drifts from the adapter's, reopens this.
 	case !comparable || !comparedAfter:
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae could not read this directory's %s credential, so it cannot tell whether the "+
-				"login flow changed anything\n", tool)
+		warnf("kae could not read this directory's %s credential, so it cannot tell whether the "+
+			"login flow changed anything", tool)
 	}
 	// A changed credential captured for this account requires three observations.
 	// They do not establish that the login flow caused the change: a sibling may
@@ -287,16 +286,14 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// stale thing.
 	switch {
 	case comparedAfter && len(after) == 0:
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae found no %s credential where it resolves this directory's store, so it is not "+
-				"reporting a login — the flow may have left nothing there, or it may have moved the credential "+
-				"to a store kae does not resolve for this directory\n", tool)
+		warnf("kae found no %s credential where it resolves this directory's store, so it is not "+
+			"reporting a login — the flow may have left nothing there, or it may have moved the credential "+
+			"to a store kae does not resolve for this directory", tool)
 		changed = false
 	case comparedAfter && freshnessOf(tool, after).Revoked:
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae read no usable %s token in the payload now in this directory's store, so it is "+
-				"not reporting a login — blank tokens are what a failed refresh leaves behind, and a payload "+
-				"whose token keys changed upstream reads the same way\n", tool)
+		warnf("kae read no usable %s token in the payload now in this directory's store, so it is "+
+			"not reporting a login — blank tokens are what a failed refresh leaves behind, and a payload "+
+			"whose token keys changed upstream reads the same way", tool)
 		changed = false
 	}
 	// Called unconditionally, and *before* the wording is decided: a flow kae could not
@@ -328,9 +325,8 @@ func (app *App) reloginCredentialSpec(ctx context.Context, tool string, dirs bin
 	specs, err := app.dirSpecs(ctx, tool, dirs)
 	if err != nil {
 		if report {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not resolve where %s keeps this directory's credential (%v), "+
-					"so it cannot capture the login back into the account snapshot\n", tool, err)
+			warnf("kae could not resolve where %s keeps this directory's credential (%v), "+
+				"so it cannot capture the login back into the account snapshot", tool, err)
 		}
 		return nil, artifact.Spec{}, false
 	}
@@ -454,16 +450,14 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	if specs == nil {
 		// The pre-flow resolution is deliberately quiet (the post-flow one decides whether
 		// the capture back can happen), so without this line it fails silently.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae could not resolve where %s keeps this directory's credential, so it cannot "+
-				"tell what the login flow is about to replace\n", tool)
+		warnf("kae could not resolve where %s keeps this directory's credential, so it cannot "+
+			"tell what the login flow is about to replace", tool)
 		return
 	}
 	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae could not read snapshot %s/%s (%v), so it cannot tell what the login flow "+
-				"is about to replace in %s\n", tool, accountName, err, dirs.credDirOrConfig())
+		warnf("kae could not read snapshot %s/%s (%v), so it cannot tell what the login flow "+
+			"is about to replace in %s", tool, accountName, err, dirs.credDirOrConfig())
 		return
 	}
 	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
@@ -471,7 +465,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	if preserved {
 		return
 	}
-	if refused.Why == "" {
+	if refused.Why.empty() {
 		// The one route that refuses with no reason of its own: the harvest read a newer
 		// copy, attributed it, and its write into the snapshot failed — which it has
 		// already reported, naming the concrete error. A line here would be the second
@@ -486,8 +480,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	// the reason four words later (the fold docs/CLI.md § `kae rollback --json` is
 	// normative against).
 	clause := dirCredentialRefusalClause(tool, dirs, accountName, refused)
-	fmt.Fprintf(os.Stderr,
-		"kae: warning: %s; completing the login flow replaces it, and kae has it in no snapshot\n", clause)
+	warnf("%s; completing the login flow replaces it, and kae has it in no snapshot", clause)
 }
 
 // captureBackAfterRelogin harvests the copy the login just wrote into the
@@ -528,8 +521,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	}
 	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: logged in, but kae could not read snapshot %s/%s to capture it back (%v)\n",
+		warnf("logged in, but kae could not read snapshot %s/%s to capture it back (%v)",
 			tool, accountName, err)
 		return false
 	}
@@ -539,7 +531,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	// Either harvested — harvestDirCredential says so itself — or the snapshot already
 	// holds a copy at least as new, which is the ordinary outcome of re-running this
 	// command and is not worth a line. Nothing kae printed contradicts the account.
-	case refused.Why == "":
+	case refused.Why.empty():
 		return true
 	case refused.Conflicting:
 		// Positive evidence that the login is somebody else's: the store now names an
@@ -547,9 +539,8 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// the one thing that would be undetectable afterwards, so kae did not — and the
 		// remedy is to fix the binding, never to log in again (that would mint a fresh
 		// chain and invalidate the copy just left in place).
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: the %s login now in this directory belongs to an account other than %s/%s (%s), "+
-				"so kae did not capture it into that snapshot; to re-bind, run: kae pin %s <account>\n",
+		warnf("the %s login now in this directory belongs to an account other than %s/%s (%s), "+
+			"so kae did not capture it into that snapshot; to re-bind, run: kae pin %s <account>",
 			tool, tool, accountName, refused.Why, tool)
 	default:
 		// The frame may claim no more than the reason it interpolates. It used to say kae
@@ -577,7 +568,6 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// bound one (where `kae relogin` is the fix, as pinIdentityDriftMessage already
 		// says) or a globally isolated home (where it is not), and kae has no reason here
 		// to guess which the user meant that directory to run.
-		remedy := ""
 		if len(refused.Disagreeing) > 0 {
 			shown := make([]string, 0, len(refused.Disagreeing))
 			for _, dir := range refused.Disagreeing {
@@ -587,15 +577,18 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 			// directory in the case that produced it and there is no fixture with two, so a
 			// sentence whose verb agreed with "a directory" would read wrong the first time
 			// a second one ever appeared.
-			remedy = fmt.Sprintf("; kae read another account's name in %s — this login can be "+
-				"captured once %s/%s is the account named there",
-				strings.Join(shown, ", "), tool, accountName)
+			warnf("kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
+				"so it did not capture it back and that snapshot still holds its own copy; "+
+				"kae read another account's name in %s — this login can be "+
+				"captured once %s/%s is the account named there; "+
+				"to apply the snapshot's own copy, run: kae use %s %s",
+				tool, tool, accountName, refused.Why, strings.Join(shown, ", "), tool, accountName, tool, accountName)
+			return false
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
-				"so it did not capture it back and that snapshot still holds its own copy%s; "+
-				"to apply the snapshot's own copy, run: kae use %s %s\n",
-			tool, tool, accountName, refused.Why, remedy, tool, accountName)
+		warnf("kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
+			"so it did not capture it back and that snapshot still holds its own copy; "+
+			"to apply the snapshot's own copy, run: kae use %s %s",
+			tool, tool, accountName, refused.Why, tool, accountName)
 	}
 	return false
 }

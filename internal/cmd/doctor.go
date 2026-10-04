@@ -55,8 +55,7 @@ func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string
 		// The machine-wide pin-index completeness check still runs. A filtered run that prints
 		// nothing about them reads as "they are fine". stderr, not a check, so the
 		// JSON contract does not grow a row for something the caller filtered out.
-		fmt.Fprintf(os.Stderr,
-			"kae: note: companion and bound-directory checks are not per-tool and were skipped; to include them, run: kae doctor\n")
+		notef("companion and bound-directory checks are not per-tool and were skipped; to include them, run: kae doctor")
 	}
 	exit := constants.ExitOK
 	if !report.OK {

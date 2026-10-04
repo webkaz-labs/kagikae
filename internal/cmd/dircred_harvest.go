@@ -72,23 +72,20 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 			// Said before the delete, and it names both limits: this arm runs *before* any
 			// attribution, so kae could not tell whose login it was either — the store path
 			// carries the account segment, which is all a user has to go on.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not read or date the %s credential in %s — nor tell which "+
-					"account it belonged to — so it is deleted without being kept anywhere; if that was "+
-					"a working login in a shape kae does not recognize, it is lost\n", tool, credDir)
+			warnf("kae could not read or date the %s credential in %s — nor tell which "+
+				"account it belonged to — so it is deleted without being kept anywhere; if that was "+
+				"a working login in a shape kae does not recognize, it is lost", tool, credDir)
 			return true
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
-				"instead of deleted (a payload kae cannot judge may still be a working login); "+
-				"removing it tears the binding down too, so re-bind afterwards; if it is spent, "+
-				"in that directory run: kae unpin --purge\n", tool, credDir)
+		warnf("kae cannot read or date the %s credential in %s, so it is left in place "+
+			"instead of deleted (a payload kae cannot judge may still be a working login); "+
+			"removing it tears the binding down too, so re-bind afterwards; if it is spent, "+
+			"in that directory run: kae unpin --purge", tool, credDir)
 		return false
 	}
 	if accountName == "" {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot tell which account the %s credential in %s belongs to, "+
-				"so it is left in place instead of deleted\n", tool, credDir)
+		warnf("kae cannot tell which account the %s credential in %s belongs to, "+
+			"so it is left in place instead of deleted", tool, credDir)
 		return false
 	}
 	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
@@ -108,9 +105,8 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// harvest able only to refuse. The rename harvests for itself now
 		// (harvestRenamedAccountCredentials), so there is no instruction left to give here
 		// — a copy still reaching this arm is one no rename claimed.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: account %s/%s no longer exists, so the %s credential this directory held "+
-				"for it is deleted without being kept anywhere (%s)\n",
+		warnf("account %s/%s no longer exists, so the %s credential this directory held "+
+			"for it is deleted without being kept anywhere (%s)",
 			tool, accountName, tool, credDir)
 	case exitOf(err) == constants.ExitNotFound:
 		// Same condition, and this is *housekeeping* rather than a purge — the case that
@@ -131,30 +127,27 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// fragment at the new account's store, so this copy is left with no reader and the
 		// harvest refuses to attribute it. It reads correctly only for a store the *user*
 		// re-binds to an account that genuinely holds it.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: account %s/%s no longer exists, so the %s credential this directory "+
-				"held for it is left in place instead of deleted (%s); to remove it, run: kae unpin --purge, "+
-				"or re-bind to the account that holds it now and it is harvested\n",
+		warnf("account %s/%s no longer exists, so the %s credential this directory "+
+			"held for it is left in place instead of deleted (%s); to remove it, run: kae unpin --purge, "+
+			"or re-bind to the account that holds it now and it is harvested",
 			tool, accountName, tool, credDir)
 		return false
 	case err != nil:
 		// The account exists and kae could not read its credential snapshot, so a later run
 		// may still harvest this copy. Keep it.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not read snapshot %s/%s to harvest into, so the %s credential in %s "+
-				"is left in place instead of deleted (%v)\n", tool, accountName, tool, credDir, err)
+		warnf("could not read snapshot %s/%s to harvest into, so the %s credential in %s "+
+			"is left in place instead of deleted (%v)", tool, accountName, tool, credDir, err)
 		return false
 	default:
 		_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
 			attributionSource{Dir: dirs.Config, Unbound: purging})
 		if !preserved {
 			why := refused.Why
-			if why == "" {
-				why = "kae could not write it into that snapshot"
+			if why.empty() {
+				why = msgf("kae could not write it into that snapshot")
 			}
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: leaving the %s credential in %s in place instead of deleting it: it is newer "+
-					"than snapshot %s/%s and %s\n", tool, credDir, tool, accountName, why)
+			warnf("leaving the %s credential in %s in place instead of deleting it: it is newer "+
+				"than snapshot %s/%s and %s", tool, credDir, tool, accountName, why)
 			return false
 		}
 	}
@@ -250,16 +243,15 @@ func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.
 			app.harvestRenamedStore(ctx, be, tool, accountName, artName,
 				bindDirs{Config: readers[0].Config, Cred: credDir})
 		case !complete:
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not tell what reads the %s credential for %s/%s, so it did not "+
-					"harvest it before the rename; if a bound directory or an isolated home held a newer "+
-					"copy it stays under the old name (%s)\n", tool, tool, accountName, credDir)
+			warnf("kae could not tell what reads the %s credential for %s/%s, so it did not "+
+				"harvest it before the rename; if a bound directory or an isolated home held a newer "+
+				"copy it stays under the old name (%s)", tool, tool, accountName, credDir)
 		}
 	}
 	// A copy inside a per-directory store, which only the bound directories have.
 	index := app.boundDirectoryIndex()
 	if index.err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", index.err)
+		warnMessage(index.err)
 		return
 	}
 	for _, pin := range index.directories {
@@ -269,7 +261,7 @@ func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.
 		}
 		stores, serr := app.dirCredentialStores(pin.PinID, info)
 		if serr != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: %v\n", serr)
+			warnMessage(serr)
 			continue
 		}
 		for _, store := range stores {
@@ -306,7 +298,7 @@ func (app *App) harvestRenamedStore(ctx context.Context, be secret.Backend,
 	}
 	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc,
 		dirs, snapshot, attributionSource{})
-	if preserved || refused.Why == "" {
+	if preserved || refused.Why.empty() {
 		return
 	}
 	// The rename is not stopped by this — it renames either way and the copy stays where it
@@ -317,9 +309,8 @@ func (app *App) harvestRenamedStore(ctx context.Context, be secret.Backend,
 	// copy of it: this pass can refuse *short* of the `supersedes` gate (a payload kae could
 	// not read or date), where "is newer than snapshot" is a claim kae has not established
 	// and contradicts the reason printed beside it.
-	fmt.Fprintf(os.Stderr,
-		"kae: warning: %s; the rename leaves that copy under the old name, and re-binding "+
-			"will not reach it\n",
+	warnf("%s; the rename leaves that copy under the old name, and re-binding "+
+		"will not reach it",
 		dirCredentialRefusalClause(tool, dirs, accountName, refused))
 }
 
@@ -355,7 +346,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 	app.refusalReported = nil
 	stores, err := app.dirCredentialStores(pinID, prev)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+		warnMessage(err)
 		return
 	}
 	// Which stores this operation is actually moving away from: the ones the binding
@@ -413,12 +404,12 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		// Chosen once for the same reason it is asked once: the two arms below said this in
 		// two hand-kept copies, and this function's own history is one wording drifting in
 		// the unreadable arm and the other in the replaced one. Both measured.
-		consequence := "so this bind leaves it in place"
+		consequence := msgf("so this bind leaves it in place")
 		if replacedNow {
-			consequence = "and this bind replaces it"
+			consequence = msgf("and this bind replaces it")
 		}
 		switch {
-		case refused.Why == "" || !replaced[store.Dir]:
+		case refused.Why.empty() || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced
 			// — the walk returns those forever (kae keeps a store so a re-pin restores its
 			// sessions) and this operation does not touch them. Whatever this pass does not
@@ -438,9 +429,8 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// to credDirOrConfig for exactly that reason. And the consequence is measured
 			// rather than assumed — on `kae pin <tool> <other account>` this store is the one
 			// the binding moves *off*, so nothing replaces the copy in it.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the %s credential in %s belongs to an account other than %s/%s (%s), so "+
-					"kae is not harvesting it, %s\n",
+			warnf("the %s credential in %s belongs to an account other than %s/%s (%s), so "+
+				"kae is not harvesting it, %s",
 				store.Tool, store.dirs().credDirOrConfig(), store.Tool, accountName, refused.Why, consequence)
 		default:
 			// Missing evidence rather than a conflict: the copy may well be this account's.
@@ -459,9 +449,8 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// that kae could not back up, which AGENTS.md forbids. One fixed string broke that
 			// in the unreadable arm; keying it on this store's own dirs broke the other
 			// direction, claiming a replacement of a copy nothing replaced. Both measured.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+
-					"(%s), %s; %s\n",
+			warnf("kae could not preserve the %s credential this directory held for %s/%s "+
+				"(%s), %s; %s",
 				store.Tool, store.Tool, accountName, refused.Why, consequence, pinLoginRemedy(store.Tool, dir))
 		}
 	}
@@ -503,7 +492,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 // that invalidates what kae just harvested), while missing evidence means the copy may
 // well be this account's and the directory may need a login.
 type harvestRefusal struct {
-	Why         string
+	Why         message
 	Conflicting bool
 	// Unattributed marks the one refusal that says nothing about the payload itself:
 	// kae read a usable, newer copy and could not establish *whose* it is. Set
@@ -581,14 +570,14 @@ func keepsUnattributedCopy(refused harvestRefusal, dirs bindDirs) bool {
 // it has established no such thing, and the older single frame said "is newer than
 // snapshot" beside a reason that reads "kae cannot read or date the copy already there".
 // Measured on `kae use -i`, where no pin-level pass speaks first to suppress it.
-func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, refused harvestRefusal) string {
+func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, refused harvestRefusal) message {
 	if refused.Ordered {
-		return fmt.Sprintf(
+		return msgf(
 			"the %s credential already in %s is newer than snapshot %s/%s and kae is not harvesting it because %s",
 			tool, dirs.credDirOrConfig(), tool, accountName, refused.Why,
 		)
 	}
-	return fmt.Sprintf(
+	return msgf(
 		"kae is not harvesting the %s credential already in %s into snapshot %s/%s because %s",
 		tool, dirs.credDirOrConfig(), tool, accountName, refused.Why,
 	)
@@ -673,7 +662,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		// answer. Written as the state it is rather than folded away, so the next reader
 		// does not remove it as dead.
 		return snapshot, false, harvestRefusal{
-			Why: "kae cannot read or date the copy already there, and a payload kae cannot judge may still be a login",
+			Why: msgf("kae cannot read or date the copy already there, and a payload kae cannot judge may still be a login"),
 		}
 	}
 	// A snapshot kae cannot read, or one that is itself a tombstone, loses to any
@@ -698,7 +687,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		}
 		return dirIdentityConfirms(ctx, be, specs, acc, dirs.Config)
 	}
-	if refused := attribution(); refused.Why != "" {
+	if refused := attribution(); !refused.Why.empty() {
 		// Reported by the caller, not here. Two harvests can look at one store in a
 		// single command (the pin-level pass and this chokepoint), so printing at the
 		// point of detection said the same thing twice — measured, 2026-08-04 — and only
@@ -726,8 +715,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		return snapshot, false, refused
 	}
 	if err := be.Set(ctx, acc.Artifacts[artName].SecretRef, liveData); err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not harvest the newer %s credential from %s into snapshot %s/%s: %v\n",
+		warnf("could not harvest the newer %s credential from %s into snapshot %s/%s: %v",
 			tool, credDir, tool, accountName, err)
 		// The payload is still the one to write: putting it back where it already is
 		// preserves the working login even though the snapshot missed out. So nothing is
@@ -783,8 +771,7 @@ func (app *App) recordHarvestTime(tool, accountName string) {
 
 // warnCaptureTimeNotUpdated reports a harvest that kept the credential but could not stamp the snapshot.
 func warnCaptureTimeNotUpdated(tool, accountName string, err error) {
-	fmt.Fprintf(os.Stderr,
-		"kae: warning: harvested the %s credential for %s/%s but could not update its capture time: %v\n",
+	warnf("harvested the %s credential for %s/%s but could not update its capture time: %v",
 		tool, tool, accountName, err)
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -307,11 +306,11 @@ func (app *App) openPlace(ctx context.Context, opts commonOpts, path string) int
 		found = err == nil
 	}
 	if !found {
-		what := opener
-		if what == "" {
-			what = "file manager opener on " + app.Env.GOOS
+		if opener == "" {
+			warnf("no file manager opener on %s found, so the place is printed instead", app.Env.GOOS)
+		} else {
+			warnf("no %s found, so the place is printed instead", opener)
 		}
-		fmt.Fprintf(os.Stderr, "kae: warning: no %s found, so the place is printed instead\n", what)
 		fmt.Println(path)
 		return constants.ExitOK
 	}

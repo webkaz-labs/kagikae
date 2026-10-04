@@ -100,9 +100,9 @@ func warnIfLegacyPinBlock() {
 	// The overlay-mode comment written by the old `kae pin` (miseinit.go).
 	if strings.Contains(string(data), "Directory-scoped account isolation (kae pin, mode: overlay)") ||
 		strings.Contains(string(data), "Directory-scoped overlay mode (legacy)") {
-		fmt.Fprintln(os.Stderr, "kae: warning: this directory has a legacy overlay-mode block.")
-		fmt.Fprintln(os.Stderr, "kae: to migrate to isolated mode, run: kae unpin && kae pin --isolated <profile>")
-		fmt.Fprintln(os.Stderr, "kae: or, for shared-settings mode, run: kae unpin && kae pin --shared <profile>")
+		warnf("this directory has a legacy overlay-mode block.")
+		infof("to migrate to isolated mode, run: kae unpin && kae pin --isolated <profile>")
+		infof("or, for shared-settings mode, run: kae unpin && kae pin --shared <profile>")
 	}
 }
 
@@ -264,8 +264,8 @@ func (app *App) reportMiseHandoff(fallback func() string) {
 		fmt.Println("mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"")
 		return
 	}
-	fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
-	fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
+	warnf("mise activation not detected; the binding takes effect once mise is active.")
+	infof("to apply it in the current shell now, run:")
 	fmt.Fprint(os.Stderr, fallback())
 }
 
@@ -280,8 +280,8 @@ func warnModeUnboundTools(mode string, entries []isolationEntry) {
 	for _, e := range entries {
 		// Only the mode's own reason (bindMode.unboundReason): a tool with no isolation
 		// variable (agy) keeps its comment-only warning, as under -s and -i.
-		if e.Warning != "" && e.Warning == modeUnboundReason(m, e.Tool) {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", e.Warning)
+		if reason := modeUnboundMessage(m, e.Tool); e.Warning != "" && e.Warning == reason.Error() {
+			warnMessage(reason)
 		}
 	}
 }
@@ -305,9 +305,8 @@ func (app *App) noteModeChange(pinID string, prev fragmentInfo, mode string, ent
 		if !bound {
 			continue
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: note: changing this directory from %s to %s moves no sessions; %s's stay in %s, "+
-				"which `kae pin %s` finds again\n",
+		notef("changing this directory from %s to %s moves no sessions; %s's stay in %s, "+
+			"which `kae pin %s` finds again",
 			prev.Mode, mode, tool, app.displayPath(dir), old.flag)
 	}
 	if mode != modeTree {
@@ -315,7 +314,7 @@ func (app *App) noteModeChange(pinID string, prev fragmentInfo, mode string, ent
 	}
 	for _, e := range entries {
 		if e.Warning == "" && e.Dir != "" && !dirExists(e.Dir) {
-			fmt.Fprintf(os.Stderr, "kae: note: the new tree store %s starts empty\n", app.displayPath(e.Dir))
+			notef("the new tree store %s starts empty", app.displayPath(e.Dir))
 		}
 	}
 }
@@ -369,8 +368,7 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	} else if purge {
 		return finish(opts, fmt.Errorf("resolve the current directory for --purge: %w", absErr))
 	} else {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not resolve this directory (%v); removing the fragment without the pin lock\n", absErr)
+		warnf("could not resolve this directory (%v); removing the fragment without the pin lock", absErr)
 	}
 	// The binding names the account behind a shared store's credential, so --purge
 	// has to read it before removing it (storeAccount). Not fatal: without it the
@@ -417,9 +415,8 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	if purge {
 		be, err := app.secretBackend()
 		if err != nil {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not open the secret store (%v); this directory's per-directory "+
-					"credentials are left in place rather than deleted without being harvested\n", err)
+			warnf("could not open the secret store (%v); this directory's per-directory "+
+				"credentials are left in place rather than deleted without being harvested", err)
 			return constants.ExitOK
 		}
 		// Same coalescing as a bind: the sweep reads each store to classify it and again

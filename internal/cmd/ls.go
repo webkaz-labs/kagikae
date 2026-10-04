@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 
@@ -119,7 +118,7 @@ func buildLsPins(app *App, governing string) (*pinsReport, error) {
 		// that says which account it runs is worse than a noisy row, so say why on
 		// stderr and keep going (a warning never changes the exit code).
 		if ferr != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s is bound but its fragment could not be read (%v), so it is not listed\n",
+			warnf("%s is bound but its fragment could not be read (%v), so it is not listed",
 				pin.Dir, ferr)
 			continue
 		}

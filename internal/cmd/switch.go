@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -285,13 +284,13 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 func warnBeforeApply(results []switchResult, staleTools []string) {
 	for _, res := range results {
 		for _, w := range res.Warnings {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s: %s\n", res.Tool, w)
+			warnText(res.Tool + ": " + w)
 		}
 	}
 	// A profile switch fans out over several tools, so close with one roll-up line
 	// naming them; a single-tool switch already said it once.
 	if len(staleTools) > 1 {
-		fmt.Fprintf(os.Stderr, "kae: warning: %d tools need a re-login before use: %s\n",
+		warnf("%d tools need a re-login before use: %s",
 			len(staleTools), strings.Join(staleTools, ", "))
 	}
 }

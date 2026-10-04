@@ -188,7 +188,7 @@ func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 func (app *App) pinnedDirsMatching(match func(fragmentInfo) bool) []string {
 	index := app.boundDirectoryIndex()
 	if index.err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", index.err)
+		warnMessage(index.err)
 		return nil
 	}
 	matched := []string{}
@@ -214,7 +214,7 @@ func (app *App) warnPinnedAccountGone(tool, accountName, replacement string) {
 	}
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Accounts[tool] == accountName },
-		func(dir string) string {
+		func(dir string) message {
 			return staleAccountBindingMessage(dir, tool, accountName, replacement)
 		},
 	)
@@ -222,23 +222,23 @@ func (app *App) warnPinnedAccountGone(tool, accountName, replacement string) {
 
 // staleAccountBindingMessage is the warning for a bound directory whose account no
 // longer exists; replacement is the account to re-bind to, or "<account>".
-func staleAccountBindingMessage(dir, tool, accountName, replacement string) string {
-	return fmt.Sprintf("%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s",
+func staleAccountBindingMessage(dir, tool, accountName, replacement string) message {
+	return msgf("%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s",
 		dir, tool, accountName, dir, tool, replacement)
 }
 
 // staleProfileBindingMessage is the same warning for a bound directory whose profile no longer exists.
-func staleProfileBindingMessage(dir, profile string) string {
-	return fmt.Sprintf("%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>",
+func staleProfileBindingMessage(dir, profile string) message {
+	return msgf("%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>",
 		dir, profile, dir)
 }
 
 // warnPinnedDirs prints one stderr warning per bound directory the caller's edit
 // just invalidated. The loop is shared so the stream, the prefix and any future
 // suppression stay in one place.
-func (app *App) warnPinnedDirs(match func(fragmentInfo) bool, message func(dir string) string) {
+func (app *App) warnPinnedDirs(match func(fragmentInfo) bool, warning func(dir string) message) {
 	for _, dir := range app.pinnedDirsMatching(match) {
-		fmt.Fprintf(os.Stderr, "kae: warning: %s\n", message(dir))
+		warnMessage(warning(dir))
 	}
 }
 

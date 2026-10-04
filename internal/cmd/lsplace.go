@@ -418,7 +418,7 @@ func warnGroupOnce(seen ...error) func(group string, err error) {
 	return func(group string, err error) {
 		if !warned[err.Error()] {
 			warned[err.Error()] = true
-			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
+			warnf("the %s group is not listed: %v", group, err)
 		}
 	}
 }

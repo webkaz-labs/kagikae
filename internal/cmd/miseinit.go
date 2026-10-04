@@ -317,9 +317,16 @@ func (m bindMode) unboundReason(tool string) string {
 }
 
 // modeUnboundReason is why mode m, which does not bind tool, leaves it on the real home:
-// the fragment's warning comment, the bind's stderr warning and the re-bind's refusal.
+// the English text the fragment's warning comment, uninstall's match and the re-bind's refusal read.
 func modeUnboundReason(m bindMode, tool string) string {
-	return fmt.Sprintf("%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)",
+	return modeUnboundMessage(m, tool).Error()
+}
+
+// modeUnboundMessage is modeUnboundReason as a value: the generated comment, uninstall's
+// match and the re-bind's refusal read its English text, and the bind's stderr warning
+// renders it in the selected language.
+func modeUnboundMessage(m bindMode, tool string) message {
+	return msgf("%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)",
 		m.name, strings.Join(m.tools, ", "), tool)
 }
 
@@ -424,11 +431,10 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 			return "", err
 		}
 	case len(stale) > 0:
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: the real %s home (%s) lists nothing to share, so kae cannot tell "+
-				"whether %d shared link(s) in %s are still wanted; leaving them in place. "+
-				"If that home is right, remove the links by hand; if it is not, unset %s (or "+
-				"fix it), then run: kae pin\n",
+		warnf("the real %s home (%s) lists nothing to share, so kae cannot tell "+
+			"whether %d shared link(s) in %s are still wanted; leaving them in place. "+
+			"If that home is right, remove the links by hand; if it is not, unset %s (or "+
+			"fix it), then run: kae pin",
 			tool, realHome, len(stale), bondDir, isolationEnvVar(tool))
 	}
 

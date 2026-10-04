@@ -148,8 +148,7 @@ func (app *App) ensureStoreLink(path, target string) bool {
 			return warnStoreLink(path, err)
 		}
 	default: // storeLinkForeign
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s is not a kae link; leaving it unchanged. This directory's %s store is %s\n",
+		warnf("%s is not a kae link; leaving it unchanged. This directory's %s store is %s",
 			path, filepath.Base(path), app.displayPath(target))
 		return false
 	}
@@ -185,7 +184,7 @@ func (app *App) removeStoreLink(path string) bool {
 // warns. Every problem here goes to stderr and leaves the exit code alone
 // (docs/CLI.md § Output Rules).
 func warnStoreLink(path string, err error) bool {
-	fmt.Fprintf(os.Stderr, "kae: warning: could not update the store link %s: %v\n", path, err)
+	warnf("could not update the store link %s: %v", path, err)
 	return false
 }
 

@@ -397,7 +397,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		// store regardless of which account is the switch target.
 		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: could not read live %s state to refresh %s/%s: %v\n",
+			warnf("could not read live %s state to refresh %s/%s: %v",
 				plan.Tool, plan.Tool, active, err)
 			continue
 		}
@@ -405,7 +405,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnLoggedOutUnchanged(plan.Tool, active)
 			continue
 		}
-		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); why != "" {
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); !why.empty() {
 			// Recapturing here would file a credential kae cannot attribute under this
 			// account's name and identity, and after that no offline check can tell the
 			// two apart (see keepSnapshotIdentity).
@@ -417,7 +417,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 			continue
 		}
-		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.empty() {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
@@ -473,19 +473,19 @@ func warningsDetail(warnings []string) string {
 // the declined copy is not worth keeping — a tombstone, or one provably older — and
 // warnRecaptureDeclined builds on it for the case that *is* worth keeping, so the pair
 // cannot drift into two hand-written literals.
-func warnSnapshotUnchanged(tool, accountName, why string) {
-	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot %s/%s left unchanged\n", why, tool, accountName)
+func warnSnapshotUnchanged(tool, accountName string, why message) {
+	warnf("%s; snapshot %s/%s left unchanged", why, tool, accountName)
 }
 
 // warnLoggedOutUnchanged is warnSnapshotUnchanged for a live store with no login in it.
 func warnLoggedOutUnchanged(tool, accountName string) {
-	fmt.Fprintf(os.Stderr, "kae: warning: %s is logged out; snapshot %s/%s left unchanged\n", tool, tool, accountName)
+	warnf("%s is logged out; snapshot %s/%s left unchanged", tool, tool, accountName)
 }
 
 // warnLoggedOutDuringRunUnchanged is the same for a login that vanished while `kae run -s`
 // ran; detail is the adapter's own warnings from warningsDetail, or "".
 func warnLoggedOutDuringRunUnchanged(tool, accountName, detail string) {
-	fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run%s; snapshot %s/%s left unchanged\n",
+	warnf("%s logged out during the run%s; snapshot %s/%s left unchanged",
 		tool, detail, tool, accountName)
 }
 
@@ -493,7 +493,7 @@ func warnLoggedOutDuringRunUnchanged(tool, accountName, detail string) {
 // declined: a live read that errored, or a snapshot write that did. Both are honestly the
 // same sentence — the cause is in the error — and it is emitted from three places.
 func warnRecaptureFailed(tool, accountName string, err error) {
-	fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", tool, accountName, err)
+	warnf("recapture of %s/%s failed: %v", tool, accountName, err)
 }
 
 // warnRecaptureDeclined reports a recapture kae declined while the copy it declined is
@@ -515,24 +515,21 @@ func warnRecaptureFailed(tool, accountName string, err error) {
 // scope says what restoring backupID puts back besides the login being named, because
 // that differs by caller and the remedy is otherwise over-precise (see declinedScope);
 // each scope has its own constant sentence.
-func warnRecaptureDeclined(tool, accountName, why, backupID string, scope declinedScope) {
+func warnRecaptureDeclined(tool, accountName string, why message, backupID string, scope declinedScope) {
 	warnSnapshotUnchanged(tool, accountName, why)
 	if backupID == "" {
-		fmt.Fprintf(os.Stderr,
-			"kae: kae could not preserve the live %s login it declined to adopt; it is lost once the "+
-				"previous state is restored\n", tool)
+		infof("kae could not preserve the live %s login it declined to adopt; it is lost once the "+
+			"previous state is restored", tool)
 		return
 	}
 	switch scope {
 	case declinedByRun:
-		fmt.Fprintf(os.Stderr,
-			"kae: the live %s login kae declined to adopt is preserved only in backup %s (that backup covers only the tools whose recapture kae declined) — "+
-				"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
+		infof("the live %s login kae declined to adopt is preserved only in backup %s (that backup covers only the tools whose recapture kae declined) — "+
+			"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>",
 			tool, backupID, backupID, tool)
 	default:
-		fmt.Fprintf(os.Stderr,
-			"kae: the live %s login kae declined to adopt is preserved only in backup %s (restoring it reverts this whole switch) — "+
-				"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
+		infof("the live %s login kae declined to adopt is preserved only in backup %s (restoring it reverts this whole switch) — "+
+			"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>",
 			tool, backupID, backupID, tool)
 	}
 }
@@ -604,8 +601,8 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 // caller that reads values regardless of the reason. Today none does.
 func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec,
 	tool, accountName string, acc account.Account, values []artifact.Value,
-) string {
-	reason := ""
+) message {
+	reason := message{}
 	for i, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
@@ -623,7 +620,7 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		values[i] = artifact.Value{Data: data, Present: true}
 		// An absent live identity says nothing (the tool may not have rebuilt it
 		// yet); only a present one is evidence of anything.
-		if !live.Present || reason != "" {
+		if !live.Present || !reason.empty() {
 			continue
 		}
 		// The gate decides the **wording**, never the decision. Getting that backwards
@@ -640,13 +637,13 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 			continue
 		}
 		if !identityComparable(data, live.Data) {
-			reason = fmt.Sprintf(
+			reason = msgf(
 				"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell "+
 					"whose login is live", tool, tool, accountName,
 			)
 			continue
 		}
-		reason = fmt.Sprintf(
+		reason = msgf(
 			"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
 				"again outside kae", tool, tool, accountName, tool,
 		)
@@ -770,39 +767,39 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 // guaranteed to agree, and it is the caller's name the user typed.
 func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend,
 	tool, accountName string, acc account.Account, values []artifact.Value,
-) (reason string, preserve bool) {
+) (reason message, preserve bool) {
 	now := app.Now()
 	live := liveValuesFreshness(tool, values)
 	liveNeedsRelogin := needsRelogin(live, now)
 	ordered := rotatesSingleUse(tool)
 	if !liveNeedsRelogin && !ordered {
-		return "", false
+		return message{}, false
 	}
 	stored, err := app.accountFreshness(ctx, be, acc)
 	if err != nil || !stored.Known {
-		return "", false
+		return message{}, false
 	}
 	if liveNeedsRelogin && !needsRelogin(stored, now) {
-		return fmt.Sprintf(
+		return msgf(
 			"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one",
 			tool, tool, accountName,
 		), false
 	}
 	if ordered && supersedes(stored, live) {
 		if !orderable(live) {
-			return fmt.Sprintf(
+			return msgf(
 				"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which "+
 					"of the two can still refresh",
 				tool, tool, accountName,
 			), true
 		}
-		return fmt.Sprintf(
+		return msgf(
 			"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token "+
 				"rotates single-use, so the live copy can no longer refresh",
 			tool, accountName, tool, tool,
 		), false
 	}
-	return "", false
+	return message{}, false
 }
 
 // valuesDiverge reports whether freshly-read live values differ from acc's

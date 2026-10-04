@@ -207,10 +207,9 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// know which artifact that is. One resolution means one warning per tool.
 	current, unresolved := app.currentSpecs(ctx, meta)
 	for _, u := range unresolved {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback backup "+
-				"covers only what this backup recorded, and a stale %s identity cache is left "+
-				"unchanged — fix that, then %s\n", u.Tool, u.Err, u.Tool, app.reapplyHint(meta, u.Tool))
+		warnf("could not resolve current %s artifacts (%v); the pre-rollback backup "+
+			"covers only what this backup recorded, and a stale %s identity cache is left "+
+			"unchanged — fix that, then %s", u.Tool, u.Err, u.Tool, app.reapplyHint(meta, u.Tool))
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
@@ -269,9 +268,8 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		if recorded == "" || restorable[tool] != "" {
 			continue
 		}
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: backup %s recorded %s/%s as the active account and that snapshot is no longer "+
-				"captured, so kae is leaving %s with no active account rather than naming one that no longer exists; %s\n",
+		warnf("backup %s recorded %s/%s as the active account and that snapshot is no longer "+
+			"captured, so kae is leaving %s with no active account rather than naming one that no longer exists; %s",
 			meta.ID, tool, recorded, tool, app.reapplyHint(meta, tool))
 	}
 	if _, err := app.mutateState(func(st *state.State) {

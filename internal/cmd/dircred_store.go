@@ -181,7 +181,7 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 ) []string {
 	stores, err := app.dirCredentialStores(pinID, prev)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+		warnMessage(err)
 		return nil
 	}
 	removals := []string{}
@@ -258,8 +258,7 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging, migrating)
 		switch {
 		case err != nil:
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not remove the superseded %s credential for %s: %v\n",
+			warnf("could not remove the superseded %s credential for %s: %v",
 				store.Tool, store.Dir, err)
 		// Two removals share this loop and they are not the same event, so they do not
 		// share a sentence. removeDirCredential deletes at the location the store
@@ -403,13 +402,11 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 		}
 		switch refs, known := app.credStoreRefs(store.CredDir); {
 		case !known:
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not tell whether another binding still uses the %s credential for "+
-					"%s, so it is left in place rather than deleted\n", tool, accountName)
+			warnf("kae could not tell whether another binding still uses the %s credential for "+
+				"%s, so it is left in place rather than deleted", tool, accountName)
 			return false, nil
 		case refs > 0:
-			fmt.Fprintf(os.Stderr,
-				"kae: note: %d other binding(s) still use the %s credential for %s, so it is left in place instead of deleted\n",
+			notef("%d other binding(s) still use the %s credential for %s, so it is left in place instead of deleted",
 				refs, tool, accountName)
 			return false, nil
 		}
@@ -692,7 +689,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	readers, complete := app.credStoreReaders(credDir, tool)
 	if !complete {
 		return harvestRefusal{
-			Why: "kae could not tell which directories read this credential",
+			Why: msgf("kae could not tell which directories read this credential"),
 		}
 	}
 	// A reader the caller has already unbound is still a reader for this question — see
@@ -722,7 +719,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 			// while the harvest is claude-only. The count is what it protects, so a change
 			// to either arm has to keep them in step by reading rather than by a red test.
 			silent = append(silent, harvestRefusal{
-				Why: "kae could not resolve where one directory that reads it keeps its identity",
+				Why: msgf("kae could not resolve where one directory that reads it keeps its identity"),
 			})
 			continue
 		}
@@ -730,7 +727,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		case refused.Conflicting:
 			conflicting = append(conflicting, reader)
 			conflict = refused
-		case refused.Why != "":
+		case !refused.Why.empty():
 			silent = append(silent, refused)
 		default:
 			confirmed++
@@ -739,7 +736,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	switch {
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
-			Why:         "the directories that read this credential disagree about whose login it is",
+			Why:         msgf("the directories that read this credential disagree about whose login it is"),
 			Disagreeing: namedReaders(conflicting, src.Dir),
 		}
 	case len(conflicting) > 0 && readsFrom(conflicting, src.Dir):
@@ -760,8 +757,8 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		// from the readers rather than from the copy, because what kae observed is a
 		// disagreement between this operation and the store's readers.
 		return harvestRefusal{
-			Why: "the directories that read this credential say it belongs to another account, " +
-				"and this directory does not read it yet",
+			Why: msgf("the directories that read this credential say it belongs to another account, " +
+				"and this directory does not read it yet"),
 			ForeignToReaders: true,
 		}
 	case confirmed > 0:
@@ -773,11 +770,11 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		return silent[0]
 	case len(silent) > 1:
 		return harvestRefusal{
-			Why: "no directory that reads this credential could attribute it",
+			Why: msgf("no directory that reads this credential could attribute it"),
 		}
 	default:
 		return harvestRefusal{
-			Why: "no directory reads this credential yet, so nothing can say whose login it is",
+			Why: msgf("no directory reads this credential yet, so nothing can say whose login it is"),
 		}
 	}
 }

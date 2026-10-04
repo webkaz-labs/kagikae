@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"strings"
 	"unicode"
 
@@ -47,8 +45,7 @@ func (app *App) resolveAccount(ctx context.Context, tool, explicit, identityOver
 				// Frame it as a calm, optional note — not a failure — and point at
 				// the explicit fix. The raw cause is intentionally omitted so a
 				// missing file does not read like a bug.
-				fmt.Fprintf(os.Stderr,
-					"kae: note: no login identity could be detected for %s; %s/%s was captured without one (identity is optional). To add it anytime, run: kae account set-identity %s %s <value>\n",
+				notef("no login identity could be detected for %s; %s/%s was captured without one (identity is optional). To add it anytime, run: kae account set-identity %s %s <value>",
 					tool, tool, explicit, tool, explicit)
 			}
 		}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -25,7 +26,7 @@ import (
 // handled: binding a *set* of tools warns and carries on (the others still bind,
 // and the tool's non-auth state is still isolated), while an operation naming the
 // tool refuses.
-var errGlobalCredentialStore = errors.New("credential store is not per-directory")
+var errGlobalCredentialStore = l10n.Errorf("credential store is not per-directory")
 
 // warnUnisolatableCredential reports whether err is a per-directory credential
 // limitation the caller may continue past, printing the warning when it is.

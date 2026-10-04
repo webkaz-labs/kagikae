@@ -11,10 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // ErrBusy is returned when another process holds the lock.
-var ErrBusy = errors.New("lock busy")
+var ErrBusy = l10n.Errorf("lock busy")
 
 // Lock is a held advisory lock.
 type Lock struct {

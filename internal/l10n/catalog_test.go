@@ -514,11 +514,18 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	s := scanSource(t)
 	got := map[string]pendingCounts{}
 	machineHit := map[string]bool{}
+	notLocalizedHit := map[string]bool{}
 	var listed []finding
 	for _, f := range s.findings {
 		if f.kind == kindPrint && machineOutput[f.file+":"+f.fn] {
 			machineHit[f.file+":"+f.fn] = true
 			continue
+		}
+		if f.kind == kindError {
+			if key, ok := notLocalizedKey(f); ok {
+				notLocalizedHit[key] = true
+				continue
+			}
 		}
 		c := got[f.file]
 		switch f.kind {
@@ -537,6 +544,12 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	for key := range machineOutput {
 		if !machineHit[key] {
 			t.Errorf("machine-output allowlist entry %q matches no literal print: remove it", key)
+		}
+	}
+	for key := range notLocalized {
+		file, _, _ := strings.Cut(key, ":")
+		if !notLocalizedHit[key] && s.files[file] {
+			t.Errorf("not-localized allowlist entry %q matches no fmt.Errorf or errors.New: remove it", key)
 		}
 	}
 	files := map[string]bool{}
@@ -576,6 +589,17 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 		t.Logf("findings in the mismatched files:\n%s", b.String())
 		t.Logf("the allowlist the source holds now:\n%s", formatAllowlist(got))
 	}
+}
+
+// notLocalizedKey returns the notLocalized entry an error finding falls under:
+// its "file:function" entry, or else its file's.
+func notLocalizedKey(f finding) (string, bool) {
+	for _, key := range []string{f.file + ":" + f.fn, f.file} {
+		if _, ok := notLocalized[key]; ok {
+			return key, true
+		}
+	}
+	return "", false
 }
 
 func formatAllowlist(got map[string]pendingCounts) string {

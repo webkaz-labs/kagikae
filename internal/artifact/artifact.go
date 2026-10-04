@@ -14,12 +14,13 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 // ErrUnsafe means the live state failed a structure guard; callers refuse
 // the write (exit code 10) instead of best-effort writing.
-var ErrUnsafe = errors.New("unsafe operation refused")
+var ErrUnsafe = l10n.Errorf("unsafe operation refused")
 
 // Spec declares one auth artifact of a tool.
 type Spec struct {

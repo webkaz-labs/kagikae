@@ -16,14 +16,15 @@ import (
 	"syscall"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 var (
-	ErrReceiptInvalid    = errors.New("installation receipt is invalid or unsupported")
-	ErrReceiptIncomplete = errors.New("installation receipt is incomplete")
-	ErrImageMismatch     = errors.New("installed image no longer matches its receipt")
+	ErrReceiptInvalid    = l10n.Errorf("installation receipt is invalid or unsupported")
+	ErrReceiptIncomplete = l10n.Errorf("installation receipt is incomplete")
+	ErrImageMismatch     = l10n.Errorf("installed image no longer matches its receipt")
 )
 
 // Receipt is local bookkeeping, not cryptographic provenance or deletion consent.

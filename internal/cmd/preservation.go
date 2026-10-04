@@ -15,6 +15,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/preservation"
@@ -22,8 +23,8 @@ import (
 )
 
 var (
-	errPreservationMappingChanged    = errors.New("preservation mapping changed")
-	errPreservationCredentialChanged = errors.New("preservation credential changed")
+	errPreservationMappingChanged    = l10n.Errorf("preservation mapping changed")
+	errPreservationCredentialChanged = l10n.Errorf("preservation credential changed")
 )
 
 type preservationObservation struct {

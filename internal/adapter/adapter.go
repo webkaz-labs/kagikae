@@ -6,7 +6,6 @@ package adapter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,7 +21,7 @@ import (
 
 // ErrUnsupported means the tool/platform combination has no auth driver;
 // callers map it to exit code 5.
-var ErrUnsupported = errors.New("unsupported")
+var ErrUnsupported = l10n.Errorf("unsupported")
 
 // Env is the injected view of the live environment.
 type Env struct {

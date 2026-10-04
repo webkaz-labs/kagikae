@@ -8,9 +8,10 @@ package secret
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // Service is the credential-store service name for kagikae's own entries.
@@ -26,7 +27,7 @@ const (
 
 // ErrUnavailable means no usable secret backend exists; the caller maps it
 // to exit code 9 with guidance.
-var ErrUnavailable = errors.New("secret store unavailable")
+var ErrUnavailable = l10n.Errorf("secret store unavailable")
 
 // Backend stores and retrieves secret payloads by key. Keys look like
 // "claude/main/oauth_account" or "backup/<id>/claude/oauth_account".

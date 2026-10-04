@@ -20,17 +20,18 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 var (
-	ErrQuota      = errors.New("preservation payload budget exceeded")
-	ErrNotFound   = errors.New("preservation record not found")
-	ErrIncomplete = errors.New("preservation inventory needs repair")
-	ErrInvalidID  = errors.New("invalid preservation id")
-	ErrProtected  = errors.New("preservation retention would delete the selected restore record")
+	ErrQuota      = l10n.Errorf("preservation payload budget exceeded")
+	ErrNotFound   = l10n.Errorf("preservation record not found")
+	ErrIncomplete = l10n.Errorf("preservation inventory needs repair")
+	ErrInvalidID  = l10n.Errorf("invalid preservation id")
+	ErrProtected  = l10n.Errorf("preservation retention would delete the selected restore record")
 	idPattern     = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )

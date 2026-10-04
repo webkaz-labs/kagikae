@@ -236,4 +236,25 @@ var jaErrors = map[string]string{
 	"direct installation ownership could not be verified":                                        "直接インストールの所有者を確認できませんでした",
 	"uninstall requires --yes outside an interactive terminal; inspect with --dry-run first":     "対話できる端末の外でアンインストールするには --yes が必要です。先に --dry-run で確認してください",
 	"uninstall was not confirmed":                                                                "アンインストールは確認されませんでした",
+
+	// Sentinel errors: errors.Is targets, shown alone or as the head of a message
+	// that wraps them with %w.
+	"unsupported":                                                     "対応していません",
+	"unsafe operation refused":                                        "安全でない操作を拒否しました",
+	"secret store unavailable":                                        "シークレットストアを使えません",
+	"lock busy":                                                       "ロックが競合しています",
+	"credential store is not per-directory":                           "認証ストアがディレクトリごとに分かれていません",
+	"integration changed; preview again":                              "連携先のファイルが変更されました。もう一度プレビューしてください",
+	"integration is not a supported regular file":                     "連携先が対応している通常のファイルではありません",
+	"installation ownership is unsafe":                                "インストールの所有者が安全な状態ではありません",
+	"installation receipt is invalid or unsupported":                  "インストール記録が不正か、対応していない形式です",
+	"installation receipt is incomplete":                              "インストール記録が不完全です",
+	"installed image no longer matches its receipt":                   "インストールしたバイナリがインストール記録と一致しなくなっています",
+	"preservation payload budget exceeded":                            "保全記録の保存データが上限を超えています",
+	"preservation record not found":                                   "保全記録が見つかりません",
+	"preservation inventory needs repair":                             "保全記録の一覧に修復が必要です",
+	"invalid preservation id":                                         "保全記録の ID が不正です",
+	"preservation retention would delete the selected restore record": "保全記録の保持上限により、復元に選んだ記録が削除されることになります",
+	"preservation mapping changed":                                    "保全対象の対応関係が変わりました",
+	"preservation credential changed":                                 "保全対象の認証情報が変わりました",
 }

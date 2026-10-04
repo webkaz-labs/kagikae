@@ -11,7 +11,7 @@ import (
 )
 
 // warningCase is one `kae: warning:` / `kae: note:` / bare `kae:` continuation line
-// (docs/ROADMAP.md, localization stage 2) with its English and Japanese renderings.
+// (docs/CLI.md § Localization) with its English and Japanese renderings.
 // The English is the line as it was before the stage, byte for byte: the sinks must
 // not change it.
 type warningCase struct {

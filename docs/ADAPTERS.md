@@ -1377,7 +1377,7 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.282` | `2026-09-29` | `2.1.282 (Claude Code)` |
+| claude | `2.1.284` | `2026-10-05` | `2.1.284 (Claude Code)` |
 | codex | `0.157.1` | `2026-09-29` | `codex-cli 0.157.1` |
 | agy | `1.2.10` | `2026-09-29` | not re-run; last executed shape was `1.1.24` |
 | opencode | `1.18.32` | `2026-09-29` | `1.18.32` |

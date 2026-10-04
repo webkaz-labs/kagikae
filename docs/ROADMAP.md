@@ -51,7 +51,7 @@ for claude, with its R3 real-machine check recorded through § Place navigation 
 tree mode; its codex slice stays gated on R1 and R2 there.
 
 In progress: **localized human output (Japanese)**, requested by the operator on
-2026-09-30.
+2026-09-30. Stages 0 to 4 are implemented; stage 5 remains.
 
 - **Contract.** [CLI.md](CLI.md) § Localization is the contract and
   [VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested. Both are
@@ -101,13 +101,13 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    composed English sentence as an argument (the `why` of the snapshot-unchanged
    warnings); the catalog test cannot see them, so each
    becomes a message value or a set of constant formats before its stage ships.
-   Stage 2 takes the ones inside `kae: warning:` lines. `candidates.go`'s `errf(..., "%v", err)` hands an error to a sink that renders it verbatim: pass it through `l10n.Of` when it becomes a value. The `fmt.Errorf` and
+   Stage 2 takes the ones inside `kae: warning:` lines. `candidates.go`'s `errf(..., "%v", err)` passes its error through `l10n.Of`, so a message value in it renders localized. The `fmt.Errorf` and
    `errors.New` errors in `internal/cmd` or below that no earlier stage made values
    become values here (`l10n.Errorf`, sentinel errors first, so a message that
    wraps one renders it localized); until then they reach the `kae:` line in
    English. An error kae never shows goes on a permanent allowlist instead
    (VALIDATION § Output language in tests).
-5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.
+5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it. A `flag.Value` whose `Set` fails (`kae ls --at`, `kae uninstall --dir`) returns a message value, but the `flag` package's `failf` flattens it into its own English `invalid value` line, so that error stays English until kae keeps the value itself and renders the line per kind as CLI.md § Localization states.
 
 § Agent orchestration and remote authentication — deferred exploration follows the
 localization work and still requires investigation and an explicit implementation decision.

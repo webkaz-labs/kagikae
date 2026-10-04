@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -77,7 +77,7 @@ func (app *App) dirCredentialStores(pinID string, prev fragmentInfo) ([]dirStore
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("list per-directory stores in %s: %w", pinDir, err)
+		return nil, l10n.Errorf("list per-directory stores in %s: %w", pinDir, err)
 	}
 	stores := []dirStore{}
 	add := func(store dirStore) {

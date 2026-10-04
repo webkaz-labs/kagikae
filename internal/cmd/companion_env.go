@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/webkaz-labs/kagikae/internal/companion"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -42,10 +43,10 @@ func (app *App) companionPlan(profileName string) (entries []companionEnvEntry, 
 	}
 	self, err := os.Executable()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("locate kae binary for companion token lookup: %w", err)
+		return nil, nil, nil, l10n.Errorf("locate kae binary for companion token lookup: %w", err)
 	}
 	if strings.ContainsAny(self, "'") {
-		return nil, nil, nil, fmt.Errorf("kae binary path %q contains a quote; companion token lookup cannot be templated safely", self)
+		return nil, nil, nil, l10n.Errorf("kae binary path %q contains a quote; companion token lookup cannot be templated safely", self)
 	}
 	var writes []func() error
 	// Iterate the registry in canonical order for stable fragment output.
@@ -65,7 +66,7 @@ func (app *App) companionPlan(profileName string) (entries []companionEnvEntry, 
 			p, c := path, content
 			writes = append(writes, func() error {
 				if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-					return fmt.Errorf("create companion dir: %w", err)
+					return l10n.Errorf("create companion dir: %w", err)
 				}
 				return patch.WriteFileAtomic(p, []byte(c), 0o644)
 			})
@@ -107,7 +108,7 @@ func (app *App) companionPlan(profileName string) (entries []companionEnvEntry, 
 func renderCompanionFile(spec companion.Spec, data map[string]string, homeGitconfig string) (string, error) {
 	tmpl, err := template.New(spec.ID).Parse(spec.FileTmpl)
 	if err != nil {
-		return "", fmt.Errorf("parse %s config template: %w", spec.ID, err)
+		return "", l10n.Errorf("parse %s config template: %w", spec.ID, err)
 	}
 	vals := map[string]string{"HomeGitconfig": homeGitconfig}
 	for _, k := range spec.Knobs {
@@ -115,7 +116,7 @@ func renderCompanionFile(spec companion.Spec, data map[string]string, homeGitcon
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, vals); err != nil {
-		return "", fmt.Errorf("render %s config: %w", spec.ID, err)
+		return "", l10n.Errorf("render %s config: %w", spec.ID, err)
 	}
 	return buf.String(), nil
 }

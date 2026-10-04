@@ -4,17 +4,17 @@ package integration
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
-var ErrChanged = errors.New("integration changed; preview again")
+var ErrChanged = l10n.Errorf("integration changed; preview again")
 
-var ErrUnsafe = errors.New("integration is not a supported regular file")
+var ErrUnsafe = l10n.Errorf("integration is not a supported regular file")
 
 // File retains the observed identity and bytes; none of its contents is a report.
 type File struct {

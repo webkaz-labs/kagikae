@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -142,7 +142,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// reason behind it. Every preparer writes the credential too, and is idempotent.
 	boundDir, err := mode.prepare(app, ctx, be, tool, accountName, pinID, staleLabel)
 	if err != nil {
-		return finish(opts, fmt.Errorf("%s: %w", mode.rebindFailure(tool, accountName), err))
+		return finish(opts, mode.rebindFailure(tool, accountName, err))
 	}
 	// The fragment's config line moves only where the store is keyed by the account; an
 	// account-agnostic store is the same directory before and after.
@@ -162,7 +162,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	}
 	companionLines := companionFragmentLines(companionEntries)
 	if err := rebindFragment(tool, accountName, envDir, credDir, profile, companionLines, redactions); err != nil {
-		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
+		return finish(opts, l10n.Errorf("update %s: %w", fragmentRelPath, err))
 	}
 	// In isolated mode the store is keyed by account, so the previous account's dir
 	// is now unreachable and its keychain item would keep that credential with

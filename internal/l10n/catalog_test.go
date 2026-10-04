@@ -17,7 +17,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -39,8 +41,9 @@ import (
 // functions (io.WriteString, a Bubble Tea view), English composed with
 // fmt.Sprintf and printed later, a constant English argument handed to a sink
 // (it cannot tell prose from a token), and files outside this platform's build
-// (their allowlist entries are skipped, not checked). The package list comes from
-// `go list -deps` of the kae binary.
+// (their allowlist entries are skipped, not checked; a literal format they pass
+// to a sink still counts as used, so a key used only on another shipped platform
+// is not an orphan). The package list comes from `go list -deps` of the kae binary.
 
 const (
 	modulePath = "github.com/webkaz-labs/kagikae"
@@ -62,11 +65,13 @@ var formatSinks = map[string]int{ // key -> format argument index
 	cmdPkg + ".infof":                      0,
 	cmdPkg + ".reportf":                    0,
 	cmdPkg + ".promptf":                    0,
+	cmdPkg + ".stderrf":                    0,
 	cmdPkg + ".App.acquireNamed":           2,
 	cmdPkg + ".App.acquireNamedLock":       1,
 	cmdPkg + ".App.acquireNamedSharedLock": 1,
 	l10nPkg + ".Sprintf":                   0,
 	l10nPkg + ".Msgf":                      0,
+	l10nPkg + ".Errorf":                    0,
 }
 
 // flagUsageArg is the index of the usage argument of each flag registration, the
@@ -176,14 +181,116 @@ func runScan() (*scan, error) {
 	})
 	s := newScan(root, formatSinks)
 	for _, p := range pkgs {
-		if p.Standard || (p.ImportPath != modulePath && !strings.HasPrefix(p.ImportPath, modulePath+"/")) {
+		if !inModule(p) {
 			continue
 		}
 		if err := s.checkPackage(fset, imp, p); err != nil {
 			return nil, err
 		}
 	}
+	if err := s.addOtherPlatformUses(); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+func inModule(p listedPackage) bool {
+	return !p.Standard && (p.ImportPath == modulePath || strings.HasPrefix(p.ImportPath, modulePath+"/"))
+}
+
+// shippedPlatforms are the GOOS values kae is built for. A catalog key passed
+// only from a file of another platform's build is not an orphan.
+var shippedPlatforms = []string{"darwin", "linux"}
+
+// addOtherPlatformUses marks the keys passed from files outside this build that
+// another shipped platform compiles. Without export data for that platform the
+// files are read by syntax alone: a string literal in a sink's format position,
+// the sink named as the call spells it (a bare name in its own package, the
+// package's last path element otherwise, any receiver for a method).
+func (s *scan) addOtherPlatformUses() error {
+	for _, goos := range shippedPlatforms {
+		if goos == runtime.GOOS {
+			continue // already in s.files
+		}
+		list := exec.Command("go", "list", "-deps", "-json=ImportPath,Dir,GoFiles,Standard", modulePath)
+		list.Dir = s.root
+		list.Env = append(os.Environ(), "GOOS="+goos)
+		var stderr bytes.Buffer
+		list.Stderr = &stderr
+		out, err := list.Output()
+		if err != nil {
+			return fmt.Errorf("GOOS=%s go list -deps: %w\n%s", goos, err, stderr.String())
+		}
+		dec := json.NewDecoder(bytes.NewReader(out))
+		for {
+			var p listedPackage
+			if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				return fmt.Errorf("decode go list: %w", err)
+			}
+			if !inModule(p) {
+				continue
+			}
+			for _, name := range p.GoFiles {
+				path := filepath.Join(p.Dir, name)
+				rel, err := filepath.Rel(s.root, path)
+				if err != nil {
+					return err
+				}
+				if s.files[filepath.ToSlash(rel)] {
+					continue
+				}
+				if err := s.addSyntacticUses(p.ImportPath, path); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (s *scan) addSyntacticUses(pkg, path string) error {
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return err
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		for key, index := range s.sinks {
+			if index >= len(call.Args) || !spellsSink(pkg, key, call.Fun) {
+				continue
+			}
+			if lit, ok := call.Args[index].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if format, err := strconv.Unquote(lit.Value); err == nil {
+					s.used[format] = true
+				}
+			}
+		}
+		return true
+	})
+	return nil
+}
+
+// spellsSink reports whether fun, written in package pkg, names the sink key.
+func spellsSink(pkg, key string, fun ast.Expr) bool {
+	sinkPkg, name, _ := strings.Cut(strings.TrimPrefix(key, modulePath+"/"), ".")
+	sinkPkg = modulePath + "/" + sinkPkg
+	_, method, isMethod := strings.Cut(name, ".")
+	switch fun := ast.Unparen(fun).(type) {
+	case *ast.Ident:
+		return !isMethod && pkg == sinkPkg && fun.Name == name
+	case *ast.SelectorExpr:
+		if isMethod {
+			return pkg == sinkPkg && fun.Sel.Name == method
+		}
+		x, ok := fun.X.(*ast.Ident)
+		return ok && pkg != sinkPkg && x.Name == filepath.Base(sinkPkg) && fun.Sel.Name == name
+	}
+	return false
 }
 
 func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, p listedPackage) error {
@@ -513,11 +620,18 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	s := scanSource(t)
 	got := map[string]pendingCounts{}
 	machineHit := map[string]bool{}
+	notLocalizedHit := map[string]bool{}
 	var listed []finding
 	for _, f := range s.findings {
 		if f.kind == kindPrint && machineOutput[f.file+":"+f.fn] {
 			machineHit[f.file+":"+f.fn] = true
 			continue
+		}
+		if f.kind == kindError {
+			if key, ok := notLocalizedKey(f); ok {
+				notLocalizedHit[key] = true
+				continue
+			}
 		}
 		c := got[f.file]
 		switch f.kind {
@@ -536,6 +650,12 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	for key := range machineOutput {
 		if !machineHit[key] {
 			t.Errorf("machine-output allowlist entry %q matches no literal print: remove it", key)
+		}
+	}
+	for key := range notLocalized {
+		file, _, _ := strings.Cut(key, ":")
+		if !notLocalizedHit[key] && s.files[file] {
+			t.Errorf("not-localized allowlist entry %q matches no fmt.Errorf or errors.New: remove it", key)
 		}
 	}
 	files := map[string]bool{}
@@ -575,6 +695,17 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 		t.Logf("findings in the mismatched files:\n%s", b.String())
 		t.Logf("the allowlist the source holds now:\n%s", formatAllowlist(got))
 	}
+}
+
+// notLocalizedKey returns the notLocalized entry an error finding falls under:
+// its "file:function" entry, or else its file's.
+func notLocalizedKey(f finding) (string, bool) {
+	for _, key := range []string{f.file + ":" + f.fn, f.file} {
+		if _, ok := notLocalized[key]; ok {
+			return key, true
+		}
+	}
+	return "", false
 }
 
 func formatAllowlist(got map[string]pendingCounts) string {

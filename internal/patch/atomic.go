@@ -1,10 +1,11 @@
 package patch
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // CredentialFileMode is the mode for newly created credential files.
@@ -24,27 +25,27 @@ func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return l10n.Errorf("create temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 	if err := tmp.Chmod(mode); err != nil {
 		tmp.Close()
-		return fmt.Errorf("chmod temp file: %w", err)
+		return l10n.Errorf("chmod temp file: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
+		return l10n.Errorf("write temp file: %w", err)
 	}
 	if err := SyncFile(tmp); err != nil {
 		tmp.Close()
-		return fmt.Errorf("sync temp file: %w", err)
+		return l10n.Errorf("sync temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
+		return l10n.Errorf("close temp file: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("rename temp file: %w", err)
+		return l10n.Errorf("rename temp file: %w", err)
 	}
 	return nil
 }

@@ -112,23 +112,23 @@ func Load(path string) (*Config, []l10n.Msg, error) {
 		return Default(), nil, nil
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("read config: %w", err)
+		return nil, nil, l10n.Errorf("read config: %w", err)
 	}
 	cfg := Default()
 	meta, err := toml.Decode(string(data), cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse config: %w", err)
+		return nil, nil, l10n.Errorf("parse config: %w", err)
 	}
 	var warnings []l10n.Msg
 	for _, key := range meta.Undecoded() {
 		if len(key) > 0 {
 			if repl, removed := renamedToolKeys[key[len(key)-1]]; removed {
 				if repl != "" {
-					return nil, warnings, fmt.Errorf(
+					return nil, warnings, l10n.Errorf(
 						"config key %q was renamed to %q in v0.8.0 (pre-1.0 hard break; rename it)", key.String(), repl,
 					)
 				}
-				return nil, warnings, fmt.Errorf(
+				return nil, warnings, l10n.Errorf(
 					"config key %q was removed in v0.8.0; to bind directories instead, run: kae pin -s|-i", key.String(),
 				)
 			}
@@ -144,79 +144,92 @@ func Load(path string) (*Config, []l10n.Msg, error) {
 
 func (c *Config) validate() error {
 	if c.Version > SupportedVersion {
-		return fmt.Errorf("config version %d is newer than supported %d", c.Version, SupportedVersion)
+		return l10n.Errorf("config version %d is newer than supported %d", c.Version, SupportedVersion)
 	}
 	if c.Security.PreservationMaxBytes < 1 {
-		return fmt.Errorf("security.preservation_max_bytes must be >= 1")
+		return l10n.Errorf("security.preservation_max_bytes must be >= 1")
 	}
 	if c.Security.BackupKeep < 1 {
-		return fmt.Errorf("security.backup_keep must be >= 1")
+		return l10n.Errorf("security.backup_keep must be >= 1")
 	}
 	for tool, settings := range c.Tools {
 		if !constants.IsTool(tool) {
-			return fmt.Errorf("unknown tool %q in [tools]", tool)
+			return l10n.Errorf("unknown tool %q in [tools]", tool)
 		}
 		for _, item := range settings.SharedDenylistExtra {
 			if !ValidFileName(item) {
-				return fmt.Errorf("tools.%s.shared_denylist_extra item %q is not a bare file name", tool, item)
+				return l10n.Errorf("tools.%s.shared_denylist_extra item %q is not a bare file name", tool, item)
 			}
 			if _, refused := constants.PrivateBindKind(item); refused {
-				return fmt.Errorf("tools.%s.shared_denylist_extra: %q is already on the hard-coded denylist", tool, item)
+				return l10n.Errorf("tools.%s.shared_denylist_extra: %q is already on the hard-coded denylist", tool, item)
 			}
 		}
 		for _, item := range settings.IsolatedSharedItems {
 			if !ValidFileName(item) {
-				return fmt.Errorf("tools.%s.isolated_shared_items item %q is not a bare file name", tool, item)
+				return l10n.Errorf("tools.%s.isolated_shared_items item %q is not a bare file name", tool, item)
 			}
 			if kind, refused := constants.PrivateBindKind(item); refused {
-				return fmt.Errorf(
+				return l10n.Errorf(
 					"tools.%s.isolated_shared_items must not share the %s %q; remove it — kae keeps that file "+
 						"private to the directory so it can be a different account than the real home",
-					tool, kind, item,
+					tool, privateBindKindMessage(kind), item,
 				)
 			}
 		}
 		if settings.Driver != "" {
 			if tool != constants.ToolClaude {
-				return fmt.Errorf("tools.%s.driver is only valid for claude", tool)
+				return l10n.Errorf("tools.%s.driver is only valid for claude", tool)
 			}
 			if settings.Driver != constants.DriverValueFile {
-				return fmt.Errorf("tools.claude.driver %q is invalid (only %q is supported)", settings.Driver, constants.DriverValueFile)
+				return l10n.Errorf("tools.claude.driver %q is invalid (only %q is supported)", settings.Driver, constants.DriverValueFile)
 			}
 		}
 	}
 	for name, profile := range c.Profiles {
 		if !ValidName(name) {
-			return fmt.Errorf("invalid profile name %q", name)
+			return l10n.Errorf("invalid profile name %q", name)
 		}
 		for tool, account := range profile.Accounts {
 			if !constants.IsTool(tool) {
-				return fmt.Errorf("profile %q maps unknown tool %q", name, tool)
+				return l10n.Errorf("profile %q maps unknown tool %q", name, tool)
 			}
 			if !ValidName(account) {
-				return fmt.Errorf("profile %q maps tool %q to invalid account name %q", name, tool, account)
+				return l10n.Errorf("profile %q maps tool %q to invalid account name %q", name, tool, account)
 			}
 		}
 		for id, data := range profile.Companions {
 			if !constants.IsCompanion(id) {
-				return fmt.Errorf("profile %q maps unknown companion %q", name, id)
+				return l10n.Errorf("profile %q maps unknown companion %q", name, id)
 			}
 			for knob, value := range data {
 				if !validKnobName(knob) {
-					return fmt.Errorf("profile %q companion %q has invalid knob name %q", name, id, knob)
+					return l10n.Errorf("profile %q companion %q has invalid knob name %q", name, id, knob)
 				}
 				if strings.ContainsAny(value, "\n\x00") {
-					return fmt.Errorf("profile %q companion %q knob %q value has a newline or NUL", name, id, knob)
+					return l10n.Errorf("profile %q companion %q knob %q value has a newline or NUL", name, id, knob)
 				}
 			}
 		}
 	}
 	if c.DefaultProfile != "" {
 		if _, ok := c.Profiles[c.DefaultProfile]; !ok {
-			return fmt.Errorf("default_profile %q is not defined under [profiles]", c.DefaultProfile)
+			return l10n.Errorf("default_profile %q is not defined under [profiles]", c.DefaultProfile)
 		}
 	}
 	return nil
+}
+
+// privateBindKindMessage carries a constants.PrivateBindKind as a message, so a
+// Japanese line names the kind in Japanese; its English text is the kind itself.
+// A kind not listed here is inserted verbatim.
+func privateBindKindMessage(kind string) any {
+	switch kind {
+	case "auth credential":
+		return l10n.Msgf("auth credential")
+	case "identity cache":
+		return l10n.Msgf("identity cache")
+	}
+	return kind
 }
 
 // renamedToolKeys maps per-tool config keys removed in v0.8.0 to their

@@ -6,8 +6,6 @@ package adapter
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,7 +20,7 @@ import (
 
 // ErrUnsupported means the tool/platform combination has no auth driver;
 // callers map it to exit code 5.
-var ErrUnsupported = errors.New("unsupported")
+var ErrUnsupported = l10n.Errorf("unsupported")
 
 // Env is the injected view of the live environment.
 type Env struct {
@@ -173,7 +171,7 @@ func Register(a Adapter) { registry[a.ID()] = a }
 func ForTool(id string) (Adapter, error) {
 	a, ok := registry[id]
 	if !ok {
-		return nil, fmt.Errorf("no adapter for tool %q", id)
+		return nil, l10n.Errorf("no adapter for tool %q", id)
 	}
 	return a, nil
 }

@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -45,6 +44,6 @@ func CmdInstall(args []string) int {
 	if opts.Format == formatJSON {
 		return encodeJSON(r)
 	}
-	fmt.Printf("Installed kae %s to %s (removal receipt recorded)\n", toolVersion, app.displayPath(destination))
+	reportf("Installed kae %s to %s (removal receipt recorded)", toolVersion, app.displayPath(destination))
 	return constants.ExitOK
 }

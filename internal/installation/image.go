@@ -3,13 +3,14 @@
 package installation
 
 import (
-	"errors"
 	"os"
 	"syscall"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // ErrUnsafe means ownership or image identity could not be established.
-var ErrUnsafe = errors.New("installation ownership is unsafe")
+var ErrUnsafe = l10n.Errorf("installation ownership is unsafe")
 
 // VerifyRunningImage compares a currently opened file with the kernel's running
 // image identity. A digest of a pathname alone cannot detect self replacement.

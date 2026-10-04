@@ -11,6 +11,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
@@ -47,15 +48,15 @@ func promptCompletionChoice(env adapter.Env, shell string) completionInstallChoi
 	// An unsupported shell never reaches here (validated in CmdCompletion), so
 	// the error is safe to drop for the display path.
 	path, _, _ := completionTarget(env, shell)
-	fmt.Fprintf(os.Stderr, "Register kae %s completion:\n", shell)
-	fmt.Fprintf(os.Stderr, "  1) completion file in the shell's standard dir (%s) [default]\n", path)
-	miseNote := ""
-	if !miseActive {
-		miseNote = " — mise not detected on PATH"
+	stderrf("Register kae %s completion:", shell)
+	stderrf("  1) completion file in the shell's standard dir (%s) [default]", path)
+	if miseActive {
+		stderrf("  2) global mise [hooks.enter] (opt-in, experimental)")
+	} else {
+		stderrf("  2) global mise [hooks.enter] (opt-in, experimental) — mise not detected on PATH")
 	}
-	fmt.Fprintf(os.Stderr, "  2) global mise [hooks.enter] (opt-in, experimental)%s\n", miseNote)
-	fmt.Fprintln(os.Stderr, "  3) print the script only")
-	fmt.Fprint(os.Stderr, "Choice [1]: ")
+	stderrf("  3) print the script only")
+	promptf("Choice [1]: ")
 
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	switch strings.TrimSpace(line) {
@@ -97,11 +98,11 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 			return finish(opts, err)
 		}
 		if changed {
-			fmt.Printf("Registered kae %s completion via global mise hook: %s\n", shell, path)
-			fmt.Println("Note: mise hooks are experimental — needs `mise activate`, a trusted")
-			fmt.Println("config, and `mise settings experimental=true`. Open a new shell to load it.")
+			reportf("Registered kae %s completion via global mise hook: %s", shell, path)
+			reportf("Note: mise hooks are experimental — needs `mise activate`, a trusted\n" +
+				"config, and `mise settings experimental=true`. Open a new shell to load it.")
 		} else {
-			fmt.Printf("kae %s completion already registered in %s\n", shell, path)
+			reportf("kae %s completion already registered in %s", shell, path)
 		}
 		return constants.ExitOK
 	case installFpath:
@@ -119,11 +120,11 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 			return finish(opts, err)
 		}
 		if changed {
-			fmt.Printf("Installed kae %s completion: %s\n", shell, path)
+			reportf("Installed kae %s completion: %s", shell, path)
 		} else {
-			fmt.Printf("kae %s completion already up to date: %s\n", shell, path)
+			reportf("kae %s completion already up to date: %s", shell, path)
 		}
-		fmt.Fprint(os.Stderr, completionActivationNote(shell, path, autoLoaded))
+		fmt.Fprintln(os.Stderr, l10n.Render(completionActivationNote(shell, path, autoLoaded)))
 		return constants.ExitOK
 	default:
 		return finish(opts, errf(constants.ExitError, "unhandled completion install choice %d", choice))
@@ -157,7 +158,7 @@ func runCompletionRefresh(app *App, opts commonOpts) int {
 	}
 	anyRegistered = miseRegistered
 	if miseChanged {
-		fmt.Printf("Refreshed kae %s completion mise hook: %s\n", miseShell, misePath)
+		reportf("Refreshed kae %s completion mise hook: %s", miseShell, misePath)
 	}
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		path, _, err := completionTarget(app.Env, shell)
@@ -174,22 +175,21 @@ func runCompletionRefresh(app *App, opts commonOpts) int {
 			return finish(opts, werr)
 		}
 		if changed {
-			fmt.Printf("Refreshed kae %s completion: %s\n", shell, path)
+			reportf("Refreshed kae %s completion: %s", shell, path)
 			if shell == "zsh" {
 				zshChanged = true
 			}
 		}
 	}
 	if !anyRegistered {
-		fmt.Println("No registered kae completion to refresh; run: kae completion <bash|zsh|fish> --install")
+		reportf("No registered kae completion to refresh; run: kae completion <bash|zsh|fish> --install")
 		return constants.ExitOK
 	}
 	// A normal compinit picks up the rewritten file by mtime; compinit -C
 	// (speed-tuned setups) reuses a cached compdump, so hand over the rebuild for
 	// the running/next shell rather than mutating the user's cache from here.
 	if zshChanged {
-		fmt.Fprintln(os.Stderr, "zsh: if completion does not update, rebuild the cache:")
-		fmt.Fprintln(os.Stderr, zshCompdumpRebuild)
+		stderrf("zsh: if completion does not update, rebuild the cache:\n%s", zshCompdumpRebuild)
 	}
 	return constants.ExitOK
 }
@@ -240,19 +240,19 @@ func zshCompletionDir(env adapter.Env) (dir string, onFpath bool) {
 // fpath AND a fresh compinit: when the dir is already on fpath we still warn that
 // a cached compdump can hide a newly added function (a common cause of "I
 // installed it but completion does not appear"); when it is not, we name the
-// fpath line to add (which re-runs compinit too).
-func completionActivationNote(shell, path string, autoLoaded bool) string {
+// fpath line to add (which re-runs compinit too). The shell lines in it are
+// inserted verbatim; the printer adds the final newline.
+func completionActivationNote(shell, path string, autoLoaded bool) message {
 	if shell == "zsh" {
 		if autoLoaded {
-			return "Open a new shell. If completion does not appear, your zsh completion\n" +
-				"cache is stale — remove your compdump and rebuild it:\n" +
-				zshCompdumpRebuild + "\n"
+			return msgf("Open a new shell. If completion does not appear, your zsh completion\n"+
+				"cache is stale — remove your compdump and rebuild it:\n%s", zshCompdumpRebuild)
 		}
-		return fmt.Sprintf("Ensure this is on your fpath, e.g. add to ~/.zshrc:\n"+
-			"  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.\n",
+		return msgf("Ensure this is on your fpath, e.g. add to ~/.zshrc:\n"+
+			"  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.",
 			filepath.Dir(path))
 	}
-	return "Open a new shell to load it.\n"
+	return msgf("Open a new shell to load it.")
 }
 
 // writeCompletionFile writes script to path idempotently, creating parent

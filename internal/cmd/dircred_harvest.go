@@ -5,8 +5,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -723,8 +721,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		return liveData, false, harvestRefusal{}
 	}
 	app.recordHarvestTime(tool, accountName)
-	fmt.Fprintf(os.Stderr,
-		"kae: harvested the newer %s credential from %s into snapshot %s/%s (it is the copy that can still refresh)\n",
+	infof("harvested the newer %s credential from %s into snapshot %s/%s (it is the copy that can still refresh)",
 		tool, credDir, tool, accountName)
 	return liveData, true, harvestRefusal{}
 }

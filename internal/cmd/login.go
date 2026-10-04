@@ -3,13 +3,12 @@ package cmd
 import (
 	"context"
 	"flag"
-	"fmt"
-	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -141,16 +140,17 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 		return finish(opts, err)
 	}
 
-	captureLabel := "the detected account"
 	if explicitName != "" {
-		captureLabel = tool + "/" + explicitName
+		infof("complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)",
+			tool, tool+"/"+explicitName, meta.ID)
+	} else {
+		infof("complete the %s login flow; the result is captured as the detected account when it exits (previous state backed up as %s)",
+			tool, meta.ID)
 	}
-	fmt.Fprintf(os.Stderr, "kae: complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)\n",
-		tool, captureLabel, meta.ID)
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
 		return finish(opts, errLaunchLogin(tool, err))
 	} else if code != 0 {
-		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; capturing whatever auth state is live now\n", command[0], code)
+		infof("%s exited with %d; capturing whatever auth state is live now", command[0], code)
 	}
 
 	// A login flow can move the credential to the tool's other store — codex under
@@ -195,13 +195,13 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
 				tool, accountName, err, meta.ID))
 		}
-		fmt.Printf("Captured %s/%s and restored the previous login\n", tool, accountName)
+		reportf("Captured %s/%s and restored the previous login", tool, accountName)
 		return constants.ExitOK
 	}
 	if err := app.saveActive(map[string]string{tool: accountName}, ""); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Captured %s/%s (now active)\n", tool, accountName)
+	reportf("Captured %s/%s (now active)", tool, accountName)
 	return constants.ExitOK
 }
 
@@ -226,7 +226,7 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 		}
 		live, err := artifact.ReadLive(ctx, sp)
 		if err != nil {
-			return false, fmt.Errorf("read live %s/%s: %w", plan.Tool, sp.Name, err)
+			return false, l10n.Errorf("read live %s/%s: %w", plan.Tool, sp.Name, err)
 		}
 		rec, ok := records[sp.Name]
 		if !ok {
@@ -236,7 +236,7 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 		// treating it as a change, so an internal read failure surfaces.
 		differs, err := snapshotArtifactDiffers(ctx, be, rec.SecretRef, rec.Present, live)
 		if err != nil {
-			return false, fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
+			return false, l10n.Errorf("read backup payload %s: %w", rec.SecretRef, err)
 		}
 		if differs {
 			return true, nil
@@ -264,11 +264,11 @@ func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secre
 	}
 	switch step {
 	case loginStepCompare:
-		return finish(opts, fmt.Errorf("compare auth after login failed (previous state is in backup %s): %w", meta.ID, err))
+		return finish(opts, l10n.Errorf("compare auth after login failed (previous state is in backup %s): %w", meta.ID, err))
 	case loginStepDetect:
-		return finish(opts, fmt.Errorf("detect the logged-in account failed (previous state is in backup %s): %w", meta.ID, err))
+		return finish(opts, l10n.Errorf("detect the logged-in account failed (previous state is in backup %s): %w", meta.ID, err))
 	default:
-		return finish(opts, fmt.Errorf("capture after login failed (previous state is in backup %s): %w", meta.ID, err))
+		return finish(opts, l10n.Errorf("capture after login failed (previous state is in backup %s): %w", meta.ID, err))
 	}
 }
 
@@ -281,13 +281,13 @@ const (
 	loginStepCapture                  // capture after login
 )
 
-// phrase names the step for doubleFailure, which still takes the operation as a value.
-func (st loginStep) phrase() string {
+// phrase names the step for doubleFailure, which takes the operation as a message.
+func (st loginStep) phrase() message {
 	switch st {
 	case loginStepCompare:
-		return "compare auth after login"
+		return msgf("compare auth after login")
 	case loginStepDetect:
-		return "detect the logged-in account"
+		return msgf("detect the logged-in account")
 	}
-	return "capture after login"
+	return msgf("capture after login")
 }

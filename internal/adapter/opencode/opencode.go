@@ -8,7 +8,6 @@ package opencode
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -122,7 +121,7 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := authJSONPath(env)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", l10n.Errorf("read %s: %w", path, err)
 	}
 	var doc struct {
 		Openai struct {
@@ -131,7 +130,7 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 		} `json:"openai"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, err)
 	}
 	if email := openaiProfileEmail(doc.Openai.Access); email != "" {
 		return email, nil
@@ -139,7 +138,7 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 	if doc.Openai.AccountID != "" {
 		return doc.Openai.AccountID, nil
 	}
-	return "", fmt.Errorf("no openai email claim or accountId in %s", path)
+	return "", l10n.Errorf("no openai email claim or accountId in %s", path)
 }
 
 // openaiProfileEmail decodes the access token (a JWT) and returns the email in

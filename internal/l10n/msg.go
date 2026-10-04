@@ -1,6 +1,9 @@
 package l10n
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Msg is the concrete value of a Message: kae text carried as data before it is
 // shown, as its English format and arguments. A whole warning, a refusal reason,
@@ -26,6 +29,7 @@ const (
 	kindPlain     msgKind = iota // a catalog format and its arguments
 	kindOf                       // only carries an error (Of)
 	kindUnstopped                // only drops its argument's closing full stop (Unstopped)
+	kindList                     // only joins verbatim items (List)
 )
 
 // Msgf builds a Msg. It hands its unchanged format and args to fmt.Sprintf,
@@ -60,6 +64,21 @@ func Unstopped(m Msg) Msg {
 		return m
 	}
 	return Msg{kind: kindUnstopped, format: "%s", args: []any{m}, english: m.english}
+}
+
+// listSeparators join a List's items: ", " in English, "、" in Japanese
+// (docs/L10N-JA.md § 句読点・括弧・空白).
+var listSeparators = map[Language]string{English: ", ", Japanese: "、"}
+
+// List carries names or values enumerated in a message (tools, paths, targets),
+// each inserted verbatim: a human sink joins them with the selected language's
+// separator, while Error() and JSON join them with ", ". No items is the zero Msg.
+func List(items []string) Msg {
+	if len(items) == 0 {
+		return Msg{}
+	}
+	items = append([]string(nil), items...)
+	return Msg{kind: kindList, format: "%s", args: []any{items}, english: strings.Join(items, listSeparators[English])}
 }
 
 // Error renders the English text, which is what generated files and errors.Is/As

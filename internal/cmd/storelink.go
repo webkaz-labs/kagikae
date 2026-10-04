@@ -3,9 +3,9 @@ package cmd
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // storeLinkRelPath is where a bound directory carries the convenience symlink to
@@ -198,7 +198,7 @@ func (app *App) reportStoreLinks(linked, removed []string, excludeFile string) {
 	// One constant format per case: the noun's number is part of the sentence, not
 	// an argument, so a language without plurals can word the cases alike.
 	if len(linked) > 0 {
-		names := strings.Join(linked, ", ")
+		names := l10n.List(linked)
 		switch {
 		case len(linked) == 1 && excludeFile != "":
 			reportf("Linked %s to this directory's store (ignored via %s).", names, app.displayPath(excludeFile))
@@ -211,7 +211,7 @@ func (app *App) reportStoreLinks(linked, removed []string, excludeFile string) {
 		}
 	}
 	if len(removed) > 0 {
-		names := strings.Join(removed, ", ")
+		names := l10n.List(removed)
 		if len(removed) == 1 {
 			reportf("Removed the store link %s.", names)
 		} else {

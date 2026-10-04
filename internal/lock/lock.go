@@ -7,14 +7,15 @@ package lock
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // ErrBusy is returned when another process holds the lock.
-var ErrBusy = errors.New("lock busy")
+var ErrBusy = l10n.Errorf("lock busy")
 
 // Lock is a held advisory lock.
 type Lock struct {
@@ -35,19 +36,19 @@ func AcquireShared(dir, name string) (*Lock, error) {
 
 func acquire(dir, name string, mode int) (*Lock, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create lock dir: %w", err)
+		return nil, l10n.Errorf("create lock dir: %w", err)
 	}
 	path := filepath.Join(dir, name+".lock")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open lock file: %w", err)
+		return nil, l10n.Errorf("open lock file: %w", err)
 	}
 	if err := syscall.Flock(int(f.Fd()), mode|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, ErrBusy
 		}
-		return nil, fmt.Errorf("flock: %w", err)
+		return nil, l10n.Errorf("flock: %w", err)
 	}
 	return &Lock{file: f}, nil
 }

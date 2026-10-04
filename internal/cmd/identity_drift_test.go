@@ -430,11 +430,11 @@ func TestDoctorIdentityRecordUntrackedAndUnreadableAreNotInvalid(t *testing.T) {
 	app := identityDriftApp(t)
 	ctx := context.Background()
 	// Reuse the existing failing backend: a read error does not prove malformed data.
-	if checks := app.identityRecordChecks(ctx, erroringBackend{secrettest.NewMem()}, ""); len(checks) != 0 {
+	if checks := app.identityRecordChecks(ctx, secrettest.FailingBackend{MemBackend: secrettest.NewMem(), GetErr: secrettest.ErrBackendDown}, ""); len(checks) != 0 {
 		t.Fatalf("backend error classified as invalid: %+v", checks)
 	}
 	for _, live := range []artifact.Value{{}, {Present: true, Data: []byte(`{}`)}} {
-		if differs, err := identityArtifactDiffers(ctx, erroringBackend{secrettest.NewMem()}, "ref", true, artifact.Spec{}, live); err == nil || differs {
+		if differs, err := identityArtifactDiffers(ctx, secrettest.FailingBackend{MemBackend: secrettest.NewMem(), GetErr: secrettest.ErrBackendDown}, "ref", true, artifact.Spec{}, live); err == nil || differs {
 			t.Fatalf("backend error must suppress drift and propagate: differs=%t err=%v", differs, err)
 		}
 	}

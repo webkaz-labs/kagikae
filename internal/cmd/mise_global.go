@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
@@ -240,7 +240,7 @@ func updateGlobalMiseCompletion(env adapter.Env, requested string, refresh bool)
 			now, re := os.ReadFile(src.target)
 			if (re == nil && string(now) == cleaned) || (os.IsNotExist(re) && cleaned == "") {
 				if restoreErr := patch.WriteFileAtomic(src.target, []byte(src.content), src.mode); restoreErr != nil {
-					return path, shell, true, false, fmt.Errorf("write completion failed: %w; source restore failed: %v", e, restoreErr)
+					return path, shell, true, false, l10n.Errorf("write completion failed: %w; source restore failed: %v", e, restoreErr)
 				}
 			}
 			return path, shell, true, false, e

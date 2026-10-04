@@ -11,7 +11,6 @@ package copilot
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -132,23 +131,23 @@ func (c Copilot) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := configJSONPath(env)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", l10n.Errorf("read %s: %w", path, err)
 	}
 	raw, found, err := patch.GetPointerJSONC(data, lastUserPointer)
 	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, err)
 	}
 	if !found {
-		return "", fmt.Errorf("no %s in %s", lastUserPointer, path)
+		return "", l10n.Errorf("no %s in %s", lastUserPointer, path)
 	}
 	var user struct {
 		Login string `json:"login"`
 	}
 	if err := json.Unmarshal(raw, &user); err != nil {
-		return "", fmt.Errorf("parse %s%s: %w", path, lastUserPointer, err)
+		return "", l10n.Errorf("parse %s%s: %w", path, lastUserPointer, err)
 	}
 	if user.Login == "" {
-		return "", fmt.Errorf("no %s/login in %s", lastUserPointer, path)
+		return "", l10n.Errorf("no %s/login in %s", lastUserPointer, path)
 	}
 	return user.Login, nil
 }

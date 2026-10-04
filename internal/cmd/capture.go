@@ -8,6 +8,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -150,10 +151,10 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 		ref := account.SecretRef(plan.Tool, plan.Account, sp.Name)
 		if values[i].Present {
 			if err := be.Set(ctx, ref, values[i].Data); err != nil {
-				return fmt.Errorf("store captured payload: %w", err)
+				return l10n.Errorf("store captured payload: %w", err)
 			}
 		} else if err := be.Delete(ctx, ref); err != nil {
-			return fmt.Errorf("clear stale payload: %w", err)
+			return l10n.Errorf("clear stale payload: %w", err)
 		}
 		// No keychain account is recorded: apply resolves the item from the adapter
 		// for the environment it is writing, so a captured account could only ever be

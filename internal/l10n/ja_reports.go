@@ -76,6 +76,59 @@ var jaReports = map[string]string{
 	"kae directories:": "kae のディレクトリ:",
 	"Kind":             "種別",
 
+	// account.go.
+	"Removed %s/%s (%d secret item(s))":               "%s/%s を削除しました（シークレットストアの項目 %d 件）",
+	"Would remove %s/%s (%d secret item(s))":          "%s/%s を削除する予定です（シークレットストアの項目 %d 件）",
+	"  dropped the %s reference from profile(s): %s":  "  プロファイルから %s の参照を外しました: %s",
+	"  cleared the active %s account in state":        "  状態に記録した %s の有効なアカウントを解除しました",
+	"Renamed %s/%s to %s/%s (%d secret item(s))":      "%s/%s の名前を %s/%s に変更しました（シークレットストアの項目 %d 件）",
+	"Would rename %s/%s to %s/%s (%d secret item(s))": "%s/%s の名前を %s/%s に変更する予定です（シークレットストアの項目 %d 件）",
+	"  rewrote the %s reference in profile(s): %s":    "  プロファイルの %s の参照を書き換えました: %s",
+	"  updated the active %s account in state":        "  状態に記録した %s の有効なアカウントを更新しました",
+	"Set the %s/%s identity to %s":                    "%s/%s のログイン識別子を %s に設定しました",
+	"Would set the %s/%s identity to %s":              "%s/%s のログイン識別子を %s に設定する予定です",
+
+	// backup.go.
+	"no backups yet (backups are created automatically before each switch)": "バックアップはまだありません（バックアップは切替の前に毎回自動で作られます）",
+	"ID":                           "ID",
+	"Created":                      "作成日時",
+	"Reason":                       "理由",
+	"Tools":                        "ツール",
+	"Rolled back to backup %s":     "バックアップ %s に戻しました",
+	"Would roll back to backup %s": "バックアップ %s に戻す予定です",
+	"  %s: %d artifact(s)":         "  %s: 認証要素 %d 件",
+
+	// companion.go.
+	"Bound companion %s for profile %s: %s":                                  "プロファイル %[2]s に周辺ツール %[1]s を設定しました: %[3]s",
+	"To refresh its fragment, in a bound directory run: kae pin":             "フラグメントを更新するには、固定したディレクトリで kae pin を実行してください",
+	"Removed companion %s from profile %s":                                   "プロファイル %[2]s から周辺ツール %[1]s を削除しました",
+	"Removed %d knob(s) from companion %s in profile %s: %s":                 "プロファイル %[3]s の周辺ツール %[2]s から設定項目 %[1]d 件を削除しました: %[4]s",
+	"no companion bindings; run: kae companion add <profile> <id> KEY=VALUE": "周辺ツールの設定がありません。kae companion add <profile> <id> KEY=VALUE を実行してください",
+	"Companion": "周辺ツール",
+	"Knobs":     "設定項目",
+
+	// init.go and install.go.
+	"Created %s":                "%s を作成しました",
+	"Config already exists: %s": "設定ファイルはすでにあります: %s",
+	"Next steps:":               "次の手順:",
+	"  kae doctor                             # check the environment":      "  kae doctor                             # 環境の確認",
+	"  kae add --no-login <tool> <account>    # snapshot the current login": "  kae add --no-login <tool> <account>    # 現在のログインのスナップショット",
+	"Installed kae %s to %s (removal receipt recorded)":                     "kae %s を %s にインストールしました（削除に使うインストール記録を残しました）",
+
+	// profile.go.
+	"Saved profile %s from the active accounts:":      "有効なアカウントからプロファイル %s を保存しました:",
+	"Would save profile %s from the active accounts:": "有効なアカウントからプロファイル %s を保存する予定です:",
+	"Set %s = %s in profile %s":                       "プロファイル %[3]s に %[1]s = %[2]s を設定しました",
+	"Would set %s = %s in profile %s":                 "プロファイル %[3]s に %[1]s = %[2]s を設定する予定です",
+	"Unset %s from profile %s":                        "プロファイル %[2]s から %[1]s の割り当てを外しました",
+	"Would unset %s from profile %s":                  "プロファイル %[2]s から %[1]s の割り当てを外す予定です",
+	"Removed profile %s":                              "プロファイル %s を削除しました",
+	"Would remove profile %s":                         "プロファイル %s を削除する予定です",
+	"Would clear default_profile":                     "default_profile を解除する予定です",
+	"Would set default_profile to %s":                 "default_profile を %s に設定する予定です",
+	"default_profile: (none)":                         "default_profile: なし",
+	"default_profile: %s":                             "default_profile: %s",
+
 	// text.go (columnHeader).
 	"Tool":       "ツール",
 	"Account":    "アカウント",
@@ -105,4 +158,50 @@ var jaReports = map[string]string{
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
 	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
+
+	// completion_install.go.
+	"Registered kae %s completion via global mise hook: %s": "グローバル mise のフックで kae の %s 補完を登録しました: %s",
+	"Note: mise hooks are experimental — needs `mise activate`, a trusted\nconfig, and `mise settings experimental=true`. Open a new shell to load it.": "注: mise のフックは実験的な機能です。mise activate、信頼済みの設定ファイル、mise settings experimental=true が必要です。\n読み込むには新しいシェルを開いてください。",
+	"kae %s completion already registered in %s":                                             "kae の %s 補完は %s に登録済みです",
+	"Installed kae %s completion: %s":                                                        "kae の %s 補完をインストールしました: %s",
+	"kae %s completion already up to date: %s":                                               "kae の %s 補完は最新です: %s",
+	"Refreshed kae %s completion mise hook: %s":                                              "kae の %s 補完の mise フックを更新しました: %s",
+	"Refreshed kae %s completion: %s":                                                        "kae の %s 補完を更新しました: %s",
+	"No registered kae completion to refresh; run: kae completion <bash|zsh|fish> --install": "更新する kae の補完が登録されていません。kae completion <bash|zsh|fish> --install を実行してください",
+
+	// miseinit.go.
+	"Updated .mise.toml: profile %s (auth mode)":                                            ".mise.toml を更新しました: プロファイル %s（auth モード）",
+	"Next: mise trust   (mise refuses untrusted configs; its error until then is expected)": "次の手順: mise trust   （mise は信頼されていない設定ファイルを拒否します。それまでに出るエラーは想定どおりです）",
+
+	// uninstall.go, uninstall_managed.go and uninstall_ownership.go: the report and the
+	// manual actions it lists (JSON manual_actions stays English).
+	"Uninstall: integrations %s; executable %s; discovery %s": "アンインストール: 連携 %s、実行ファイル %s、検出 %s",
+	"Retained data:": "残すデータ:",
+	"Discovery covers known bound directories, supplied --dir paths and supported global completion locations; unregistered projects and custom shell code need manual inspection.":                                                 "検出の対象は、記録済みの固定したディレクトリ、--dir で指定したパス、対応しているグローバルの補完の場所です。記録のないプロジェクトや独自のシェルコードは手動で確認してください。",
+	"Exit existing tool processes and open a new shell after cleanup; current-shell exports, functions and completion caches are not changed.":                                                                                      "後片付けのあとは、実行中のツールのプロセスを終了し、新しいシェルを開いてください。現在のシェルの export、関数、補完キャッシュは変更しません。",
+	"Account snapshots, credentials, backups, preservation records, working stores, breadcrumbs and installation history are retained.":                                                                                             "アカウントのスナップショット、認証情報、バックアップ、保全記録、作業ストア、固定したディレクトリの記録、インストール履歴は残します。",
+	"Executable removed; inspect retained installation metadata to finalize removal history.":                                                                                                                                       "実行ファイルを削除しました。削除の履歴を確定するには、残っているインストール情報を確認してください。",
+	"Retain and inspect the installation receipt at %s. An unsupported schema requires a compatible installer; repair invalid metadata explicitly before retrying. Reinstalling with this version also refuses an invalid receipt.": "%s のインストール記録は残したまま確認してください。対応していない形式には互換性のあるインストーラーが必要です。不正な情報は明示的に修復してから再試行してください。このバージョンで再インストールしても、不正なインストール記録は拒否されます。",
+	"The retained receipt records an incomplete or removed installation. Reinstall the same direct destination with the supported installer to establish a new active receipt, then preview again.":                                 "残っているインストール記録は、未完了か削除済みのインストールを示しています。対応しているインストーラーで同じインストール先に再インストールして新しい有効なインストール記録を作り、そのあともう一度プレビューしてください。",
+	"The executable or its directory differs from the retained receipt. Inspect the current file, links and owner before choosing its installation manager; automatic removal is refused.":                                          "実行ファイルかそのディレクトリが、残っているインストール記録と異なります。インストールの管理方法を選ぶ前に、現在のファイル、リンク、所有者を確認してください。自動での削除は拒否します。",
+	"Installation ownership could not be inspected. Resolve access to the retained receipt and executable before retrying.":                                                                                                         "インストールの所有者を確認できませんでした。残っているインストール記録と実行ファイルにアクセスできるようにしてから再試行してください。",
+	"Resolve the outstanding completion migration before uninstalling; cleanup does not run completion refresh or recreate hooks.":                                                                                                  "アンインストールする前に、未完了の補完の移行を解決してください。後片付けでは補完の更新もフックの再作成も行いません。",
+	"Unrecorded executable: %s. A manual copy or plain go install has no removal receipt; reinstall this path through the supported direct installer before automatic removal.":                                                     "記録のない実行ファイルです: %s。手動でコピーしたものや go install だけで入れたものには、削除に使うインストール記録がありません。自動で削除するには、対応している直接インストーラーでこのパスに再インストールしてください。",
+	"This executable is mise-managed. Inspect the installed mise help and owning configuration before removing its request; kae will not unlink a managed binary or shim.":                                                          "この実行ファイルは mise が管理しています。そのツール指定を削除する前に、インストール済みの mise のヘルプと、ツール指定を持つ設定ファイルを確認してください。kae は管理下のバイナリや shim を削除しません。",
+	"After integration cleanup, to remove this configured request, run: mise unuse --path %s %s. This also prunes versions unused by tracked configs; use --no-prune to retain installations. Other projects may still need them.":  "連携の後片付けのあと、設定済みのこのツール指定を削除するには mise unuse --path %s %s を実行してください。これは追跡中の設定ファイルが使っていないバージョンも削除します。インストールを残すには --no-prune を使ってください。ほかのプロジェクトがまだ必要としている場合があります。",
+	"This executable is mise-managed but no matching loaded request was identified. Inspect aliases, project requests and mise config ls --tracked-configs before removing the installation.":                                       "この実行ファイルは mise が管理していますが、一致する読み込み済みのツール指定を特定できませんでした。インストールを削除する前に、エイリアス、プロジェクトのツール指定、mise config ls --tracked-configs を確認してください。",
+	// login.go and relogin.go.
+	"Captured %s/%s and restored the previous login":                           "登録しました: %s/%s（以前のログインを復元しました）",
+	"Captured %s/%s (now active)":                                              "登録しました: %s/%s（有効にしました）",
+	"Captured the changed %s credential for %s/%s from this directory's store": "このディレクトリのストアから、変更された %s の認証情報を %s/%s へ取り込み直しました",
+	"Ran the %s login flow in this directory":                                  "このディレクトリで %s のログイン手順を実行しました",
+
+	// preservation.go (the table header and the action reports).
+	"Binding account (owner unknown)":       "固定したアカウント（所有者は不明）",
+	"State":                                 "状態",
+	"Bytes":                                 "バイト数",
+	"Would restore preservation %s":         "保全記録 %s を復元する予定です",
+	"Would rm preservation %s":              "保全記録 %s を削除する予定です",
+	"Completed preservation restore for %s": "保全記録 %s を復元しました",
+	"Completed preservation rm for %s":      "保全記録 %s を削除しました",
 }

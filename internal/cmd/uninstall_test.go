@@ -49,7 +49,7 @@ func TestUninstallOwnedAndCustomCompletions(t *testing.T) {
 		return runUninstall(context.Background(), app, commonOpts{Format: formatJSON, Yes: true}, nil, filepath.Join(app.Env.Home, "kae"))
 	})
 	mustExit(t, constants.ExitUnsafeRefused, code, output)
-	var report uninstallReport
+	var report uninstallWire
 	if err := json.Unmarshal([]byte(output), &report); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestUninstallIncompleteGlobalState(t *testing.T) {
 					return runUninstall(context.Background(), app, commonOpts{Format: formatJSON, Yes: true}, nil, filepath.Join(app.Env.Home, "kae"))
 				})
 				mustExit(t, constants.ExitUnsafeRefused, code, output)
-				var report uninstallReport
+				var report uninstallWire
 				if err := json.Unmarshal([]byte(output), &report); err != nil {
 					t.Fatal(err)
 				}
@@ -215,12 +215,12 @@ func TestUninstallManagedGuidanceUsesExactRequest(t *testing.T) {
 	writeFile(t, path, "[tools]\n\"packslip:github.com/webkaz-labs/kagikae\" = \"0.21.0\"\n")
 	executable := filepath.Join(paths.XDGDataHome(app.Env.Getenv, app.Env.Home, "mise"), "installs", "kae", "0.21.0", "kae")
 	fake := &runnertest.Fake{Stdout: "--path <PATH> --no-prune"}
-	var guidance []string
+	var guidance []message
 	runner.With(fake, func() { guidance = app.managedUninstallGuidance(executable, []string{dir, dir}) })
 	if fake.Name != "mise" || !reflect.DeepEqual(fake.Args, []string{"unuse", "--help"}) {
 		t.Fatalf("unexpected manager invocation: %s %v", fake.Name, fake.Args)
 	}
-	if len(guidance) != 1 || !strings.Contains(guidance[0], "--path "+shellSingleQuote(path)+" 'packslip:github.com/webkaz-labs/kagikae'") {
+	if len(guidance) != 1 || !strings.Contains(guidance[0].Error(), "--path "+shellSingleQuote(path)+" 'packslip:github.com/webkaz-labs/kagikae'") {
 		t.Fatalf("exact request not retained: %v", guidance)
 	}
 	if got := readFile(t, path); !strings.Contains(got, "0.21.0") {
@@ -241,9 +241,22 @@ func TestUninstallInvalidReceiptHasActionableDiagnosis(t *testing.T) {
 	}
 	plan := app.planUninstall(commonOpts{DryRun: true}, nil, executable)
 	binary := plan.report.Items[len(plan.report.Items)-1]
-	guidance := strings.Join(plan.report.Manual, "\n")
+	var notes []string
+	for _, note := range plan.report.Manual {
+		notes = append(notes, note.Error())
+	}
+	guidance := strings.Join(notes, "\n")
 	if binary.Reason != constants.UninstallInvalidReceipt || strings.Contains(guidance, "Unrecorded executable") ||
 		!strings.Contains(guidance, "compatible installer") || !strings.Contains(guidance, "also refuses") {
 		t.Fatalf("invalid receipt recovery misreported: %+v %s", binary, guidance)
 	}
+}
+
+// uninstallWire decodes the JSON report: uninstallReport carries messages, which
+// kae writes and never reads back (l10n.Msg).
+type uninstallWire struct {
+	OK           bool     `json:"ok"`
+	Integrations string   `json:"integrations"`
+	Binary       string   `json:"binary"`
+	Manual       []string `json:"manual_actions"`
 }

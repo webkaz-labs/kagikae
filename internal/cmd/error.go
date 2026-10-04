@@ -9,10 +9,10 @@ import (
 )
 
 // usageError prints a usage error, localized, and returns the usage exit code.
-// It forwards its unchanged format and args to l10n.Sprintf, which keeps it a
-// `go vet` printf wrapper; the newline is added by Fprintln, not to the format.
+// It forwards its unchanged format and args to stderrf, which keeps it a
+// `go vet` printf wrapper; the newline is added by stderrf, not to the format.
 func usageError(format string, args ...any) int {
-	fmt.Fprintln(os.Stderr, l10n.Sprintf(format, args...))
+	stderrf(format, args...)
 	return constants.ExitUsage
 }
 
@@ -50,6 +50,14 @@ func reportf(format string, args ...any) {
 // to judge.
 func reportMessage(m error) {
 	fmt.Fprintln(os.Stdout, l10n.Render(m))
+}
+
+// stderrf writes a line on stderr with no `kae:` prefix, localized: a menu line
+// before a prompt, or guidance that follows a report (a shell step to run). Like
+// reportf it forwards its unchanged format and args to l10n.Sprintf, which keeps
+// it a `go vet` printf wrapper; Fprintln adds the newline.
+func stderrf(format string, args ...any) {
+	fmt.Fprintln(os.Stderr, l10n.Sprintf(format, args...))
 }
 
 // promptf writes an interactive prompt on stderr, localized, without a newline so
@@ -92,10 +100,10 @@ const unsupportedShellFormat = "unsupported shell %q (supported: bash, zsh, fish
 
 // errLaunchLogin wraps the failure to start a tool's own login flow.
 func errLaunchLogin(tool string, err error) error {
-	return fmt.Errorf("launch %s login: %w", tool, err)
+	return l10n.Errorf("launch %s login: %w", tool, err)
 }
 
 // errResolveCwd wraps the failure to read the working directory.
 func errResolveCwd(err error) error {
-	return fmt.Errorf("resolve the current directory: %w", err)
+	return l10n.Errorf("resolve the current directory: %w", err)
 }

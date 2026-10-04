@@ -2,11 +2,12 @@ package installation
 
 import (
 	"encoding/binary"
-	"fmt"
 	"os"
 	"reflect"
 	"syscall"
 	"unsafe"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // runningImage identifies the vnode backing this function's executable mapping,
@@ -22,12 +23,12 @@ func runningImage() (device, inode uint64, err error) {
 		uintptr(os.Getpid()), procPIDRegionPathInfo, pc,
 		uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
 	if errno != 0 {
-		return 0, 0, fmt.Errorf("inspect running image: %w", errno)
+		return 0, 0, l10n.Errorf("inspect running image: %w", errno)
 	}
 	start := binary.LittleEndian.Uint64(data[80:88])
 	size := binary.LittleEndian.Uint64(data[88:96])
 	if n != uintptr(len(data)) || uint64(pc) < start || uint64(pc)-start >= size || binary.LittleEndian.Uint32(data[:4])&4 == 0 {
-		return 0, 0, fmt.Errorf("running image mapping is unavailable")
+		return 0, 0, l10n.Errorf("running image mapping is unavailable")
 	}
 	return uint64(binary.LittleEndian.Uint32(data[96:100])), binary.LittleEndian.Uint64(data[104:112]), nil
 }

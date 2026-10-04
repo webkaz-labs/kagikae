@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -52,7 +51,7 @@ func CmdEnv(ctx context.Context, args []string) int {
 func readStdinSecret(stdin io.Reader, name string) (string, error) {
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		return "", fmt.Errorf("read value from stdin: %w", err)
+		return "", l10n.Errorf("read value from stdin: %w", err)
 	}
 	value := strings.TrimRight(string(data), "\r\n")
 	if value == "" {
@@ -135,7 +134,7 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 	sort.Strings(names)
 	for _, name := range names {
 		if err := be.Set(ctx, envprofile.SecretRef(tool, accountName, name), []byte(values[name])); err != nil {
-			return finish(opts, fmt.Errorf("store %s: %w", name, err))
+			return finish(opts, l10n.Errorf("store %s: %w", name, err))
 		}
 		if !existing[name] {
 			profile.Vars = append(profile.Vars, name)
@@ -145,7 +144,7 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 		return finish(opts, err)
 	}
 	reportf("Stored %d variable(s) in env profile %s/%s: %s",
-		len(names), tool, accountName, strings.Join(names, ", "))
+		len(names), tool, accountName, l10n.List(names))
 	return constants.ExitOK
 }
 
@@ -195,7 +194,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 	for _, name := range profile.Vars {
 		if remove[name] {
 			if err := be.Delete(ctx, envprofile.SecretRef(tool, accountName, name)); err != nil {
-				return finish(opts, fmt.Errorf("delete %s: %w", name, err))
+				return finish(opts, l10n.Errorf("delete %s: %w", name, err))
 			}
 		} else {
 			remaining = append(remaining, name)

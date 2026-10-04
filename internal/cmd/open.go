@@ -181,8 +181,11 @@ func (app *App) resolveNavigation(ctx context.Context, opts commonOpts, req lsRe
 	}
 	switch choice.kind {
 	case choiceSeveral:
-		set := newPlaceCandidates(req, func(n int) string {
-			return fmt.Sprintf("kae %s %s matches %d %s", req.verb, requestWords(req, false), n, placeNoun(n))
+		set := newPlaceCandidates(req, func(n int) message {
+			if n == 1 {
+				return msgf("kae %s %s matches %d place", req.verb, requestWords(req, false), n)
+			}
+			return msgf("kae %s %s matches %d places", req.verb, requestWords(req, false), n)
 		}, candidateGroup{Heading: req.target, Rows: choice.candidates})
 		return "", &set, constants.ExitOK
 	case choiceNone:
@@ -213,7 +216,7 @@ func (app *App) noCurrentPlaceCandidates(opts commonOpts, req lsRequest, choice 
 	if len(rows) == 0 {
 		return nil, finish(opts, choice.noneError(req.verb, req))
 	}
-	reason := fmt.Sprintf("kae %s %s has no current place here", req.verb, requestWords(req, false))
+	reason := msgf("kae %s %s has no current place here", req.verb, requestWords(req, false))
 	set := newPlaceCandidates(req, constReason(reason), candidateGroup{Heading: req.target, Rows: rows})
 	return &set, constants.ExitOK
 }
@@ -258,10 +261,10 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 		return choice, nil, code
 	}
 	tools := bound
-	reason := fmt.Sprintf("kae %s --%s needs a tool: %d tools are bound here", req.verb, req.level, len(bound))
+	reason := msgf("kae %s --%s needs a tool: %d tools are bound here", req.verb, req.level, len(bound))
 	if len(bound) == 0 {
 		tools = placeTools()
-		reason = fmt.Sprintf("kae %s --%s needs a tool: no tool is bound here", req.verb, req.level)
+		reason = msgf("kae %s --%s needs a tool: no tool is bound here", req.verb, req.level)
 	}
 	groups, err := app.levelGroups(ctx, pc, tools, req.level)
 	if err != nil {

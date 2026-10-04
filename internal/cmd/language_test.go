@@ -4,14 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/installation"
+	"github.com/webkaz-labs/kagikae/internal/integration"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -139,6 +145,42 @@ func TestFinishLocalizesOnlyTheHumanLine(t *testing.T) {
 	}
 }
 
+// The sentinels exitOf maps are message values: the exit code and the JSON text
+// do not depend on the language, and the human line renders the catalog's
+// Japanese, alone or as the head of a message that wraps it.
+func TestSentinelsKeepTheirExitCodeAndLocalizeTheHumanLine(t *testing.T) {
+	sentinels := []struct {
+		err  error
+		exit int
+	}{
+		{artifact.ErrUnsafe, constants.ExitUnsafeRefused},
+		{installation.ErrUnsafe, constants.ExitUnsafeRefused},
+		{integration.ErrUnsafe, constants.ExitUnsafeRefused},
+		{integration.ErrChanged, constants.ExitUnsafeRefused},
+		{adapter.ErrUnsupported, constants.ExitUnsupported},
+		{secret.ErrUnavailable, constants.ExitSecretStore},
+		{lock.ErrBusy, constants.ExitLockBusy},
+	}
+	l10ntest.UseJapanese(t)
+	for _, s := range sentinels {
+		english := s.err.Error()
+		for _, err := range []error{s.err, fmt.Errorf("op: %w", s.err), l10n.Errorf("%w: detail", s.err)} {
+			if got := exitOf(err); got != s.exit {
+				t.Errorf("exitOf(%q) = %d, want %d", err, got, s.exit)
+			}
+			code, stdout := captureStdout(t, func() int { return finish(commonOpts{Format: formatJSON}, err) })
+			var report errorReport
+			if jerr := json.Unmarshal([]byte(stdout), &report); jerr != nil || code != s.exit || report.Message != err.Error() {
+				t.Errorf("JSON finish of %q: exit %d, %+v (%v)", err, code, report, jerr)
+			}
+		}
+		code, stderr := captureStderr(t, func() int { return finish(commonOpts{Format: formatText}, s.err) })
+		if code != s.exit || strings.Contains(stderr, english) || !strings.HasPrefix(stderr, "kae: ") {
+			t.Errorf("human finish of %q must render the catalog's Japanese: exit %d, %q", english, code, stderr)
+		}
+	}
+}
+
 func TestUsageErrorsAreEnglishInJSONMode(t *testing.T) {
 	const format = "unknown command: %s (see kae help)%s"
 	l10ntest.UseJapanese(t)
@@ -246,7 +288,7 @@ func stageOneCases(t *testing.T) []stageOneCase {
 				return captureStderr(t, func() int { return runSwitch(ctx, testApp(t, nil), text, "cluade", "main") })
 			},
 			en: "kae: unknown tool \"cluade\" (tools: " + tools + ") — did you mean \"claude\"?\n",
-			ja: "kae: 不明なツールです: \"cluade\"（ツール: " + tools + "）。もしかして: \"claude\"\n",
+			ja: "kae: 不明なツールです: \"cluade\"（ツール: " + strings.Join(constants.Tools, "、") + "）。もしかして: \"claude\"\n",
 		},
 		{
 			name: "account not captured",

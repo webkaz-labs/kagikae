@@ -68,6 +68,8 @@ var jaWarnings = map[string]string{
 
 	"could not harvest the newer %s credential from %s into snapshot %s/%s: %v":       "より新しい %s の認証情報（%s）をスナップショット %s/%s へ退避できませんでした: %v",
 	"harvested the %s credential for %s/%s but could not update its capture time: %v": "%[2]s/%[3]s の %[1]s の認証情報は退避しましたが、登録日時を更新できませんでした: %[4]v",
+
+	"harvested the newer %s credential from %s into snapshot %s/%s (it is the copy that can still refresh)": "より新しい %s の認証情報を %s からスナップショット %s/%s へ退避しました（まだリフレッシュできるのはこのコピーです）。",
 	// dircred_identity.go.
 	"no %s identity is recorded for that account":           "そのアカウントに %s のログイン中アカウントの記録が保存されていない",
 	"kae could not resolve where its identity cache is":     "kae がログイン中アカウントの記録の場所を解決できなかった",
@@ -101,6 +103,10 @@ var jaWarnings = map[string]string{
 	// fragment.go.
 	"could not tell git to ignore %s: %v":                                                   "%s を無視するよう git に伝えられませんでした: %v",
 	"the binding is in place; ignore %s yourself (machine-specific; must not be committed)": "固定は完了しています。%s は自分で無視してください（このマシン固有のもので、コミットしてはいけません）。",
+	// fragment.go: the causes the warning above embeds.
+	"git rev-parse returned %q":                                             "git rev-parse の出力が想定外です: %q",
+	"resolve git common dir %q: %w":                                         "git の共通ディレクトリ %q を解決できません: %w",
+	"git named %q as its common dir, but that is not an existing directory": "git が共通ディレクトリとして %q を示しましたが、存在するディレクトリではありません",
 	// freshness.go.
 	"could not read live %s state to refresh %s/%s: %v":             "スナップショット %[2]s/%[3]s を更新するための、現在の %[1]s の状態を読み取れませんでした: %[4]v",
 	"%s; snapshot %s/%s left unchanged":                             "%s。スナップショット %s/%s は変更していません。",
@@ -131,12 +137,24 @@ var jaWarnings = map[string]string{
 	"config is invalid or unreadable; listing metadata from the resolved state directory; check the selected config file and its permissions before recovery; run: kae doctor": "設定ファイルが不正か読み取れないため、解決した状態ディレクトリからメタデータを一覧しています。復旧の前に、選んだ設定ファイルとその権限を確認してください。kae doctor を実行してください。",
 
 	"metadata listing is incomplete; readable records are shown": "メタデータの一覧が不完全です。読み取れた記録だけを表示しています。",
+	// An issue's code and hashed entry are tokens; the remedy is a message.
+	"%s %s; %s": "%s %s。%s。",
+	"check the resolved state directory exists as a directory and is accessible; see docs/CLI.md Recovery guidance":       "解決した状態ディレクトリがディレクトリとして存在し、アクセスできることを確認してください。docs/CLI.md の Recovery guidance を参照してください",
+	"check metadata file and parent-directory permissions; keep the entry while investigating":                            "メタデータのファイルと親ディレクトリの権限を確認してください。調べている間はその項目を残してください",
+	"check metadata format against docs/DATA-MODEL.md; do not infer an account or delete the entry to clear this warning": "メタデータの形式を docs/DATA-MODEL.md と照らし合わせて確認してください。この警告を消すためにアカウントを推測したり、項目を削除したりしないでください",
+	"inspect the entry type without following symlinks; keep unexpected entries until their purpose is verified":          "symlink をたどらずに項目の種類を確認してください。想定外の項目は、目的を確認できるまで残してください",
+	"see docs/CLI.md Recovery guidance before recovery":                                                                   "復旧の前に docs/CLI.md の Recovery guidance を参照してください",
+	// login.go.
+	"complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)":                   "%s のログイン手順を完了してください。終了すると、結果を %s として登録します（以前の状態はバックアップ %s に保存しました）。",
+	"complete the %s login flow; the result is captured as the detected account when it exits (previous state backed up as %s)": "%s のログイン手順を完了してください。終了すると、結果を検出したアカウントとして登録します（以前の状態はバックアップ %s に保存しました）。",
+	"%s exited with %d; capturing whatever auth state is live now":                                                              "%s が終了コード %d で終了しました。いまの認証状態をそのまま登録します。",
 	// ls.go.
 	"%s is bound but its fragment could not be read (%v), so it is not listed": "%s は固定されていますが、フラグメントを読み取れません（%v）。そのため一覧に載せていません。",
 	// lsplace.go.
 	"the %s group is not listed: %v": "%s のグループは一覧に載せていません: %v",
 	// miseinit.go.
-	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は本物のホームのままです（docs/ROADMAP.md）。",
+	"preview only; to apply, run: %s --write":                            "プレビューのみです。適用するには %s --write を実行してください。",
+	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は実ホームのままです（docs/ROADMAP.md）。",
 
 	"the real %s home (%s) lists nothing to share, so kae cannot tell whether %d shared link(s) in %s are still wanted; leaving them in place. If that home is right, remove the links by hand; if it is not, unset %s (or fix it), then run: kae pin": "本物の %[1]s のホーム（%[2]s）に共有するものがないため、%[4]s にある %[3]d 件の共有リンクがまだ必要か kae は判断できません。リンクはそのまま残します。そのホームが正しい場合は、リンクを手動で削除してください。正しくない場合は、環境変数 %[5]s の設定を外すか修正してから kae pin を実行してください。",
 
@@ -186,7 +204,10 @@ var jaWarnings = map[string]string{
 	// preservation.go.
 	"this may be the only surviving credential copy; deleting the explicitly selected ID": "これが残っている唯一の認証情報のコピーかもしれません。明示的に選ばれた ID を削除します。",
 	// relogin.go.
-	"kae could not read this directory's %s credential, so it cannot tell whether the login flow changed anything": "kae はこのディレクトリの %s の認証情報を読み取れなかったため、ログイン手順で何かが変わったか判断できません。",
+	"preserved the existing credential as %s; its account ownership is unknown; run: kae preservation list":                              "既存の認証情報を %s として保全しました。どのアカウントのものかは不明です。kae preservation list を実行してください。",
+	"complete the %s login flow; kae is running it against this directory's own store (%s), so it refreshes %s/%s and not the real home": "%s のログイン手順を完了してください。kae はこのディレクトリ専用のストア（%s）に対して実行するため、更新されるのは実ホームではなく %s/%s です。",
+	"%s exited with %d; kae is checking what is in the store now":                                                                        "%s が終了コード %d で終了しました。kae はいまストアにあるものを確認します。",
+	"kae could not read this directory's %s credential, so it cannot tell whether the login flow changed anything":                       "kae はこのディレクトリの %s の認証情報を読み取れなかったため、ログイン手順で何かが変わったか判断できません。",
 
 	"kae found no %s credential where it resolves this directory's store, so it is not reporting a login — the flow may have left nothing there, or it may have moved the credential to a store kae does not resolve for this directory": "kae がこのディレクトリのストアとして解決した場所に %s の認証情報がないため、ログインとしては報告しません。ログイン手順が何も残さなかったか、kae がこのディレクトリ用に解決しないストアへ認証情報を移した可能性があります。",
 
@@ -219,11 +240,13 @@ var jaWarnings = map[string]string{
 	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
 	// run.go.
-	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、本物のホームのままです（%s で独立させられるのは claude と codex だけです）。",
+	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、実ホームのままです（%s で独立させられるのは claude と codex だけです）。",
 
 	"%s refreshed its credential during the run and %s/%s was already the active account, so restoring backup %s would put back a copy %s can no longer refresh; leaving the live %s credential as the child left it": "実行中に %[1]s が認証情報をリフレッシュし、%[2]s/%[3]s はすでに有効なアカウントでした。バックアップ %[4]s を復元すると、%[5]s がもうリフレッシュできないコピーを戻してしまうため、現在の %[6]s の認証情報は子プロセスが残したままにします。",
 
-	"could not back up the live state kae declined to adopt: %v": "kae が取り込まないと判断した現在の状態をバックアップできませんでした: %v",
+	"could not back up the live state kae declined to adopt: %v":                                                  "kae が取り込まないと判断した現在の状態をバックアップできませんでした: %v",
+	"run -i: %s runs in %s\n  (shared with `kae use -i %s`; concurrent `kae use` in other shells is not blocked)": "run -i: %s は %s で実行します。\n  （kae use -i %s と共有します。ほかのシェルで同時に実行する kae use はブロックされません）",
+	"previous auth state restored (backup %s)":                                                                    "以前の認証状態を復元しました（バックアップ %s）。",
 	// storelink.go.
 	"%s is not a kae link; leaving it unchanged. This directory's %s store is %s": "%[1]s は kae のリンクではないため、変更せずに残します。このディレクトリの %[2]s のストアは %[3]s です。",
 	"could not update the store link %s: %v":                                      "ストアへのリンク %s を更新できませんでした: %v",

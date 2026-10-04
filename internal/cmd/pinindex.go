@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -131,7 +131,7 @@ func (app *App) recordPinnedDir(pinID, absDir string) error {
 		return nil
 	}
 	if err := os.MkdirAll(app.Paths.PinDir(pinID), 0o700); err != nil {
-		return fmt.Errorf("create per-directory store root: %w", err)
+		return l10n.Errorf("create per-directory store root: %w", err)
 	}
 	return patch.WriteFileAtomic(record, want, 0o600)
 }
@@ -152,7 +152,7 @@ func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 		return nil, true, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("list per-directory stores: %w", err)
+		return nil, false, l10n.Errorf("list per-directory stores: %w", err)
 	}
 	pins, complete := []pinnedDir{}, true
 	for _, entry := range entries {

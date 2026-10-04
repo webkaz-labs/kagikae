@@ -6,6 +6,7 @@ package l10n
 var jaErrors = map[string]string{
 	// Shared fragments.
 	" — did you mean %q?": "。もしかして: %q",
+	"%s: %w":              "%s: %w",
 	"first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture": "まず %s の現在のログインがアカウント %s のもので、意図したグローバルの認証ストアを使っていることを確認してください。確認できた場合に限り、登録し直すには kae add --no-login %s %s を実行してください。ログアウトしている場合や確信が持てない場合は、登録する前に docs/CLI.md の Recovery guidance を参照してください",
 
 	// Command line and configuration.
@@ -59,6 +60,36 @@ var jaErrors = map[string]string{
 	"the global isolated fragment does not match state.synced, so account paths cannot be changed safely; stop every process using isolated homes, then run: kae use -s %s %s (regenerates it from state), then run: kae account rename %s %s %s":                                                                                       "グローバル独立環境のフラグメントが state.synced と一致しないため、アカウントのパスを安全に変更できません。独立ホームを使っているプロセスをすべて止めてから kae use -s %s %s を実行し（状態からフラグメントを作り直します）、続けて kae account rename %s %s %s を実行してください",
 	"account %s/%s is selected by global isolated mode; stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, then run: kae account rename %s %s %s":                                                                                       "アカウント %s/%s はグローバル独立モードで選択されています。その独立ホームを使っているプロセス（kae run -i の子プロセスや kae use -i で有効にしたターミナルを含む）をすべて止めてから kae use -s %s %s を実行し、続けて kae account rename %s %s %s を実行してください",
 
+	// account.go: the steps of kae account rm and rename, ahead of their cause.
+	"reload config before account removal: %w": "アカウントを削除する前に設定ファイルを読み込み直せません: %w",
+	"stat config before account removal: %w":   "アカウントを削除する前に設定ファイルの状態を確認できません: %w",
+	"delete secret %s: %w":                     "シークレットストアの項目 %s を削除できません: %w",
+	"remove snapshot dir: %w":                  "スナップショットのディレクトリを削除できません: %w",
+	"reload config before rename: %w":          "名前を変更する前に設定ファイルを読み込み直せません: %w",
+	"read secret %s: %w":                       "シークレットストアの項目 %s を読み取れません: %w",
+	"write secret %s: %w":                      "シークレットストアの項目 %s に書き込めません: %w",
+	"delete old secret %s: %w":                 "古いシークレットストアの項目 %s を削除できません: %w",
+	"remove old snapshot dir: %w":              "古いスナップショットのディレクトリを削除できません: %w",
+
+	// app.go: config edits and the global mise fragment kept with state.
+	"read config for edit: %w":           "編集する設定ファイルを読み取れません: %w",
+	"write config: %w":                   "設定ファイルに書き込めません: %w",
+	"reload config after edit: %w":       "編集後の設定ファイルを読み込み直せません: %w",
+	"reconcile global mise fragment: %w": "グローバル mise のフラグメントを状態に合わせられません: %w",
+	"regenerate global mise fragment: %w; restoring previous state also failed: %v": "グローバル mise のフラグメントを作り直せません: %w。以前の状態の復元にも失敗しました: %v",
+	"regenerate global mise fragment (previous state restored): %w":                 "グローバル mise のフラグメントを作り直せません（以前の状態は復元しました）: %w",
+
+	// capture.go.
+	"no live %s auth state found; log in with the official CLI first%s": "%s の現在の認証状態が見つかりません。先に公式の CLI でログインしてください%s",
+	"store captured payload: %w":                                        "登録する保存データをシークレットストアに書き込めません: %w",
+	"clear stale payload: %w":                                           "古い保存データを消去できません: %w",
+
+	// init.go and edit.go.
+	"inspect config: %w":        "設定ファイルを確認できません: %w",
+	"inspect config target: %w": "設定ファイルのリンク先を確認できません: %w",
+	"create %s: %w":             "%s を作成できません: %w",
+	"launch editor %s: %w":      "エディター %s を起動できません: %w",
+
 	// Saved data in the secret store.
 	"identity payload %s is missing from the secret store": "アカウント記録の保存データ %s がシークレットストアにありません",
 	"backup payload %s is missing from the secret store":   "バックアップの保存データ %s がシークレットストアにありません",
@@ -80,6 +111,15 @@ var jaErrors = map[string]string{
 	"compare auth after login failed, previous state restored from backup %s: %v":                                                  "ログイン後の認証の比較に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
 	"detect the logged-in account failed, previous state restored from backup %s: %v":                                              "ログインしたアカウントの検出に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
 	"capture after login failed, previous state restored from backup %s: %v":                                                       "ログイン後の登録に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
+	"compare auth after login failed (previous state is in backup %s): %w":                                                         "ログイン後の認証の比較に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"detect the logged-in account failed (previous state is in backup %s): %w":                                                     "ログインしたアカウントの検出に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"capture after login failed (previous state is in backup %s): %w":                                                              "ログイン後の登録に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"launch %s login: %w":          "%s のログインを開始できません: %w",
+	"read live %s/%s: %w":          "現在の %s/%s を読み取れません: %w",
+	"read backup payload %s: %w":   "バックアップの保存データ %s を読み取れません: %w",
+	"compare auth after login":     "ログイン後の認証の比較",
+	"detect the logged-in account": "ログインしたアカウントの検出",
+	"capture after login":          "ログイン後の登録",
 
 	// kae use, kae run and kae rollback.
 	"switch %s failed, previous state restored from backup %s: %v":                                                                            "%s の切替に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
@@ -102,6 +142,24 @@ var jaErrors = map[string]string{
 	"a profile target runs no single binary; name the command explicitly; run: kae run [-s|-i|--env] <tool|all> <name> -- <cmd...>":           "プロファイルを対象にすると実行するバイナリが 1 つに決まりません。コマンドを明示して kae run [-s|-i|--env] <tool|all> <name> -- <cmd...> を実行してください",
 	"%s has no launchable binary; name the command explicitly; run: kae run %s %s -- <cmd...>":                                                "%s には起動できるバイナリがありません。コマンドを明示して kae run %s %s -- <cmd...> を実行してください",
 	"no tool in this profile supports home isolation; nothing to isolate":                                                                     "このプロファイルにはホームを独立させられるツールがないため、独立させるものはありません",
+	"%s failed (%v) and restore also failed (%v); run: kae rollback --to %s":                                                                  "%sに失敗し（%v）、元の状態への復元にも失敗しました（%v）。kae rollback --to %s を実行してください",
+	"apply %s":                             "%s の適用",
+	"switch %s":                            "%s の切替",
+	"recording state":                      "状態の記録",
+	"backup %s: %w":                        "%s をバックアップできません: %w",
+	"store backup payload: %w":             "バックアップの保存データを保存できません: %w",
+	"save backup metadata: %w":             "バックアップのメタデータを保存できません: %w",
+	"restore %s/%s: %w":                    "%s/%s を復元できません: %w",
+	"clear a stale identity cache: %w":     "古いログイン中アカウントの記録を消去できません: %w",
+	"read payload %s: %w":                  "保存データ %s を読み取れません: %w",
+	"clear %s/%s: %w":                      "%s/%s を消去できません: %w",
+	"run %s: %w":                           "%s を実行できません: %w",
+	"prepare isolated home for %s/%s: %w":  "%s/%s の独立ホームを準備できません: %w",
+	"create global isolated home: %w":      "グローバル独立環境のホームを作成できません: %w",
+	"materialize credential for %s/%s: %w": "%s/%s の認証情報を書き出せません: %w",
+	"%s has no home-isolation env var; %s supports claude and codex only": "%s にはホームを独立させる環境変数がありません。%sが対応するのは claude と codex だけです",
+	"run -i (isolated home)":            "run -i（独立ホーム）",
+	"global isolated mode (kae use -i)": "グローバル独立モード（kae use -i）",
 
 	// kae profile and kae env.
 	"unknown profile subcommand %q (save, set, unset, rm, default)": "不明な profile サブコマンドです: %q（save、set、unset、rm、default のいずれか）",
@@ -120,6 +178,9 @@ var jaErrors = map[string]string{
 	"no variables given":          "環境変数が指定されていません",
 	"env profile %s/%s not found": "env プロファイル %s/%s が見つかりません",
 	"env profile %s/%s not found; run: kae env set %s %s KEY=VALUE": "env プロファイル %s/%s が見つかりません。kae env set %s %s KEY=VALUE を実行してください",
+	"read value from stdin: %w":                                     "標準入力から値を読み取れません: %w",
+	"store %s: %w":                                                  "%s を保存できません: %w",
+	"delete %s: %w":                                                 "%s を削除できません: %w",
 
 	// kae companion.
 	"unknown companion subcommand: %s (add, rm, list)":                                         "不明な companion サブコマンドです: %s（add、rm、list のいずれか）",
@@ -131,6 +192,12 @@ var jaErrors = map[string]string{
 	"companion %s in profile %q has no knob %q":                                                "プロファイル %[2]q の周辺ツール %[1]s に設定項目 %[3]q はありません",
 	"no knobs given": "設定項目が指定されていません",
 	"pass either KEY=VALUE pairs (non-secret) or a single bare token KEY (value on stdin), not both": "KEY=VALUE の組（秘密でない値）か、=VALUE なしのトークンの KEY 1 つ（値は標準入力）のどちらかを指定してください。両方は指定できません",
+	"locate kae binary for companion token lookup: %w":                                               "周辺ツールのトークンを参照する kae のバイナリの場所を特定できません: %w",
+	"kae binary path %q contains a quote; companion token lookup cannot be templated safely":         "kae のバイナリのパス %q に引用符が含まれているため、周辺ツールのトークンを参照するテンプレートを安全に作れません",
+	"create companion dir: %w":     "周辺ツールのディレクトリを作成できません: %w",
+	"parse %s config template: %w": "%s の設定ファイルのテンプレートを解析できません: %w",
+	"render %s config: %w":         "%s の設定ファイルを生成できません: %w",
+	"companion token %s/%s/%s is not stored; run: kae companion add %s %s %s": "周辺ツールのトークン %s/%s/%s が保存されていません。kae companion add %s %s %s を実行してください",
 
 	// kae pin, kae unpin, kae relogin and kae mise init.
 	"--shared/--isolated/--tree do not apply to `kae pin <tool> <account>`; the directory's existing mode is left unchanged":                          "--shared/--isolated/--tree は kae pin <tool> <account> には使えません。ディレクトリの既存のモードはそのまま残ります",
@@ -158,6 +225,43 @@ var jaErrors = map[string]string{
 	"the %s login flow left this directory's credential unchanged, so there is nothing to capture back":                                               "%s のログイン手順でこのディレクトリの認証情報が変わらなかったため、取り込み直すものはありません",
 	"kae has no login command for %s, so it cannot log this directory in (see docs/ADAPTERS.md)":                                                      "kae には %s のログインコマンドがないため、このディレクトリでログインできません（docs/ADAPTERS.md を参照してください）",
 	"this directory binds %s; name the one to log in; run: kae relogin <tool>":                                                                        "このディレクトリは %s を固定しています。ログインするツールを指定して kae relogin <tool> を実行してください",
+	"this directory does not bind %s; it binds %s":                                                                                                    "このディレクトリは %s を固定していません（固定しているツール: %s）",
+	"this directory binds no tool kae can drive a login for (it binds %s)":                                                                            "このディレクトリには、kae がログインを実行できるツールが固定されていません（固定しているツール: %s）",
+	"no tools":                          "なし",
+	"resolve the current directory: %w": "カレントディレクトリを解決できません: %w",
+
+	// The steps of binding a directory (dircred*.go, miseinit.go, modes.go,
+	// pin.go, pinindex.go, rebind.go, fragment.go), each wrapping its cause.
+	"create per-account credential store: %w":                             "アカウントごとの認証ストアを作成できません: %w",
+	"%w: kae cannot give this directory its own %s credential store (%s)": "%w: kae はこのディレクトリに専用の %s の認証ストアを用意できません（%s）",
+	"write %s credential for account %s: %w":                              "アカウント %[2]s の %[1]s の認証情報を書き込めません: %[3]w",
+	"remove superseded credential copy %s: %w":                            "置き換え済みの認証情報のコピー %s を削除できません: %w",
+	"write %s identity for account %s: %w":                                "アカウント %[2]s の %[1]s のログイン中アカウントの記録を書き込めません: %[3]w",
+	"resolve store dir %s: %w":                                            "ストアのディレクトリ %s を解決できません: %w",
+	"resolve identity target %s: %w":                                      "ログイン中アカウントの記録の書き込み先 %s を解決できません: %w",
+	"resolve identity target dir %s: %w":                                  "ログイン中アカウントの記録の書き込み先のディレクトリ %s を解決できません: %w",
+	"resolve %s artifacts for %s: %w":                                     "%[2]s 用の %[1]s の認証要素を解決できません: %[3]w",
+	"read snapshot credential: %w":                                        "スナップショットの認証情報を読み取れません: %w",
+	"list per-directory stores in %s: %w":                                 "%s にあるディレクトリごとのストアを一覧できません: %w",
+	"create per-directory store root: %w":                                 "ディレクトリごとのストアのルートを作成できません: %w",
+	"list per-directory stores: %w":                                       "ディレクトリごとのストアを一覧できません: %w",
+	"prepare %s-mode dir for %s: %w":                                      "%[2]s の %[1]s モードのディレクトリを準備できません: %[3]w",
+	"stat link item %s: %w":                                               "リンクする項目 %s の状態を取得できません: %w",
+	"refresh link %s: %w":                                                 "リンク %s を張り直せません: %w",
+	"link item %s: %w":                                                    "項目 %s をリンクできません: %w",
+	"create shared dir: %w":                                               "shared ディレクトリを作成できません: %w",
+	"read real %s home: %w":                                               "%s の実ホームを読み取れません: %w",
+	"read bind dir %s: %w":                                                "ストアのディレクトリ %s を読み取れません: %w",
+	"retract shared link %s: %w":                                          "共有リンク %s を取り除けません: %w",
+	"create tree store: %w":                                               "ツリーモードのストアを作成できません: %w",
+	"create isolated config dir: %w":                                      "独立モードの設定ディレクトリを作成できません: %w",
+	"swap shared credential for %s: %w":                                   "%s の共有の認証情報を差し替えられません: %w",
+	"prepare isolated config for %s/%s: %w":                               "%s/%s の独立モードの設定を準備できません: %w",
+	"prepare tree store for %s/%s: %w":                                    "%s/%s のツリーモードのストアを準備できません: %w",
+	"update %s: %w":                                                       "%s を更新できません: %w",
+	"resolve the current directory for --purge: %w":                       "--purge のために現在のディレクトリを解決できません: %w",
+	"create mise conf.d dir: %w":                                          "mise の conf.d ディレクトリを作成できません: %w",
+	"%s has no [env] block; cannot place companion bindings":              "%s に [env] ブロックがないため、周辺ツールの固定の内容を書き込めません",
 
 	// kae preservation.
 	"unknown preservation action %q": "不明な preservation の操作です: %q",
@@ -208,6 +312,23 @@ var jaErrors = map[string]string{
 	"kae cd moves the shell only through the kae shell function, which eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it, run: cd \"$(kae ls %s)\"": "kae cd がシェルを移動できるのは kae のシェル関数を通したときだけです。この関数は eval \"$(kae completion zsh)\"（bash も同様。fish は kae completion fish | source）か mise のフックが定義します。関数がない場合は cd \"$(kae ls %s)\" を実行してください",
 	"kae %s prints no report; for a place's path as JSON, run: kae ls <target> --current --json":                                                                                                                          "kae %s はレポートを出力しません。場所のパスを JSON で得るには kae ls <target> --current --json を実行してください",
 	"%s does not exist (kae ls marks it (missing))": "%s は存在しません（kae ls では (missing) と表示されます）",
+	"--at takes a place number from 1, got %q":      "--at には 1 以上の場所の番号を指定してください（指定値: %q）",
+	// candidates.go and open.go: why a request lists candidates rather than
+	// choosing one, the not_found of an empty set, and the picker's own failure.
+	"%s; choose one:%s":     "%s。1 つ選んでください:%s",
+	"kae %s needs a target": "kae %s には対象が必要です",
+	"%s needs a terminal to open the picker; it lists %d place":  "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s needs a terminal to open the picker; it lists %d places": "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s lists no place": "%s に該当する場所はありません",
+	"%s lists %d place, and no existing place to choose":  "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s lists %d places, and no existing place to choose": "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s, and no existing place to choose":                 "%s。存在していて選べる場所はありません",
+	"kae %s %s matches %d place":                          "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s matches %d places":                         "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s has no current place here":                 "ここには kae %s %s の現在の場所がありません",
+	"kae %s --%s needs a tool: %d tools are bound here":   "kae %s --%s にはツールが必要です: ここで固定しているツールは %d 個です",
+	"kae %s --%s needs a tool: no tool is bound here":     "kae %s --%s にはツールが必要です: ここで固定しているツールはありません",
+	"%v":              "%v",
 	"%s %s: %v":       "%s %s: %v",
 	"%s %s exited %d": "%s %s が終了コード %d で終了しました",
 
@@ -228,6 +349,7 @@ var jaErrors = map[string]string{
 	"conflicting completion registrations; select a shell with completion --install":  "補完の登録が競合しています。completion --install でシェルを選んでください",
 	"completion changed during migration; resolve the migration record manually":      "移行中に補完が変更されました。移行記録を手動で解決してください",
 	"global mise config is invalid after removing completion; resolve it manually":    "補完を取り除いた後のグローバル mise の設定ファイルが不正です。手動で解決してください",
+	"write completion failed: %w; source restore failed: %v":                          "補完を書き込めません: %w。移行元のファイルも復元できませんでした: %v",
 
 	// Installation and kae uninstall.
 	"__install requires --yes --destination <absolute path> --source-kind <release|local_build>": "__install には --yes --destination <absolute path> --source-kind <release|local_build> が必要です",
@@ -236,4 +358,189 @@ var jaErrors = map[string]string{
 	"direct installation ownership could not be verified":                                        "直接インストールの所有者を確認できませんでした",
 	"uninstall requires --yes outside an interactive terminal; inspect with --dry-run first":     "対話できる端末の外でアンインストールするには --yes が必要です。先に --dry-run で確認してください",
 	"uninstall was not confirmed":                                                                "アンインストールは確認されませんでした",
+	"directory must be a nonempty single-line path":                                              "ディレクトリには空でない 1 行のパスを指定してください",
+
+	// Loading and validating the config (internal/config/config.go, writer.go).
+	"read config: %w":  "設定ファイルを読み取れません: %w",
+	"parse config: %w": "設定ファイルを解析できません: %w",
+	"config key %q was renamed to %q in v0.8.0 (pre-1.0 hard break; rename it)":            "設定ファイルのキー %q は v0.8.0 で %q に名前が変わりました（1.0 より前の互換性のない変更です）。キーの名前を変えてください",
+	"config key %q was removed in v0.8.0; to bind directories instead, run: kae pin -s|-i": "設定ファイルのキー %q は v0.8.0 で削除されました。代わりにディレクトリを固定する場合は kae pin -s|-i を実行してください",
+	"config version %d is newer than supported %d":                                         "設定ファイルのバージョン %d は、対応しているバージョン %d より新しいです",
+	"security.preservation_max_bytes must be >= 1":                                         "security.preservation_max_bytes は 1 以上にしてください",
+	"security.backup_keep must be >= 1":                                                    "security.backup_keep は 1 以上にしてください",
+	"unknown tool %q in [tools]":                                                           "[tools] に不明なツール %q があります",
+	"tools.%s.shared_denylist_extra item %q is not a bare file name":                       "tools.%s.shared_denylist_extra の項目 %q は、ディレクトリを含まないファイル名ではありません",
+	"tools.%s.shared_denylist_extra: %q is already on the hard-coded denylist":             "tools.%s.shared_denylist_extra: %q は組み込みの除外リストにすでに含まれています",
+	"tools.%s.isolated_shared_items item %q is not a bare file name":                       "tools.%s.isolated_shared_items の項目 %q は、ディレクトリを含まないファイル名ではありません",
+	"tools.%s.isolated_shared_items must not share the %s %q; remove it — kae keeps that file " +
+		"private to the directory so it can be a different account than the real home": "tools.%s.isolated_shared_items で%s（%q）は共有できません。kae はこのファイルをディレクトリ専用に保ち、実ホームとは別のアカウントにできるようにしているため、この項目を取り除いてください",
+	"auth credential": "認証情報",
+	"identity cache":  "ログイン中アカウントの記録",
+	"tools.%s.driver is only valid for claude":                   "tools.%s.driver は claude にだけ指定できます",
+	"tools.claude.driver %q is invalid (only %q is supported)":   "tools.claude.driver の値 %q は不正です（対応しているのは %q だけです）",
+	"profile %q maps unknown tool %q":                            "プロファイル %q が不明なツール %q を割り当てています",
+	"profile %q maps tool %q to invalid account name %q":         "プロファイル %q がツール %q に不正なアカウント名 %q を割り当てています",
+	"profile %q maps unknown companion %q":                       "プロファイル %q が不明な周辺ツール %q を割り当てています",
+	"profile %q companion %q has invalid knob name %q":           "プロファイル %q の周辺ツール %q に不正な設定項目名 %q があります",
+	"profile %q companion %q knob %q value has a newline or NUL": "プロファイル %q の周辺ツール %q の設定項目 %q の値に改行か NUL が含まれています",
+	"default_profile %q is not defined under [profiles]":         "default_profile に指定した %q は [profiles] に定義されていません",
+	"parse config for editing: %w":                               "編集する設定ファイルを解析できません: %w",
+	"format config: %w":                                          "設定ファイルを整形できません: %w",
+
+	// Installation receipts and the running image (internal/installation).
+	"binary installed; receipt finalization failed; reinstall to repair: %w": "バイナリはインストールしましたが、インストール記録を確定できませんでした。再インストールして修復してください: %w",
+	"binary removed; receipt history could not be finalized":                 "バイナリは削除しましたが、インストール記録の履歴を確定できませんでした",
+	"inspect running image: %w":                                              "実行中のバイナリを調べられません: %w",
+	"running image mapping is unavailable":                                   "実行中のバイナリのメモリ上の対応付けを取得できません",
+
+	// Lock files (internal/lock).
+	"create lock dir: %w": "ロックのディレクトリを作成できません: %w",
+	"open lock file: %w":  "ロックファイルを開けません: %w",
+	"flock: %w":           "flock でロックを取得できません: %w",
+	// internal/account.
+	"create account dir: %w":      "アカウントのディレクトリを作成できません: %w",
+	"encode account metadata: %w": "アカウントのメタデータをエンコードできません: %w",
+
+	// internal/backup.
+	"create backups dir: %w":       "バックアップのディレクトリを作成できません: %w",
+	"parse backup %s: %w":          "バックアップ %s を解析できません: %w",
+	"delete backup payload %s: %w": "バックアップの保存データ %s を削除できません: %w",
+
+	// internal/envprofile.
+	"create env profile dir: %w": "環境変数プロファイルのディレクトリを作成できません: %w",
+	"encode env profile: %w":     "環境変数プロファイルをエンコードできません: %w",
+	"delete env value %s: %w":    "環境変数 %s の値を削除できません: %w",
+	"read env value %s: %w":      "環境変数 %s の値を読み取れません: %w",
+	"env value %s is missing from the secret store; run: kae env set": "環境変数 %s の値がシークレットストアにありません。kae env set を実行してください",
+
+	// internal/state.
+	"read state: %w":       "状態ファイルを読み取れません: %w",
+	"parse state: %w":      "状態ファイルを解析できません: %w",
+	"create state dir: %w": "状態ファイルのディレクトリを作成できません: %w",
+
+	// internal/keychain: the `security` command and its exit code stay verbatim,
+	// and so does its stderr snippet.
+	"security find-generic-password %q failed (exit %d)":              "security find-generic-password %q が失敗しました（終了コード %d）",
+	"security find-generic-password %q (account %q) failed (exit %d)": "security find-generic-password %q（アカウント %q）が失敗しました（終了コード %d）",
+	"security add-generic-password %q failed (exit %d): %s":           "security add-generic-password %q が失敗しました（終了コード %d）: %s",
+	"security delete-generic-password %q failed (exit %d): %s":        "security delete-generic-password %q が失敗しました（終了コード %d）: %s",
+
+	// internal/secret.
+	"%w: keychain backend requires macOS":                                                                         "%w: キーチェーンは macOS でしか使えません",
+	"%w: secret-tool not found in PATH (install libsecret tools)":                                                 "%w: PATH に secret-tool が見つかりません（libsecret のツールをインストールしてください）",
+	"%w: no OS credential store found; install libsecret tools or opt in with security.secret_backend = \"file\"": "%w: OS の認証ストアが見つかりません。libsecret のツールをインストールするか、security.secret_backend = \"file\" を設定してファイルへの保存を選んでください",
+	"unknown secret_backend %q":                                                                                   "secret_backend の値 %q は不明です",
+	"%s entry %s is not kagikae-encoded: %w":                                                                      "%s の項目 %s は kagikae の形式でエンコードされていません: %w",
+	"invalid secret key %q":                                                                                       "シークレットのキー %q が不正です",
+	"create secret dir: %w":                                                                                       "シークレットのディレクトリを作成できません: %w",
+	"security find-generic-password failed (exit %d)":                                                             "security find-generic-password が失敗しました（終了コード %d）",
+	"security add-generic-password failed (exit %d): %s":                                                          "security add-generic-password が失敗しました（終了コード %d）: %s",
+	"security delete-generic-password failed (exit %d)":                                                           "security delete-generic-password が失敗しました（終了コード %d）",
+	"secret-tool lookup failed (exit %d): %s":                                                                     "secret-tool lookup が失敗しました（終了コード %d）: %s",
+	"secret-tool store failed (exit %d): %s":                                                                      "secret-tool store が失敗しました（終了コード %d）: %s",
+	"secret-tool clear failed (exit %d): %s":                                                                      "secret-tool clear が失敗しました（終了コード %d）: %s",
+	"secret-tool search failed (exit %d): %s":                                                                     "secret-tool search が失敗しました（終了コード %d）: %s",
+
+	// internal/patch: atomic writes, and diagnostics of a malformed JSON or
+	// JSONC document a tool wrote, which reach a person inside the artifact and
+	// adapter errors that wrap them.
+	"create temp file: %w":                   "一時ファイルを作成できません: %w",
+	"chmod temp file: %w":                    "一時ファイルの権限を変更できません: %w",
+	"write temp file: %w":                    "一時ファイルに書き込めません: %w",
+	"sync temp file: %w":                     "一時ファイルをディスクに同期できません: %w",
+	"close temp file: %w":                    "一時ファイルを閉じられません: %w",
+	"rename temp file: %w":                   "一時ファイルの名前を変更できません: %w",
+	"not a directory: %s":                    "ディレクトリではありません: %s",
+	"parse json: %w":                         "JSON を解析できません: %w",
+	"parse jsonc: %w":                        "JSONC を解析できません: %w",
+	"unexpected value after top-level value": "最上位の値の後に余分な値があります",
+	"object member name is not a string":     "オブジェクトのメンバー名が文字列ではありません",
+	"duplicate object member %q":             "オブジェクトのメンバー %q が重複しています",
+	"object closed by %q":                    "オブジェクトが %q で閉じられています",
+	"array closed by %q":                     "配列が %q で閉じられています",
+	"unexpected delimiter %q":                "予期しない区切り文字 %q があります",
+	"invalid json pointer %q":                "JSON ポインター %q が不正です",
+	"invalid json pointer escape in %q":      "JSON ポインター %q のエスケープが不正です",
+	"pointer value: %w":                      "ポインターに設定する値が不正です: %w",
+	"document root is not a json object":     "ドキュメントの最上位が JSON オブジェクトではありません",
+	"pointer %s parent does not exist":       "ポインター %s の親が存在しません",
+	"pointer %s traverses a non-object":      "ポインター %s がオブジェクトでない値をたどっています",
+	"patch json pointer %s: %w":              "JSON ポインター %s を書き換えられません: %w",
+
+	// internal/picker.
+	"picker: %w":                      "ピッカー: %w",
+	"picker: unexpected final model":  "ピッカー: 終了時のモデルが想定外です",
+	"picker: exited without a choice": "ピッカー: 選択しないまま終了しました",
+	// Wrappers that name the failed step before an external cause, shared by the
+	// packages below internal/cmd (docs/L10N-JA.md, 原因のつなぎ方).
+	"read %s: %w":           "%s を読み取れません: %w",
+	"parse %s: %w":          "%s を解析できません: %w",
+	"remove %s: %w":         "%s を削除できません: %w",
+	"create dir for %s: %w": "%s のディレクトリを作成できません: %w",
+
+	// adapter.go.
+	"no adapter for tool %q": "ツール %q のアダプターがありません",
+
+	// agy.go.
+	"no active Google account in %s": "%s に有効な Google アカウントがありません",
+
+	// claude.go.
+	"%w: %s is set to an empty value, which collapses every config dir onto claude's one global credential item (unset it to let kae manage claude)": "%w: %s が空の値に設定されているため、すべての設定ディレクトリが claude のグローバルな認証情報の項目 1 つを共有してしまいます（kae に claude を管理させるには、この環境変数の設定を解除してください）",
+	"%w: %s is set, which renames claude's keychain item and identity file (unset it to let kae manage claude)":                                      "%w: %s が設定されているため、claude のキーチェーン項目とアカウント記録のファイルの名前が変わります（kae に claude を管理させるには、この環境変数の設定を解除してください）",
+	"%w: %s=%q is invalid (only %q is supported)":      "%w: %s=%q は不正な値です（対応しているのは %q だけです）",
+	"%w: claude auth switching is not supported on %s": "%w: %s では claude の認証の切替に対応していません",
+	"no oauthAccount.emailAddress in %s":               "%s に oauthAccount.emailAddress がありません",
+
+	// codex.go.
+	"%w: codex [features] secret_auth_storage keeps the credential in an encrypted secrets file, not the %q keychain item":               "%w: codex の [features] secret_auth_storage は、認証情報をキーチェーン項目 %q ではなく暗号化されたシークレットのファイルに保存します",
+	"%w: codex cli_auth_credentials_store = %q keeps the credential in the OS keyring, which kae can only read on macOS (this is %s)":    "%w: codex の cli_auth_credentials_store = %q は認証情報を OS のキーリングに保存しますが、kae がキーリングを読み取れるのは macOS だけです（この環境は %s です）",
+	"%w: codex cli_auth_credentials_store = %q keeps the credential in memory for one process, so there is nothing to capture or switch": "%w: codex の cli_auth_credentials_store = %q は認証情報を 1 つのプロセスのメモリにだけ保持するため、登録や切替の対象がありません",
+	"%w: codex cli_auth_credentials_store = %q is not one of %q, %q, %q, %q":                                                             "%w: codex の cli_auth_credentials_store = %q は %q、%q、%q、%q のいずれでもありません",
+	"no %s keychain item for this codex home":     "この codex ホームに対応する %s のキーチェーン項目がありません",
+	"no id_token email claim or account_id in %s": "%s に id_token の email クレームも account_id もありません",
+
+	// copilot.go.
+	"parse %s%s: %w":    "%s%s を解析できません: %w",
+	"no %s in %s":       "%[2]s に %[1]s がありません",
+	"no %s/login in %s": "%[2]s に %[1]s/login がありません",
+
+	// cursor.go.
+	"%w: cursor auth switching is not supported on %s yet (credential switching is verified on macOS only)": "%w: %s ではまだ cursor の認証の切替に対応していません（認証情報の切替を確認しているのは macOS だけです）",
+	"cursor-agent status failed (exit %d): %s":                                                              "cursor-agent status が失敗しました（終了コード %d）: %s",
+	"cursor-agent status did not report a logged-in account":                                                "cursor-agent status がログイン中のアカウントを報告しませんでした",
+	"cursor-agent status reported an empty account":                                                         "cursor-agent status が空のアカウントを報告しました",
+
+	// opencode.go.
+	"no openai email claim or accountId in %s": "%s に openai の email クレームも accountId もありません",
+
+	// artifact.go: the live-state primitives and their structure guards.
+	"%w: keychain item %q is identified by service and account, but this record carries no account; refusing to touch the service as a whole": "%w: キーチェーン項目 %q はサービスとアカウントで識別されますが、この記録にはアカウントがありません。サービス全体には触れません",
+	"%w: keychain item %q payload is empty":                       "%w: キーチェーン項目 %q の内容が空です",
+	"%w: keychain item %q payload is not a single line":           "%w: キーチェーン項目 %q の内容が 1 行ではありません",
+	"%w: keychain item %q payload is not the expected JSON shape": "%w: キーチェーン項目 %q の内容が想定した JSON の形ではありません",
+	"%w: %s is not a JSON object (%v)":                            "%w: %s が JSON オブジェクトではありません（%v）",
+	"unknown artifact kind %q":                                    "不明な認証要素の種類です: %q",
+	"%w: refusing to touch %s (unresolvable symlink: %v)":         "%w: %s には触れません（解決できない symlink: %v）",
+	"%w: refusing to rewrite %s (%v)":                             "%w: %s を書き換えません（%v）",
+
+	// Sentinel errors: errors.Is targets, shown alone or as the head of a message
+	// that wraps them with %w.
+	"unsupported":                                                     "対応していません",
+	"unsafe operation refused":                                        "安全でない操作を拒否しました",
+	"secret store unavailable":                                        "シークレットストアを使えません",
+	"lock busy":                                                       "ロックが競合しています",
+	"credential store is not per-directory":                           "認証ストアがディレクトリごとに分かれていません",
+	"integration changed; preview again":                              "連携先のファイルが変更されました。もう一度プレビューしてください",
+	"integration is not a supported regular file":                     "連携先が対応している通常のファイルではありません",
+	"installation ownership is unsafe":                                "インストールの所有者が安全な状態ではありません",
+	"installation receipt is invalid or unsupported":                  "インストール記録が不正か、対応していない形式です",
+	"installation receipt is incomplete":                              "インストール記録が不完全です",
+	"installed image no longer matches its receipt":                   "インストールしたバイナリがインストール記録と一致しなくなっています",
+	"preservation payload budget exceeded":                            "保全記録の保存データが上限を超えています",
+	"preservation record not found":                                   "保全記録が見つかりません",
+	"preservation inventory needs repair":                             "保全記録の一覧に修復が必要です",
+	"invalid preservation id":                                         "保全記録の ID が不正です",
+	"preservation retention would delete the selected restore record": "保全記録の保持上限により、復元に選んだ記録が削除されることになります",
+	"preservation mapping changed":                                    "保全対象の対応関係が変わりました",
+	"preservation credential changed":                                 "保全対象の認証情報が変わりました",
 }

@@ -150,11 +150,11 @@ func configuredStore(env adapter.Env) (string, error) {
 		return storeFile, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", l10n.Errorf("read %s: %w", path, err)
 	}
 	var cfg codexConfig
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, err)
 	}
 	store := cfg.Store
 	if store == "" {
@@ -169,7 +169,7 @@ func configuredStore(env adapter.Env) (string, error) {
 		// credential is not in the `Codex Auth` item at all. Refuse rather than
 		// switch an item nothing reads. (Upstream default: off except on Windows.)
 		if cfg.Features.SecretAuthStorage {
-			return "", fmt.Errorf(
+			return "", l10n.Errorf(
 				"%w: codex [features] secret_auth_storage keeps the credential in an encrypted secrets file, not the %q keychain item",
 				adapter.ErrUnsupported, KeychainService,
 			)
@@ -181,19 +181,19 @@ func configuredStore(env adapter.Env) (string, error) {
 		// driver() uses for an unsupported platform. `auto` stays supported: it
 		// resolves to auth.json, which is where codex falls back with no keyring.
 		if store == storeKeyring && env.GOOS != "darwin" {
-			return "", fmt.Errorf(
+			return "", l10n.Errorf(
 				"%w: codex cli_auth_credentials_store = %q keeps the credential in the OS keyring, which kae can only read on macOS (this is %s)",
 				adapter.ErrUnsupported, storeKeyring, env.GOOS,
 			)
 		}
 		return store, nil
 	case storeEphemeral:
-		return "", fmt.Errorf(
+		return "", l10n.Errorf(
 			"%w: codex cli_auth_credentials_store = %q keeps the credential in memory for one process, so there is nothing to capture or switch",
 			adapter.ErrUnsupported, storeEphemeral,
 		)
 	default:
-		return "", fmt.Errorf(
+		return "", l10n.Errorf(
 			"%w: codex cli_auth_credentials_store = %q is not one of %q, %q, %q, %q",
 			adapter.ErrUnsupported, store, storeFile, storeKeyring, storeAuto, storeEphemeral,
 		)
@@ -333,13 +333,13 @@ func authBytes(ctx context.Context, env adapter.Env) ([]byte, string, error) {
 			return nil, sp.Target, err
 		}
 		if !found {
-			return nil, sp.Target, fmt.Errorf("no %s keychain item for this codex home", sp.Target)
+			return nil, sp.Target, l10n.Errorf("no %s keychain item for this codex home", sp.Target)
 		}
 		return data, sp.Target, nil
 	}
 	data, err := os.ReadFile(sp.Target)
 	if err != nil {
-		return nil, sp.Target, fmt.Errorf("read %s: %w", sp.Target, err)
+		return nil, sp.Target, l10n.Errorf("read %s: %w", sp.Target, err)
 	}
 	return data, sp.Target, nil
 }
@@ -360,7 +360,7 @@ func (Codex) Identity(ctx context.Context, env adapter.Env) (string, error) {
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", fmt.Errorf("parse %s: %w", source, err)
+		return "", l10n.Errorf("parse %s: %w", source, err)
 	}
 	if email := jwtEmailClaim(doc.Tokens.IDToken); email != "" {
 		return email, nil
@@ -368,7 +368,7 @@ func (Codex) Identity(ctx context.Context, env adapter.Env) (string, error) {
 	if doc.Tokens.AccountID != "" {
 		return doc.Tokens.AccountID, nil
 	}
-	return "", fmt.Errorf("no id_token email claim or account_id in %s", source)
+	return "", l10n.Errorf("no id_token email claim or account_id in %s", source)
 }
 
 // jwtEmailClaim decodes a JWT's payload and returns its "email" claim, or "".

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -145,7 +144,7 @@ type Value struct {
 // live — so it is refused at the primitive rather than trusted to callers.
 func keychainIdentified(sp Spec) error {
 	if sp.KeychainMatchAccount && sp.KeychainAccount == "" {
-		return fmt.Errorf("%w: keychain item %q is identified by service and account, "+
+		return l10n.Errorf("%w: keychain item %q is identified by service and account, "+
 			"but this record carries no account; refusing to touch the service as a whole",
 			ErrUnsafe, sp.Target)
 	}
@@ -162,18 +161,18 @@ func keychainIdentified(sp Spec) error {
 func keychainGuard(sp Spec, payload []byte) error {
 	if sp.Pointer == "" {
 		if len(payload) == 0 {
-			return fmt.Errorf("%w: keychain item %q payload is empty", ErrUnsafe, sp.Target)
+			return l10n.Errorf("%w: keychain item %q payload is empty", ErrUnsafe, sp.Target)
 		}
 		// Opaque credentials kae handles are single-line raw tokens (Cursor's
 		// bare JWT, agy's antigravity token); an interior newline signals a
 		// corrupted or wrong payload, so refuse it rather than write it back.
 		if bytes.ContainsAny(payload, "\r\n") {
-			return fmt.Errorf("%w: keychain item %q payload is not a single line", ErrUnsafe, sp.Target)
+			return l10n.Errorf("%w: keychain item %q payload is not a single line", ErrUnsafe, sp.Target)
 		}
 		return nil
 	}
 	if _, ok, err := patch.GetPointer(payload, sp.Pointer); err != nil || !ok {
-		return fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
+		return l10n.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
 	}
 	return nil
 }
@@ -187,7 +186,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 			return Value{}, nil
 		}
 		if err != nil {
-			return Value{}, fmt.Errorf("read %s: %w", sp.Target, err)
+			return Value{}, l10n.Errorf("read %s: %w", sp.Target, err)
 		}
 		return Value{Data: data, Present: true}, nil
 
@@ -197,7 +196,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 			return Value{}, nil
 		}
 		if err != nil {
-			return Value{}, fmt.Errorf("read %s: %w", sp.Target, err)
+			return Value{}, l10n.Errorf("read %s: %w", sp.Target, err)
 		}
 		var raw []byte
 		var found bool
@@ -207,7 +206,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 			raw, found, err = patch.GetPointer(doc, sp.Pointer)
 		}
 		if err != nil {
-			return Value{}, fmt.Errorf("%w: %s is not a JSON object (%v)", ErrUnsafe, sp.Target, err)
+			return Value{}, l10n.Errorf("%w: %s is not a JSON object (%v)", ErrUnsafe, sp.Target, err)
 		}
 		if !found {
 			return Value{}, nil
@@ -241,7 +240,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		return Value{Data: payload, Present: true}, nil
 
 	default:
-		return Value{}, fmt.Errorf("unknown artifact kind %q", sp.Kind)
+		return Value{}, l10n.Errorf("unknown artifact kind %q", sp.Kind)
 	}
 }
 
@@ -251,12 +250,12 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 	case constants.KindFile:
 		if !v.Present {
 			if err := os.Remove(sp.Target); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("remove %s: %w", sp.Target, err)
+				return l10n.Errorf("remove %s: %w", sp.Target, err)
 			}
 			return nil
 		}
 		if err := os.MkdirAll(filepath.Dir(sp.Target), 0o700); err != nil {
-			return fmt.Errorf("create dir for %s: %w", sp.Target, err)
+			return l10n.Errorf("create dir for %s: %w", sp.Target, err)
 		}
 		return patch.WriteFileAtomic(sp.Target, v.Data, patch.CredentialFileMode)
 
@@ -282,7 +281,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			if !v.Present && errors.Is(rerr, fs.ErrNotExist) {
 				return nil
 			}
-			return fmt.Errorf("%w: refusing to touch %s (unresolvable symlink: %v)", ErrUnsafe, target, rerr)
+			return l10n.Errorf("%w: refusing to touch %s (unresolvable symlink: %v)", ErrUnsafe, target, rerr)
 		}
 		doc, err := os.ReadFile(target)
 		switch {
@@ -292,7 +291,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			}
 			doc = []byte("{}")
 		case err != nil:
-			return fmt.Errorf("read %s: %w", target, err)
+			return l10n.Errorf("read %s: %w", target, err)
 		}
 		var updated []byte
 		switch {
@@ -306,10 +305,10 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			updated, err = patch.DeletePointer(doc, sp.Pointer)
 		}
 		if err != nil {
-			return fmt.Errorf("%w: refusing to rewrite %s (%v)", ErrUnsafe, target, err)
+			return l10n.Errorf("%w: refusing to rewrite %s (%v)", ErrUnsafe, target, err)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create dir for %s: %w", target, err)
+			return l10n.Errorf("create dir for %s: %w", target, err)
 		}
 		return patch.WriteFileAtomic(target, updated, patch.CredentialFileMode)
 
@@ -359,6 +358,6 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return keychain.WriteItem(ctx, sp.Target, account, v.Data)
 
 	default:
-		return fmt.Errorf("unknown artifact kind %q", sp.Kind)
+		return l10n.Errorf("unknown artifact kind %q", sp.Kind)
 	}
 }

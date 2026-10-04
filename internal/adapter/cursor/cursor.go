@@ -7,7 +7,6 @@ package cursor
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -67,7 +66,7 @@ func driver(env adapter.Env) (string, error) {
 	if env.GOOS == "darwin" {
 		return constants.DriverCursorKeychain, nil
 	}
-	return "", fmt.Errorf("%w: cursor auth switching is not supported on %s yet (credential switching is verified on macOS only)",
+	return "", l10n.Errorf("%w: cursor auth switching is not supported on %s yet (credential switching is verified on macOS only)",
 		adapter.ErrUnsupported, env.GOOS)
 }
 
@@ -139,18 +138,18 @@ const statusLoginMarker = "Logged in as "
 func (Cursor) Identity(ctx context.Context, _ adapter.Env) (string, error) {
 	stdout, stderr, code := runner.Run(ctx, binaryName, "status")
 	if code != 0 {
-		return "", fmt.Errorf("cursor-agent status failed (exit %d): %s", code, runner.Snippet(stderr))
+		return "", l10n.Errorf("cursor-agent status failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	_, rest, found := strings.Cut(stdout, statusLoginMarker)
 	if !found {
-		return "", fmt.Errorf("cursor-agent status did not report a logged-in account")
+		return "", l10n.Errorf("cursor-agent status did not report a logged-in account")
 	}
 	if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
 		rest = rest[:nl] // the identity is the remainder of that line
 	}
 	identity := strings.TrimSpace(rest)
 	if identity == "" {
-		return "", fmt.Errorf("cursor-agent status reported an empty account")
+		return "", l10n.Errorf("cursor-agent status reported an empty account")
 	}
 	return identity, nil
 }

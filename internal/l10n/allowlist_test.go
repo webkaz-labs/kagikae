@@ -38,14 +38,6 @@ var notLocalized = map[string]string{
 // (docs/ROADMAP.md, localization stage 5).
 var unmigrated = map[string]pendingCounts{
 	"internal/account/account.go":           {error: 3},
-	"internal/adapter/adapter.go":           {error: 1},
-	"internal/adapter/agy/agy.go":           {error: 3},
-	"internal/adapter/claude/claude.go":     {error: 7},
-	"internal/adapter/codex/codex.go":       {error: 10},
-	"internal/adapter/copilot/copilot.go":   {error: 5},
-	"internal/adapter/cursor/cursor.go":     {error: 4},
-	"internal/adapter/opencode/opencode.go": {error: 3},
-	"internal/artifact/artifact.go":         {error: 15},
 	"internal/backup/backup.go":             {error: 3},
 	"internal/cmd/account.go":               {sink: 4, print: 7, error: 9},
 	"internal/cmd/app.go":                   {flag: 12, error: 6},

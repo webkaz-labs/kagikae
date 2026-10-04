@@ -6,7 +6,6 @@ package adapter
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -172,7 +171,7 @@ func Register(a Adapter) { registry[a.ID()] = a }
 func ForTool(id string) (Adapter, error) {
 	a, ok := registry[id]
 	if !ok {
-		return nil, fmt.Errorf("no adapter for tool %q", id)
+		return nil, l10n.Errorf("no adapter for tool %q", id)
 	}
 	return a, nil
 }

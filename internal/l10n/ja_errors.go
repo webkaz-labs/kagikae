@@ -237,6 +237,58 @@ var jaErrors = map[string]string{
 	"uninstall requires --yes outside an interactive terminal; inspect with --dry-run first":     "対話できる端末の外でアンインストールするには --yes が必要です。先に --dry-run で確認してください",
 	"uninstall was not confirmed":                                                                "アンインストールは確認されませんでした",
 
+	// Wrappers that name the failed step before an external cause, shared by the
+	// packages below internal/cmd (docs/L10N-JA.md, 原因のつなぎ方).
+	"read %s: %w":           "%s を読み取れません: %w",
+	"parse %s: %w":          "%s を解析できません: %w",
+	"remove %s: %w":         "%s を削除できません: %w",
+	"create dir for %s: %w": "%s のディレクトリを作成できません: %w",
+
+	// adapter.go.
+	"no adapter for tool %q": "ツール %q のアダプターがありません",
+
+	// agy.go.
+	"no active Google account in %s": "%s に有効な Google アカウントがありません",
+
+	// claude.go.
+	"%w: %s is set to an empty value, which collapses every config dir onto claude's one global credential item (unset it to let kae manage claude)": "%w: %s が空の値に設定されているため、すべての設定ディレクトリが claude のグローバルな認証情報の項目 1 つを共有してしまいます（kae に claude を管理させるには、この環境変数の設定を解除してください）",
+	"%w: %s is set, which renames claude's keychain item and identity file (unset it to let kae manage claude)":                                      "%w: %s が設定されているため、claude のキーチェーン項目とアカウント記録のファイルの名前が変わります（kae に claude を管理させるには、この環境変数の設定を解除してください）",
+	"%w: %s=%q is invalid (only %q is supported)":      "%w: %s=%q は不正な値です（対応しているのは %q だけです）",
+	"%w: claude auth switching is not supported on %s": "%w: %s では claude の認証の切替に対応していません",
+	"no oauthAccount.emailAddress in %s":               "%s に oauthAccount.emailAddress がありません",
+
+	// codex.go.
+	"%w: codex [features] secret_auth_storage keeps the credential in an encrypted secrets file, not the %q keychain item":               "%w: codex の [features] secret_auth_storage は、認証情報をキーチェーン項目 %q ではなく暗号化されたシークレットのファイルに保存します",
+	"%w: codex cli_auth_credentials_store = %q keeps the credential in the OS keyring, which kae can only read on macOS (this is %s)":    "%w: codex の cli_auth_credentials_store = %q は認証情報を OS のキーリングに保存しますが、kae がキーリングを読み取れるのは macOS だけです（この環境は %s です）",
+	"%w: codex cli_auth_credentials_store = %q keeps the credential in memory for one process, so there is nothing to capture or switch": "%w: codex の cli_auth_credentials_store = %q は認証情報を 1 つのプロセスのメモリーにだけ保持するため、登録や切替の対象がありません",
+	"%w: codex cli_auth_credentials_store = %q is not one of %q, %q, %q, %q":                                                             "%w: codex の cli_auth_credentials_store = %q は %q、%q、%q、%q のいずれでもありません",
+	"no %s keychain item for this codex home":     "この codex ホームに対応する %s のキーチェーン項目がありません",
+	"no id_token email claim or account_id in %s": "%s に id_token の email クレームも account_id もありません",
+
+	// copilot.go.
+	"parse %s%s: %w":    "%s%s を解析できません: %w",
+	"no %s in %s":       "%[2]s に %[1]s がありません",
+	"no %s/login in %s": "%[2]s に %[1]s/login がありません",
+
+	// cursor.go.
+	"%w: cursor auth switching is not supported on %s yet (credential switching is verified on macOS only)": "%w: %s ではまだ cursor の認証の切替に対応していません（認証情報の切替を確認しているのは macOS だけです）",
+	"cursor-agent status failed (exit %d): %s":                                                              "cursor-agent status が失敗しました（終了コード %d）: %s",
+	"cursor-agent status did not report a logged-in account":                                                "cursor-agent status がログイン中のアカウントを報告しませんでした",
+	"cursor-agent status reported an empty account":                                                         "cursor-agent status が空のアカウントを報告しました",
+
+	// opencode.go.
+	"no openai email claim or accountId in %s": "%s に openai の email クレームも accountId もありません",
+
+	// artifact.go: the live-state primitives and their structure guards.
+	"%w: keychain item %q is identified by service and account, but this record carries no account; refusing to touch the service as a whole": "%w: キーチェーン項目 %q はサービスとアカウントで識別しますが、この記録にはアカウントがありません。サービス全体には触れません",
+	"%w: keychain item %q payload is empty":                       "%w: キーチェーン項目 %q の内容が空です",
+	"%w: keychain item %q payload is not a single line":           "%w: キーチェーン項目 %q の内容が 1 行ではありません",
+	"%w: keychain item %q payload is not the expected JSON shape": "%w: キーチェーン項目 %q の内容が想定した JSON の形ではありません",
+	"%w: %s is not a JSON object (%v)":                            "%w: %s が JSON オブジェクトではありません（%v）",
+	"unknown artifact kind %q":                                    "不明な認証要素の種類です: %q",
+	"%w: refusing to touch %s (unresolvable symlink: %v)":         "%w: %s には触れません（解決できない symlink: %v）",
+	"%w: refusing to rewrite %s (%v)":                             "%w: %s を書き換えません（%v）",
+
 	// Sentinel errors: errors.Is targets, shown alone or as the head of a message
 	// that wraps them with %w.
 	"unsupported":                                                     "対応していません",

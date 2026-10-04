@@ -89,15 +89,19 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    The strings that also reach JSON fields or `kae doctor` checks (an adapter's
    `Detect` warnings, config warnings) stay English inside a localized warning until
    stage 3 converts them with those reports.
-3. The `use`, `pin`, `ls`, `status` and `doctor` reports. The `kae ls` incomplete-metadata
-   line's remedy (`listIssueGuidance`) is composed English and becomes a message value here. `printAccountTable` drops the
-   Identity and Driver columns by comparing English header strings, so translate the
-   headers after the columns are chosen, and test `--full` under Japanese.
+3. The `use`, `pin`, `ls`, `status` and `doctor` reports, in this order:
+   a shared base first (the stdout report sink, a value type for `Check.Message` and
+   the `Warnings` fields that renders English in JSON, and `printAccountTable`
+   choosing its columns by identifier before the headers are translated, with `--full`
+   tested under Japanese), then the `use`, `pin`/`ls`, `status`/`doctor` and adapter
+   slices. `listIssueGuidance` belongs to `kae backup list` and `kae preservation
+   list`, not `kae ls`: stage 4 takes it. The second allowlist's counts may rise while
+   the value type lands, and fall to zero for these files by the end of the stage.
 4. The remaining human output, including the messages that still take an already
    composed English sentence as an argument (the `why` of the snapshot-unchanged
    warnings); the catalog test cannot see them, so each
    becomes a message value or a set of constant formats before its stage ships.
-   Stage 2 takes the ones inside `kae: warning:` lines. The `fmt.Errorf` and
+   Stage 2 takes the ones inside `kae: warning:` lines. `candidates.go`'s `errf(..., "%v", err)` hands an error to a sink that renders it verbatim: pass it through `l10n.Of` when it becomes a value. The `fmt.Errorf` and
    `errors.New` errors in `internal/cmd` or below that no earlier stage made values
    become values here; until then they reach the `kae:` line in English.
 5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.

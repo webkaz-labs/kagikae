@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strconv"
 	"sync"
@@ -166,7 +165,7 @@ func (app *App) assumptionAgeChecks(toolFilter string) []adapter.Check {
 			// which is the failure mode the upstream_version parser already has.
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckUpstreamVersion, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"kae cannot read when %s's behaviour assumptions were last verified (%q is not YYYY-MM-DD), so their age is unknown",
 					tool, ad.VerifiedOn(),
 				),
@@ -179,7 +178,7 @@ func (app *App) assumptionAgeChecks(toolFilter string) []adapter.Check {
 		}
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckUpstreamVersion, Status: constants.StatusWarn,
-			Message: fmt.Sprintf(
+			Message: msgf(
 				"kae's %s behaviour assumptions were last verified on %s (%d days ago) and nothing has re-checked them since; the version signal only fires when %s is upgraded, so re-verify the rows in docs/VALIDATION.md \"Upstream Behaviour Assumptions\"",
 				tool, ad.VerifiedOn(), int(age.Hours()/24), tool,
 			),
@@ -200,7 +199,7 @@ func upstreamVersionCheck(tool, output, verified string) (adapter.Check, bool) {
 	}
 	return adapter.Check{
 		Tool: tool, Code: constants.CheckUpstreamVersion, Status: constants.StatusWarn,
-		Message: fmt.Sprintf(
+		Message: msgf(
 			"installed %s %s is past %s, the version kae's behaviour assumptions were last verified against; the layout guards still pass when only the behaviour changed (a field the tool stops maintaining, a cache it stops refreshing), so re-verify the assumptions in docs/VALIDATION.md \"Upstream Behaviour Assumptions\"",
 			tool, rawLive, verified,
 		),

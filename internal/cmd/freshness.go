@@ -3,9 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -113,20 +111,20 @@ const reloginLeadTime = 7 * 24 * time.Hour
 // add a case rather than change this signature. Only a credential that cannot log
 // in at all makes the switch unusable, and that is the one the caller's roll-up
 // line counts; a switch to an account with five days left works today.
-func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg, state string, err error) {
+func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg message, state string, err error) {
 	info, err := app.accountFreshness(ctx, be, acc)
 	if err != nil {
-		return "", "", err
+		return message{}, "", err
 	}
 	now := app.Now()
 	cred := credentialStateAt(info, now)
 	switch cred.State {
 	case constants.CredentialStale:
-		return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), cred.State, nil
+		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name)), cred.State, nil
 	case constants.CredentialExpiring:
-		return "snapshot credential " + expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name), cred.State, nil
+		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)), cred.State, nil
 	}
-	return "", cred.State, nil
+	return message{}, cred.State, nil
 }
 
 // credentialState is one account's snapshot freshness as the inventory commands
@@ -320,9 +318,8 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 }
 
 // staleCredentialDetail combines the observed deadline with global login guidance.
-func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
-	reason := staleCredentialReason(info, tool)
-	return fmt.Sprintf("%s; %s", reason, globalLoginRemedy(tool, accountName))
+func staleCredentialDetail(info freshness.Info, tool, accountName string) message {
+	return msgf("%s; %s", staleCredentialReason(info, tool), globalLoginRemedy(tool, accountName))
 }
 
 // staleCredentialReason states why a credential can no longer open a session,
@@ -334,37 +331,42 @@ func staleCredentialDetail(info freshness.Info, tool, accountName string) string
 //
 // Callers only reach it for a credential that is actually past its deadline, so
 // the dated branches always have the timestamp they print.
-func staleCredentialReason(info freshness.Info, tool string) string {
+func staleCredentialReason(info freshness.Info, tool string) message {
 	switch {
 	case info.Revoked:
-		return fmt.Sprintf("%s emptied it after a failed token refresh", tool)
+		return msgf("%s emptied it after a failed token refresh", tool)
 	case info.HasRefresh:
-		return fmt.Sprintf("it expired %s and its refresh token expired %s",
+		return msgf("it expired %s and its refresh token expired %s",
 			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
 	default:
-		return fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
+		return msgf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
 	}
 }
 
 // expiringCredentialDetail uses the same target and login prerequisites as a stale snapshot.
-func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) string {
-	when := fmt.Sprintf("needs an interactive re-login in %s (%s)",
-		roundDays(deadline.Sub(now)), utcStamp(deadline))
-	return fmt.Sprintf("%s; %s", when, globalLoginRemedy(tool, accountName))
+func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) message {
+	when := msgf("needs an interactive re-login in %s (%s)", leadTimeMessage(deadline.Sub(now)), utcStamp(deadline))
+	return msgf("%s; %s", when, globalLoginRemedy(tool, accountName))
 }
 
-// roundDays renders a lead time the way a human reads a deadline. Under a day it
-// says hours, because "in 0 days" is worse than useless on the last day; a
-// fraction of a day is rounded down so the number never overstates the time left.
-func roundDays(d time.Duration) string {
+// leadTimeMessage is the lead time as a fragment ("2 day(s)") that another message
+// embeds. It is read the way a human reads a deadline: under a day it counts hours,
+// because "in 0 days" is worse than useless on the last day, and a fraction of a
+// unit is rounded down so the number never overstates the time left. Each unit is a
+// constant format of its own, so a translation can word a count as its language needs.
+func leadTimeMessage(d time.Duration) message {
 	if days := int(d / (24 * time.Hour)); days >= 1 {
-		return fmt.Sprintf("%d day(s)", days)
+		return msgf("%d day(s)", days)
 	}
-	hours := int(d / time.Hour)
-	if hours < 1 {
-		return "under an hour"
+	if hours := int(d / time.Hour); hours >= 1 {
+		return msgf("%d hour(s)", hours)
 	}
-	return fmt.Sprintf("%d hour(s)", hours)
+	return msgf("under an hour")
+}
+
+// leadTimeLeft is the lead time as a table cell ("2 day(s) left").
+func leadTimeLeft(d time.Duration) string {
+	return l10n.Sprintf("%s left", leadTimeMessage(d))
 }
 
 // utcStamp formats a credential timestamp for a human-readable warning.
@@ -405,7 +407,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnLoggedOutUnchanged(plan.Tool, active)
 			continue
 		}
-		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); !why.empty() {
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); !why.Empty() {
 			// Recapturing here would file a credential kae cannot attribute under this
 			// account's name and identity, and after that no offline check can tell the
 			// two apart (see keepSnapshotIdentity).
@@ -417,7 +419,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 			continue
 		}
-		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.empty() {
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.Empty() {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
@@ -441,8 +443,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureFailed(plan.Tool, active, err)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "kae: refreshed %s/%s snapshot from the live store before switching away\n",
-			plan.Tool, active)
+		infof("refreshed %s/%s snapshot from the live store before switching away", plan.Tool, active)
 	}
 }
 
@@ -457,15 +458,21 @@ const (
 	declinedByRun
 )
 
-// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
-// there are none. Two messages carry them — captureSnapshot's auth_missing error and the
+// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or the
+// zero message (which renders "") when there are none. Two messages carry them — captureSnapshot's auth_missing error and the
 // logged-out-during-a-run warning — and they are the same sentence-shape, so a change to the
 // separator or the wrapping has one place to happen.
-func warningsDetail(warnings []string) string {
+func warningsDetail(warnings []message) message {
 	if len(warnings) == 0 {
-		return ""
+		return message{}
 	}
-	return " (" + strings.Join(warnings, "; ") + ")"
+	// Adapter warnings are whole sentences when a check shows one alone, so each
+	// gives up its closing stop here (Japanese only) rather than double it.
+	unstopped := make([]message, len(warnings))
+	for i, w := range warnings {
+		unstopped[i] = l10n.Unstopped(w)
+	}
+	return msgf(" (%s)", joinMessages(unstopped))
 }
 
 // warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the
@@ -483,8 +490,8 @@ func warnLoggedOutUnchanged(tool, accountName string) {
 }
 
 // warnLoggedOutDuringRunUnchanged is the same for a login that vanished while `kae run -s`
-// ran; detail is the adapter's own warnings from warningsDetail, or "".
-func warnLoggedOutDuringRunUnchanged(tool, accountName, detail string) {
+// ran; detail is the adapter's own warnings from warningsDetail, empty when there are none.
+func warnLoggedOutDuringRunUnchanged(tool, accountName string, detail message) {
 	warnf("%s logged out during the run%s; snapshot %s/%s left unchanged",
 		tool, detail, tool, accountName)
 }
@@ -620,7 +627,7 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		values[i] = artifact.Value{Data: data, Present: true}
 		// An absent live identity says nothing (the tool may not have rebuilt it
 		// yet); only a present one is evidence of anything.
-		if !live.Present || !reason.empty() {
+		if !live.Present || !reason.Empty() {
 			continue
 		}
 		// The gate decides the **wording**, never the decision. Getting that backwards
@@ -841,9 +848,9 @@ func errUncapturedWithRemedy(tool, accountName string) *cmdError {
 		tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }
 
-func globalLoginRemedy(tool, accountName string) string {
+func globalLoginRemedy(tool, accountName string) message {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
+		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
 	}
-	return fmt.Sprintf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
+	return msgf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }

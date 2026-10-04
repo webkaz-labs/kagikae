@@ -22,6 +22,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // KeychainService and KeychainAccount identify agy's macOS Keychain item. The
@@ -61,12 +62,12 @@ var keyringBypassEnv = []string{"SSH_TTY", "SSH_CONNECTION", "SSH_CLIENT", "WSL_
 
 // keyringBypassWarnings returns one warning per set bypass variable, shared by
 // Detect and Doctor so the two cannot drift.
-func keyringBypassWarnings(env adapter.Env) []string {
-	warnings := []string{}
+func keyringBypassWarnings(env adapter.Env) []l10n.Msg {
+	warnings := []l10n.Msg{}
 	for _, name := range keyringBypassEnv {
 		if env.Getenv(name) != "" {
-			warnings = append(warnings, name+" is set: agy may bypass the keychain here"+
-				" and use a file credential kae does not model, so a switch may not reach the tool")
+			warnings = append(warnings, l10n.Msgf("%s is set: agy may bypass the keychain here"+
+				" and use a file credential kae does not model, so a switch may not reach the tool", name))
 		}
 	}
 	return warnings
@@ -168,7 +169,7 @@ func authFilePresent(env adapter.Env) bool {
 }
 
 func (a Agy) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolAgy, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolAgy, Warnings: []l10n.Msg{}}
 	if _, err := env.LookPath("agy"); err == nil {
 		info.BinaryPresent = true
 	}
@@ -184,18 +185,18 @@ func (a Agy) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) 
 		}
 		info.AuthPresent = v.Present
 		if !v.Present {
-			info.Warnings = append(info.Warnings, noKeychainItemMsg)
+			info.Warnings = append(info.Warnings, l10n.Msgf(noKeychainItemMsg))
 		}
 		info.Warnings = append(info.Warnings, keyringBypassWarnings(env)...)
 		return info, nil
 	}
 	info.Driver = constants.DriverAgyFileSnapshot
-	info.Warnings = append(info.Warnings, "agy adapter on this platform uses file-based credential storage only")
+	info.Warnings = append(info.Warnings, l10n.Msgf("agy adapter on this platform uses file-based credential storage only"))
 	info.AuthPresent = authFilePresent(env)
 	if !info.AuthPresent {
 		if _, err := os.Stat(cliDir(env)); err == nil {
 			info.Warnings = append(info.Warnings,
-				"no credential file found; agy likely uses the OS keyring on this platform, which kae cannot switch yet")
+				l10n.Msgf("no credential file found; agy likely uses the OS keyring on this platform, which kae cannot switch yet"))
 		}
 	}
 	return info, nil
@@ -210,22 +211,22 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		case err != nil:
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckAuthPresent,
-				Status: constants.StatusError, Message: err.Error(),
+				Status: constants.StatusError, Message: l10n.Of(err),
 			})
 		case info.AuthPresent:
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckAuthPresent,
-				Status: constants.StatusOK, Message: "gemini/antigravity keychain item found",
+				Status: constants.StatusOK, Message: l10n.Msgf("gemini/antigravity keychain item found"),
 			})
 		default:
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckAuthPresent,
-				Status: constants.StatusWarn, Message: noKeychainItemMsg,
+				Status: constants.StatusWarn, Message: l10n.Msgf(noKeychainItemMsg),
 			})
 		}
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckDriver,
-			Status: constants.StatusOK, Message: "driver: " + constants.DriverAgyKeychain,
+			Status: constants.StatusOK, Message: l10n.Msgf("driver: %s", constants.DriverAgyKeychain),
 		})
 		checks = append(checks, adapter.EnvConflictChecksFrom(tool, keyringBypassWarnings(env))...)
 		return checks
@@ -234,14 +235,12 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	case info.AuthPresent:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: "file-based credential found",
+			Status: constants.StatusOK, Message: l10n.Msgf("file-based credential found"),
 		})
 	default:
-		message := "no file-based credential under ~/.gemini/antigravity-cli/"
+		message := l10n.Msgf("no file-based credential under ~/.gemini/antigravity-cli/ (agy has not been set up on this machine)")
 		if _, err := os.Stat(cliDir(env)); err == nil {
-			message += " (agy likely uses the OS keyring, which kae cannot switch on this platform)"
-		} else {
-			message += " (agy has not been set up on this machine)"
+			message = l10n.Msgf("no file-based credential under ~/.gemini/antigravity-cli/ (agy likely uses the OS keyring, which kae cannot switch on this platform)")
 		}
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
@@ -251,7 +250,7 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	checks = append(checks, adapter.Check{
 		Tool: tool, Code: constants.CheckDriver,
 		Status:  constants.StatusWarn,
-		Message: "driver: " + constants.DriverAgyFileSnapshot + " (file-based; keyring switching unsupported on this platform)",
+		Message: l10n.Msgf("driver: %s (file-based; keyring switching unsupported on this platform)", constants.DriverAgyFileSnapshot),
 	})
 	return checks
 }

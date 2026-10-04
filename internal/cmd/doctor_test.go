@@ -21,7 +21,7 @@ import (
 func findCheck(report *doctorReport, code string) (string, bool) {
 	for _, c := range report.Checks {
 		if c.Code == code {
-			return c.Message, true
+			return c.Message.Error(), true
 		}
 	}
 	return "", false

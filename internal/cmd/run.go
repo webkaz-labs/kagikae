@@ -562,11 +562,11 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			warnLoggedOutDuringRunUnchanged(plan.Tool, plan.Account, warningsDetail(plan.Warnings))
 			continue
 		}
-		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); !why.empty() {
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {
 			declined = append(declined, declinedRecapture{plan, why})
 			continue
 		}
-		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); !why.empty() {
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {
 			if preserve {
 				// kae cannot order the two copies, so it may neither say the live one is
 				// finished nor let the restore below take it. Same treatment as an

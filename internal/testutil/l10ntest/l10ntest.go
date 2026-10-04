@@ -38,3 +38,13 @@ func UseJapanese(t *testing.T) {
 	l10n.Set(l10n.Japanese)
 	t.Cleanup(func() { l10n.Set(l10n.English) })
 }
+
+// English returns the English text of each message, which is what JSON carries,
+// so an assertion on a list of warnings reads strings whatever language is selected.
+func English(messages []l10n.Msg) []string {
+	texts := make([]string, len(messages))
+	for i, m := range messages {
+		texts[i] = m.Error()
+	}
+	return texts
+}

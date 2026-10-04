@@ -10,6 +10,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // CmdEnv manages env-mode profiles (variable names in metadata, values in
@@ -143,14 +144,14 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 	if err := envprofile.Save(dir, profile); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Stored %d variable(s) in env profile %s/%s: %s\n",
+	reportf("Stored %d variable(s) in env profile %s/%s: %s",
 		len(names), tool, accountName, strings.Join(names, ", "))
 	return constants.ExitOK
 }
 
 // printEnvProfileDeleted reports a removed env profile.
 func printEnvProfileDeleted(tool, accountName string) {
-	fmt.Printf("Deleted env profile %s/%s\n", tool, accountName)
+	reportf("Deleted env profile %s/%s", tool, accountName)
 }
 
 func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []string) int {
@@ -213,7 +214,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 	if err := envprofile.Save(dir, profile); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Removed %d variable(s) from env profile %s/%s\n", len(keys), tool, accountName)
+	reportf("Removed %d variable(s) from env profile %s/%s", len(keys), tool, accountName)
 	return constants.ExitOK
 }
 
@@ -252,13 +253,13 @@ func runEnvList(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Profiles) == 0 {
-		fmt.Println("no env profiles; run: kae env set <tool> <account> KEY=VALUE")
+		reportf("no env profiles; run: kae env set <tool> <account> KEY=VALUE")
 		return constants.ExitOK
 	}
 	rows := [][]string{}
 	for _, item := range report.Profiles {
 		rows = append(rows, []string{item.Tool, item.Account, strings.Join(item.Vars, ", ")})
 	}
-	printTable([]string{"Tool", "Account", "Variables"}, rows, colorEnabled(opts.NoColor))
+	printTable([]string{l10n.Sprintf("Tool"), l10n.Sprintf("Account"), l10n.Sprintf("Variables")}, rows, colorEnabled(opts.NoColor))
 	return constants.ExitOK
 }

@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -59,7 +58,7 @@ func (app *App) identityRecordChecks(ctx context.Context, be secret.Backend, too
 			}
 			checks = append(checks, adapter.Check{
 				Tool: acc.Tool, Code: constants.CheckIdentityRecordInvalid, Status: constants.StatusWarn,
-				Message: fmt.Sprintf("%s/%s: recorded identity is not an account record; kae cannot use it to attribute credentials; %s",
+				Message: msgf("%s/%s: recorded identity is not an account record; kae cannot use it to attribute credentials; %s",
 					acc.Tool, acc.Name, verifiedCaptureRemedy(acc.Tool, acc.Name)),
 			})
 			break // one finding per account, even with several identity artifacts
@@ -248,8 +247,8 @@ func identityComparable(stored, live []byte) bool {
 
 // identityUntrackedMessage asks the user to verify the live account before
 // filling a snapshot's missing identity; a missing cache does not establish it.
-func identityUntrackedMessage(tool, accountName, artifactName string) string {
-	return fmt.Sprintf("account %s: no %s identity recorded yet; start %s only after verifying its account and global store, then %s", accountName, artifactName, tool, verifiedCaptureRemedy(tool, accountName))
+func identityUntrackedMessage(tool, accountName, artifactName string) message {
+	return msgf("account %s: no %s identity recorded yet; start %s only after verifying its account and global store, then %s", accountName, artifactName, tool, verifiedCaptureRemedy(tool, accountName))
 }
 
 // identityDriftMessage frames a live identity artifact that no longer matches the
@@ -257,18 +256,18 @@ func identityUntrackedMessage(tool, accountName, artifactName string) string {
 // not have rebuilt it yet — while a different value is the wrong-account-on-screen
 // case. Neither form contains the payload: an identity is PII, and the tool,
 // account, and artifact name are enough to act on.
-func identityDriftMessage(tool, accountName, artifactName string, livePresent bool) string {
-	tail := fmt.Sprintf(
+func identityDriftMessage(tool, accountName, artifactName string, livePresent bool) message {
+	tail := msgf(
 		"to re-apply it, run: kae use %s %s. If it drifts again, an upstream behaviour assumption may have changed (docs/VALIDATION.md \"Upstream Behaviour Assumptions\")",
 		tool, accountName,
 	)
 	if !livePresent {
-		return fmt.Sprintf(
+		return msgf(
 			"account %s: the live %s identity is missing while this account is active; %s may rebuild it on its next run — otherwise %s",
 			accountName, artifactName, tool, tail,
 		)
 	}
-	return fmt.Sprintf(
+	return msgf(
 		"account %s: the live %s identity differs from the one kae applied, so %s can name the wrong account; something outside kae rewrote it (a manual login, or a change in how %s maintains it) — %s",
 		accountName, artifactName, tool, tool, tail,
 	)

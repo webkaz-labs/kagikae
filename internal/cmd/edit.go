@@ -59,8 +59,8 @@ func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 			app.displayPath(app.ConfigPath), err))
 	}
 	for _, warning := range warnings {
-		warnText(warning)
+		warnMessage(warning)
 	}
-	fmt.Printf("Config OK: %s\n", app.displayPath(app.ConfigPath))
+	reportf("Config OK: %s", app.displayPath(app.ConfigPath))
 	return constants.ExitOK
 }

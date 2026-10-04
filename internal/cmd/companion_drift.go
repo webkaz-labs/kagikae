@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -82,15 +81,15 @@ func (app *App) companionDriftChecks(ctx context.Context) []adapter.Check {
 // override or an inactive pin. Both end in a wrong-author commit. Values are
 // sanitized for display so a hostile .git/config cannot inject terminal escapes
 // through doctor output.
-func companionDriftMessage(profile, key, want, got string, code int) string {
+func companionDriftMessage(profile, key, want, got string, code int) message {
 	wantSafe := sanitizeIdentity(want)
 	if code != 0 {
-		return fmt.Sprintf(
+		return msgf(
 			"profile %s: git %s is unset here but the binding sets %q; the binding is not active in this shell, so a commit would use the wrong identity; run: mise env, mise trust if untrusted, or kae pin if the binding itself no longer exists",
 			profile, key, wantSafe,
 		)
 	}
-	return fmt.Sprintf(
+	return msgf(
 		"profile %s: git %s is %q here but the binding sets %q; a repo-local override or an inactive binding makes commits use the wrong identity (check: git config --show-origin %s)",
 		profile, key, sanitizeIdentity(got), wantSafe, key,
 	)

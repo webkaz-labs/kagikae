@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
@@ -22,11 +23,11 @@ type toolStatus struct {
 	// Identity is the active account's recorded login identity, additive and
 	// omitempty so the JSON contract stays schema_version 1; blank for a
 	// pre-identity snapshot or a tool/account with no readable identity.
-	Identity    string   `json:"identity,omitempty"`
-	Driver      string   `json:"driver"`
-	AuthPresent bool     `json:"auth_present"`
-	Accounts    []string `json:"accounts"`
-	Warnings    []string `json:"warnings"`
+	Identity    string    `json:"identity,omitempty"`
+	Driver      string    `json:"driver"`
+	AuthPresent bool      `json:"auth_present"`
+	Accounts    []string  `json:"accounts"`
+	Warnings    []message `json:"warnings"`
 	// Credential / ReloginBy describe the *active* account's snapshot freshness,
 	// the same pair accountItem carries and with the same "absent is not fine"
 	// rule. Additive and omitempty; both absent when no account is active.
@@ -157,7 +158,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		return nil, err
 	}
 	for i, tool := range tools {
-		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []string{}, Accounts: []string{}}
+		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []message{}, Accounts: []string{}}
 		if names, ok := capturedByTool[tool]; ok {
 			sort.Strings(names)
 			ts.Accounts = names
@@ -177,7 +178,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			ts.Usage = usages[toolAccount{tool, *ts.Account}].report()
 		}
 		if det := detections[i]; det.err != nil {
-			ts.Warnings = append(ts.Warnings, det.err.Error())
+			ts.Warnings = append(ts.Warnings, l10n.Of(det.err))
 		} else {
 			ts.Driver = det.info.Driver
 			ts.AuthPresent = det.info.AuthPresent
@@ -295,10 +296,10 @@ func stampOrEmpty(t time.Time) string {
 func credentialCell(state, reloginBy string, now time.Time) string {
 	switch state {
 	case constants.CredentialStale:
-		return "re-login now"
+		return l10n.Sprintf("re-login now")
 	case constants.CredentialExpiring:
 		if by, err := time.Parse(time.RFC3339, reloginBy); err == nil {
-			return roundDays(by.Sub(now)) + " left"
+			return leadTimeLeft(by.Sub(now))
 		}
 		return constants.CredentialExpiring
 	case constants.CredentialOK:
@@ -328,20 +329,22 @@ func globalIsolatedStatuses(app *App, synced map[string]string) []globalIsolated
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
 	if report.Pinned != nil {
-		fmt.Printf("This directory: profile %s (bound, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
+		reportf("This directory: profile %s (bound, %s)", report.Pinned.Profile, report.Pinned.Mode)
+		fmt.Println()
 	}
 	if len(report.GlobalIsolated) > 0 {
-		fmt.Println("Global isolated homes (kae use -i / run -i share these):")
+		reportf("Global isolated homes (kae use -i / run -i share these):")
 		for _, gi := range report.GlobalIsolated {
 			fmt.Printf("  %s -> %s\n    %s\n", gi.Tool, gi.Account, gi.Home)
 		}
 		fmt.Println()
 	}
 	if report.ActiveProfile != nil {
-		fmt.Printf("Global active profile: %s\n\n", *report.ActiveProfile)
+		reportf("Global active profile: %s", *report.ActiveProfile)
 	} else {
-		fmt.Print("Global active profile: (none)\n\n")
+		reportf("Global active profile: (none)")
 	}
+	fmt.Println()
 	now := app.Now()
 	rows := [][]string{}
 	for _, ts := range report.Tools {
@@ -349,13 +352,13 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if ts.Account != nil {
 			accountName = *ts.Account
 		}
-		auth := paint(constants.StatusWarn, "absent", color)
+		auth := paint(constants.StatusWarn, l10n.Sprintf("absent"), color)
 		if ts.AuthPresent {
-			auth = paint(constants.StatusOK, "present", color)
+			auth = paint(constants.StatusOK, l10n.Sprintf("present"), color)
 		}
 		notes := ""
 		if len(ts.Warnings) > 0 {
-			notes = paint(constants.StatusWarn, fmt.Sprintf("%d warning(s)", len(ts.Warnings)), color)
+			notes = paint(constants.StatusWarn, l10n.Sprintf("%d warning(s)", len(ts.Warnings)), color)
 		}
 		// Auth is about the live store ("is anything logged in here"); Credential is
 		// about the snapshot kae would apply, which is a different question and the
@@ -366,11 +369,11 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		}
 		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color), notes})
 	}
-	printAccountTable([]string{"Tool", "Account", columnIdentity, columnDriver, "Auth", "Credential", "Limit", "Notes"}, rows, opts.Full, color)
+	printAccountTable([]column{colTool, colAccount, colIdentity, colDriver, colAuth, colCredential, colLimit, colNotes}, rows, opts.Full, color)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
-			fmt.Printf("\n%s: %s", ts.Tool, paint(constants.StatusWarn, warning, color))
+			fmt.Printf("\n%s: %s", ts.Tool, paint(constants.StatusWarn, l10n.Render(warning), color))
 			warned = true
 		}
 	}
@@ -445,7 +448,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Accounts) == 0 {
-		fmt.Println("no captured accounts; run: kae add <tool> <account>")
+		reportf("no captured accounts; run: kae add <tool> <account>")
 		return constants.ExitOK
 	}
 	now := app.Now()
@@ -459,7 +462,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 			limitCell(item.Usage, now, color), item.CapturedAt,
 		})
 	}
-	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit", "Captured"}, rows, opts.Full, color)
+	printAccountTable([]column{colTool, colAccount, colIdentity, colActive, colDriver, colCredential, colLimit, colCaptured}, rows, opts.Full, color)
 	return constants.ExitOK
 }
 

@@ -12,6 +12,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 // seedClaudeOAuth writes a claude credential with an explicit oauth object so
@@ -109,7 +111,7 @@ func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch to stale must proceed, got error: %v", err)
 	}
-	warnings := strings.Join(report.Results[0].Warnings, " | ")
+	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
 	if !strings.Contains(warnings, "expired") || !strings.Contains(warnings, "kae add") {
 		t.Fatalf("expected stale warning naming kae add, got: %q", warnings)
 	}
@@ -181,7 +183,7 @@ func TestSwitchToExpiredRefreshTokenWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch to stale must proceed, got error: %v", err)
 	}
-	warnings := strings.Join(report.Results[0].Warnings, " | ")
+	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
 	for _, want := range []string{"refresh token expired", "kae add --restore claude", "kae add --restore claude stale"} {
 		if !strings.Contains(warnings, want) {
 			t.Errorf("stale warning should contain %q, got: %q", want, warnings)
@@ -207,7 +209,7 @@ func TestSwitchToTombstonedSnapshotWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	warnings := strings.Join(report.Results[0].Warnings, " | ")
+	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
 	if !strings.Contains(warnings, "failed token refresh") || !strings.Contains(warnings, "kae add --restore claude") {
 		t.Fatalf("expected a tombstone warning naming the login flow, got: %q", warnings)
 	}
@@ -234,7 +236,7 @@ func TestSwitchToExpiredWithRefreshNoWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, w := range report.Results[0].Warnings {
-		if strings.Contains(w, "expired") {
+		if strings.Contains(w.Error(), "expired") {
 			t.Fatalf("refreshable account must not warn, got: %q", w)
 		}
 	}
@@ -382,8 +384,8 @@ func TestQuietBareUseStillWarns(t *testing.T) {
 // lines close with one roll-up naming them.
 func TestWarnBeforeApplyRollsUpMultipleTools(t *testing.T) {
 	results := []switchResult{
-		{Tool: "claude", Warnings: []string{"snapshot credential is stale: reason"}},
-		{Tool: "codex", Warnings: []string{"snapshot credential is stale: reason"}},
+		{Tool: "claude", Warnings: []l10n.Msg{msgf("snapshot credential is stale: reason")}},
+		{Tool: "codex", Warnings: []l10n.Msg{msgf("snapshot credential is stale: reason")}},
 	}
 	_, stderr := captureStderr(t, func() int {
 		warnBeforeApply(results, []string{"claude", "codex"})
@@ -769,6 +771,37 @@ func TestMissingSnapshotRecoveryVerifiesBeforeCapture(t *testing.T) {
 		}
 		if strings.Contains(out+diagnostic, sideToken) || claudeCreds(t, app) != before {
 			t.Fatal("refusal leaked or changed live credential")
+		}
+	}
+}
+
+// The lead time words are a constant format per unit; English is the text the
+// report carried before, and the Japanese cell is the same count in the catalog's
+// wording.
+func TestLeadTimeWords(t *testing.T) {
+	cases := []struct {
+		d            time.Duration
+		msg, left    string
+		leftJapanese string
+	}{
+		{49*time.Hour + 30*time.Minute, "2 day(s)", "2 day(s) left", "残り 2 日"},
+		{23*time.Hour + 59*time.Minute, "23 hour(s)", "23 hour(s) left", "残り 23 時間"},
+		{time.Hour, "1 hour(s)", "1 hour(s) left", "残り 1 時間"},
+		{59 * time.Minute, "under an hour", "under an hour left", "残り 1 時間未満"},
+		{-time.Minute, "under an hour", "under an hour left", "残り 1 時間未満"},
+	}
+	for _, tc := range cases {
+		if got := leadTimeMessage(tc.d).Error(); got != tc.msg {
+			t.Errorf("leadTimeMessage(%v) = %q, want %q", tc.d, got, tc.msg)
+		}
+		if got := leadTimeLeft(tc.d); got != tc.left {
+			t.Errorf("leadTimeLeft(%v) = %q, want %q", tc.d, got, tc.left)
+		}
+	}
+	l10ntest.UseJapanese(t)
+	for _, tc := range cases {
+		if got := leadTimeLeft(tc.d); got != tc.leftJapanese {
+			t.Errorf("japanese leadTimeLeft(%v) = %q, want %q", tc.d, got, tc.leftJapanese)
 		}
 	}
 }

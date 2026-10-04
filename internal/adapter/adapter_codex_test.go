@@ -139,7 +139,7 @@ func TestCodexDetectMissingAuthWarnings(t *testing.T) {
 	if err != nil || info.AuthPresent {
 		t.Fatalf("unexpected: %+v %v", info, err)
 	}
-	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "keyring") {
+	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0].Error(), "keyring") {
 		t.Fatalf("expected keyring-possibility warning under auto: %+v", info.Warnings)
 	}
 }

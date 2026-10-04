@@ -291,7 +291,7 @@ func TestCodexDoctorWarnsRelativeHomeEvenWhenTheStoreIsUnreadable(t *testing.T) 
 		if c.Code == constants.CheckUnsupported {
 			unsupported = true
 		}
-		if c.Code == constants.CheckEnvConflict && strings.Contains(c.Message, "CODEX_HOME is relative") {
+		if c.Code == constants.CheckEnvConflict && strings.Contains(c.Message.Error(), "CODEX_HOME is relative") {
 			relative = true
 		}
 	}

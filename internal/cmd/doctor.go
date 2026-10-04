@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -104,7 +105,7 @@ func stdinIsTTY() bool {
 // check needs. Default (blank/anything but yes) is no, matching the opt-in
 // intent. Mirrors promptCompletionChoice's stderr-prompt / stdin-read pattern.
 func promptTokenDriftCheck() bool {
-	fmt.Fprint(os.Stderr, "Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
+	promptf("Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "y", "yes":
@@ -127,13 +128,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		report.Checks = append(report.Checks, adapter.Check{
 			Code:    constants.CheckConfigValid,
 			Status:  constants.StatusError,
-			Message: fmt.Sprintf("config %s: %v", app.displayPath(app.ConfigPath), app.ConfigErr),
+			Message: msgf("config %s: %v", app.displayPath(app.ConfigPath), app.ConfigErr),
 		})
 	} else {
 		report.Checks = append(report.Checks, adapter.Check{
 			Code:    constants.CheckConfigValid,
 			Status:  constants.StatusOK,
-			Message: "config: " + app.displayPath(app.ConfigPath),
+			Message: msgf("config: %s", app.displayPath(app.ConfigPath)),
 		})
 		for _, warning := range app.ConfigWarnings {
 			report.Checks = append(report.Checks, adapter.Check{
@@ -149,15 +150,15 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		report.SecretBackend = "unavailable"
 		report.Checks = append(report.Checks, adapter.Check{
 			Code:   constants.CheckSecretBackend,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		})
 	} else {
 		report.SecretBackend = be.Name()
 		status := constants.StatusOK
-		checkMessage := "secret backend: " + be.Name()
+		checkMessage := msgf("secret backend: %s", be.Name())
 		if be.Name() == secret.BackendFile {
 			status = constants.StatusWarn
-			checkMessage += " (plaintext file backend; secrets are stored unencrypted)"
+			checkMessage = msgf("secret backend: %s (plaintext file backend; secrets are stored unencrypted)", be.Name())
 		}
 		report.Checks = append(report.Checks, adapter.Check{
 			Code:   constants.CheckSecretBackend,
@@ -174,7 +175,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		if err != nil {
 			report.Checks = append(report.Checks, adapter.Check{
 				Tool: tool,
-				Code: constants.CheckUnsupported, Status: constants.StatusError, Message: err.Error(),
+				Code: constants.CheckUnsupported, Status: constants.StatusError, Message: l10n.Of(err),
 			})
 			continue
 		}
@@ -284,7 +285,7 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 				if _, err := app.Env.LookPath(spec.Binary); err != nil {
 					checks = append(checks, adapter.Check{
 						Tool: id, Code: constants.CheckCompanionBinary, Status: constants.StatusWarn,
-						Message: spec.Binary + " not found in PATH; the " + id + " binding has no effect until it is installed",
+						Message: msgf("%s not found in PATH; the %s binding has no effect until it is installed", spec.Binary, id),
 					})
 				}
 			}
@@ -296,7 +297,7 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 					if _, found, gerr := be.Get(ctx, companion.SecretRef(profileName, id, knob)); gerr == nil && !found {
 						checks = append(checks, adapter.Check{
 							Tool: id, Code: constants.CheckCompanionMissing, Status: constants.StatusWarn,
-							Message: fmt.Sprintf("profile %s: %s token %s is not stored; run: kae companion add %s %s %s",
+							Message: msgf("profile %s: %s token %s is not stored; run: kae companion add %s %s %s",
 								profileName, id, knob, profileName, id, knob),
 						})
 					}
@@ -342,7 +343,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				checks = append(checks, adapter.Check{
 					Tool: acc.Tool, Code: constants.CheckCredentialStale,
 					Status: constants.StatusWarn,
-					Message: fmt.Sprintf("snapshot %q is stale: %s",
+					Message: msgf("snapshot %q is stale: %s",
 						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
 				})
 			case constants.CredentialExpiring:
@@ -352,7 +353,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				checks = append(checks, adapter.Check{
 					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
 					Status: constants.StatusWarn,
-					Message: fmt.Sprintf("snapshot %q %s",
+					Message: msgf("snapshot %q %s",
 						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)),
 				})
 			}
@@ -389,7 +390,7 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 	if err != nil {
 		return []adapter.Check{{
 			Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
-			Message: fmt.Sprintf(
+			Message: msgf(
 				"could not read %s (%v), so kae cannot say which account is active for any tool; "+
 					"run: kae use <tool> <account> (rewrites it)",
 				app.displayPath(app.Paths.StateFile()), err,
@@ -410,7 +411,7 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 		case lerr != nil:
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"state records %s/%s as active but its snapshot could not be read (%v), so kae cannot confirm it",
 					tool, name, lerr,
 				),
@@ -418,7 +419,7 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 		case !found:
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"state records %s/%s as active but that snapshot no longer exists, so kae cannot say which %s account is live; "+
 						"to pick one, run: kae use %s <account> (kae ls shows the captured ones)",
 					tool, name, tool, tool,
@@ -463,7 +464,7 @@ func (app *App) orphanChecks(ctx context.Context, be secret.Backend, toolFilter 
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckSecretOrphan,
 			Status: constants.StatusWarn,
-			Message: fmt.Sprintf("secret item for %s/%s has no snapshot dir; to remove it, run: kae account rm %s %s",
+			Message: msgf("secret item for %s/%s has no snapshot dir; to remove it, run: kae account rm %s %s",
 				tool, acct, tool, acct),
 		})
 	}
@@ -515,7 +516,7 @@ func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, tool
 			checks = append(checks, adapter.Check{
 				Tool: acc.Tool, Code: constants.CheckSecretMissing,
 				Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"snapshot %q declares a stored %s payload the secret backend does not have, so applying "+
 						"it cannot restore that artifact; %s",
 					acc.Name, name, verifiedCaptureRemedy(acc.Tool, acc.Name),
@@ -528,18 +529,20 @@ func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, tool
 
 func printDoctorReport(report *doctorReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
-	fmt.Printf("platform: %s, secret backend: %s\n\n", report.Platform, report.SecretBackend)
+	reportf("platform: %s, secret backend: %s", report.Platform, report.SecretBackend)
+	fmt.Println()
 	for _, check := range report.Checks {
 		label := paint(check.Status, fmt.Sprintf("[%s]", check.Status), color)
 		if check.Tool != "" {
-			fmt.Printf("%s %s: %s\n", label, check.Tool, check.Message)
+			fmt.Printf("%s %s: %s\n", label, check.Tool, l10n.Render(check.Message))
 		} else {
-			fmt.Printf("%s %s\n", label, check.Message)
+			fmt.Printf("%s %s\n", label, l10n.Render(check.Message))
 		}
 	}
+	fmt.Println()
 	if report.OK {
-		fmt.Println("\nno blocking problems found")
+		reportf("no blocking problems found")
 	} else {
-		fmt.Println("\nerrors found; fix them before switching")
+		reportf("errors found; fix them before switching")
 	}
 }

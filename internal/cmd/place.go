@@ -78,6 +78,20 @@ type placeContext struct {
 	cwdWarned   bool
 }
 
+// placeToolList is the names placeTools returns as one value, joined with a
+// constant "and" format so each language words the conjunction itself.
+func placeToolList() any {
+	tools := placeTools()
+	if len(tools) == 0 {
+		return ""
+	}
+	var list any = tools[0]
+	for _, tool := range tools[1:] {
+		list = msgf("%s and %s", list, tool)
+	}
+	return list
+}
+
 // placeTools are the tools kae resolves places for: the ones with a home it can
 // name (realToolHome). Other tools list their accounts and no places.
 func placeTools() []string {

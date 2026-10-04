@@ -14,6 +14,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -108,7 +109,7 @@ func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 }
 
 func (c Cursor) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolCursor, Driver: constants.DriverCursorKeychain, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolCursor, Driver: constants.DriverCursorKeychain, Warnings: []l10n.Msg{}}
 	if _, err := env.LookPath(binaryName); err == nil {
 		info.BinaryPresent = true
 	}
@@ -187,7 +188,7 @@ func (c Cursor) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	if _, err := driver(env); err != nil {
 		return []adapter.Check{{
 			Tool: tool, Code: constants.CheckUnsupported,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		}}
 	}
 	checks := []adapter.Check{adapter.BinaryCheck(env, tool, binaryName)}
@@ -196,22 +197,22 @@ func (c Cursor) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	case err != nil:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		})
 	case info.AuthPresent:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: "access token found in the keychain",
+			Status: constants.StatusOK, Message: l10n.Msgf("access token found in the keychain"),
 		})
 	default:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusWarn, Message: "no access token in the keychain; log in with `cursor-agent login` first",
+			Status: constants.StatusWarn, Message: l10n.Msgf("no access token in the keychain; log in with `cursor-agent login` first"),
 		})
 	}
 	checks = append(checks, adapter.Check{
 		Tool: tool, Code: constants.CheckDriver,
-		Status: constants.StatusOK, Message: "driver: " + constants.DriverCursorKeychain,
+		Status: constants.StatusOK, Message: l10n.Msgf("driver: %s", constants.DriverCursorKeychain),
 	})
 	return checks
 }

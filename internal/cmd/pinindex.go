@@ -251,8 +251,8 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 	if !index.complete {
 		checks = append(checks, adapter.Check{
 			Code: constants.CheckPinIndexIncomplete, Status: constants.StatusWarn,
-			Message: "the bound-directory index could not be read completely; some bound-directory checks could not run " +
-				"and shared credential attribution is unavailable; restore readable bound-directory records before retrying",
+			Message: msgf("the bound-directory index could not be read completely; some bound-directory checks could not run " +
+				"and shared credential attribution is unavailable; restore readable bound-directory records before retrying"),
 		})
 	}
 	if index.err != nil || toolFilter != "" {
@@ -267,7 +267,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 			// this store, so absence is reportable but never grounds for reclaiming it.
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"%s was bound with kae pin but its recorded path no longer exists; it may have been deleted or moved, so kae left its per-directory store unchanged",
 					pin.Dir,
 				),
@@ -278,7 +278,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 		if ferr != nil {
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"%s is bound but its fragment could not be read (%v), so its binding was not checked",
 					pin.Dir, ferr,
 				),
@@ -295,7 +295,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 			checks = append(checks, adapter.Check{
 				Tool: tool,
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
-				Message: fmt.Sprintf(
+				Message: msgf(
 					"%s is bound to %s/%s, which is not captured; to re-bind it, run: cd %s && kae pin %s <account>",
 					pin.Dir, tool, accountName, pin.Dir, tool,
 				),

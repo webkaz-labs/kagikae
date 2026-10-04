@@ -94,7 +94,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 		return runStatus(context.Background(), app, commonOpts{Format: formatJSON})
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	var report statusReport
+	var report statusReportWire
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("invalid status JSON: %v: %s", err, out)
 	}
@@ -371,7 +371,7 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "soon") })
 
 	_, out := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatJSON}) })
-	var report statusReport
+	var report statusReportWire
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("invalid status JSON: %v: %s", err, out)
 	}
@@ -450,8 +450,8 @@ func TestLsFullThroughRoot(t *testing.T) {
 		code, out := captureStdout(t, func() int { return Root(c.args) })
 		mustExit(t, constants.ExitOK, code, out)
 		header := headerLine(t, out)
-		hasIdentity := strings.Contains(header, columnIdentity)
-		hasDriver := strings.Contains(header, columnDriver)
+		hasIdentity := strings.Contains(header, columnHeader(colIdentity))
+		hasDriver := strings.Contains(header, columnHeader(colDriver))
 		if hasIdentity != c.full || hasDriver != c.full {
 			t.Errorf("Root(%q) header %q: Identity %v, Driver %v, want %v", c.args, header, hasIdentity, hasDriver, c.full)
 		}

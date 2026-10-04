@@ -93,7 +93,7 @@ func TestCursorLinuxFixtureDoesNotEnableCredentialAccess(t *testing.T) {
 		t.Fatal("synthetic file enabled an unverified platform")
 	}
 	checks := (Cursor{}).Doctor(context.Background(), env)
-	if len(checks) != 1 || !strings.Contains(checks[0].Message, "verified on macOS only") {
+	if len(checks) != 1 || !strings.Contains(checks[0].Message.Error(), "verified on macOS only") {
 		t.Fatalf("diagnostic must name verification boundary: %+v", checks)
 	}
 	got, err := os.ReadFile(path)

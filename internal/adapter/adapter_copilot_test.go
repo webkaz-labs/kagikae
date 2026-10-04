@@ -95,7 +95,7 @@ func TestCopilotDetect(t *testing.T) {
 	info, _ = copilotAdapter.Detect(context.Background(), env)
 	warned := false
 	for _, w := range info.Warnings {
-		if strings.Contains(w, "GH_TOKEN") {
+		if strings.Contains(w.Error(), "GH_TOKEN") {
 			warned = true
 		}
 	}

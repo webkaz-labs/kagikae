@@ -24,9 +24,14 @@ func TestR6AuthMissingSentenceIsUnchanged(t *testing.T) {
 	}
 	cases := [][]string{nil, {}, {"one"}, {"one", "two"}, {"a 100% relative XDG_DATA_HOME"}}
 	for _, w := range cases {
+		// A warning is a message value: its text is data, never a format.
+		warnings := []message{}
+		for _, text := range w {
+			warnings = append(warnings, msgf("%s", text))
+		}
 		got := errf(constants.ExitAuthMissing,
 			"no live %s auth state found; log in with the official CLI first%s",
-			"claude", warningsDetail(w)).Error()
+			"claude", warningsDetail(warnings)).Error()
 		if want := old("claude", w); got != want {
 			t.Errorf("warnings=%v\n got=%q\nwant=%q", w, got, want)
 		}

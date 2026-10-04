@@ -178,13 +178,13 @@ func (app *App) attributedCredDir(store dirStore, prev fragmentInfo) string {
 // is a smaller fault than a login destroyed by a cleanup.
 func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinID, onlyTool string,
 	keep map[string]bool, prev fragmentInfo, purging bool,
-) []string {
+) []message {
 	stores, err := app.dirCredentialStores(pinID, prev)
 	if err != nil {
 		warnMessage(err)
 		return nil
 	}
-	removals := []string{}
+	removals := []message{}
 	for _, store := range stores {
 		if onlyTool != "" && store.Tool != onlyTool {
 			continue
@@ -272,12 +272,12 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// store dir rather than on the wording (TestPruneDirCredentialsRemovesSupersededItem),
 		// so do not read that assertion as dead weight.
 		case removed && store.CredDir != "":
-			removals = append(removals, fmt.Sprintf(
+			removals = append(removals, msgf(
 				"Removed the %s credential this account's bindings shared; no binding still uses it (%s)",
 				store.Tool, store.CredDir,
 			))
 		case removed:
-			removals = append(removals, fmt.Sprintf(
+			removals = append(removals, msgf(
 				"Removed the superseded per-directory %s credential (%s)", store.Tool, store.Dir,
 			))
 		}
@@ -727,7 +727,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		case refused.Conflicting:
 			conflicting = append(conflicting, reader)
 			conflict = refused
-		case !refused.Why.empty():
+		case !refused.Why.Empty():
 			silent = append(silent, refused)
 		default:
 			confirmed++

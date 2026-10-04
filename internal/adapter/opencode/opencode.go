@@ -17,6 +17,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/jwt"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
@@ -48,8 +49,8 @@ const xdgRelativeWarning = "XDG_DATA_HOME is relative: opencode joins it against
 
 // xdgRelativeWarnings is the Detect/Doctor payload for a relative XDG_DATA_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
-func xdgRelativeWarnings(env adapter.Env) []string {
-	return adapter.RelativeEnvWarning(env, "XDG_DATA_HOME", xdgRelativeWarning)
+func xdgRelativeWarnings(env adapter.Env) []l10n.Msg {
+	return adapter.RelativeEnvWarning(env, "XDG_DATA_HOME", l10n.Msgf(xdgRelativeWarning))
 }
 
 type Opencode struct{}
@@ -86,7 +87,7 @@ func (o Opencode) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec
 }
 
 func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolOpencode, Driver: constants.DriverOpencodeFilePatch, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolOpencode, Driver: constants.DriverOpencodeFilePatch, Warnings: []l10n.Msg{}}
 	if _, err := env.LookPath("opencode"); err == nil {
 		info.BinaryPresent = true
 	}
@@ -106,7 +107,7 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 		// the openai key, and only the latter deserves an explanation.
 		if _, statErr := os.Stat(specs[0].Target); statErr == nil {
 			info.Warnings = append(info.Warnings,
-				"auth.json has no openai entry; only the ChatGPT subscription login is switched (API-key providers belong to env mode)")
+				l10n.Msgf("auth.json has no openai entry; only the ChatGPT subscription login is switched (API-key providers belong to env mode)"))
 		}
 	}
 	return info, nil
@@ -183,23 +184,23 @@ func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	case err != nil:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		})
 	case info.AuthPresent:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: "openai (ChatGPT subscription) login found in auth.json",
+			Status: constants.StatusOK, Message: l10n.Msgf("openai (ChatGPT subscription) login found in auth.json"),
 		})
 	default:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
 			Status:  constants.StatusWarn,
-			Message: "no openai (ChatGPT subscription) login in auth.json; log in with `opencode auth login` first",
+			Message: l10n.Msgf("no openai (ChatGPT subscription) login in auth.json; log in with `opencode auth login` first"),
 		})
 	}
 	checks = append(checks, adapter.Check{
 		Tool: tool, Code: constants.CheckDriver,
-		Status: constants.StatusOK, Message: "driver: " + constants.DriverOpencodeFilePatch,
+		Status: constants.StatusOK, Message: l10n.Msgf("driver: %s", constants.DriverOpencodeFilePatch),
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
 	checks = append(checks, adapter.EnvConflictChecksFrom(tool, xdgRelativeWarnings(env))...)

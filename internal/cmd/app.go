@@ -34,7 +34,7 @@ type App struct {
 	Paths          paths.Paths
 	Config         *config.Config
 	ConfigPath     string
-	ConfigWarnings []string
+	ConfigWarnings []message
 	ConfigErr      error
 	Env            adapter.Env
 	Now            func() time.Time

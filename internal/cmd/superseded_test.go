@@ -74,7 +74,7 @@ func findChecks(report *doctorReport, code string) []string {
 	msgs := []string{}
 	for _, c := range report.Checks {
 		if c.Code == code {
-			msgs = append(msgs, c.Message)
+			msgs = append(msgs, c.Message.Error())
 		}
 	}
 	return msgs

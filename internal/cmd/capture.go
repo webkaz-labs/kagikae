@@ -12,12 +12,12 @@ import (
 )
 
 type captureResult struct {
-	Tool     string   `json:"tool"`
-	Account  string   `json:"account"`
-	Driver   string   `json:"driver"`
-	Captured bool     `json:"captured"`
-	Actions  []action `json:"actions"`
-	Warnings []string `json:"warnings"`
+	Tool     string    `json:"tool"`
+	Account  string    `json:"account"`
+	Driver   string    `json:"driver"`
+	Captured bool      `json:"captured"`
+	Actions  []action  `json:"actions"`
+	Warnings []message `json:"warnings"`
 }
 
 type captureReport struct {
@@ -169,11 +169,11 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 
 func printCaptureReport(app *App, report *captureReport) {
 	for _, result := range report.Results {
-		verb := "Captured"
 		if report.DryRun {
-			verb = "Would capture"
+			reportf("Would capture %s/%s (driver: %s)", result.Tool, result.Account, result.Driver)
+		} else {
+			reportf("Captured %s/%s (driver: %s)", result.Tool, result.Account, result.Driver)
 		}
-		fmt.Printf("%s %s/%s (driver: %s)\n", verb, result.Tool, result.Account, result.Driver)
 		for _, act := range result.Actions {
 			if act.Pointer != "" {
 				fmt.Printf("  %s %s %s\n", act.Kind, act.Target, act.Pointer)

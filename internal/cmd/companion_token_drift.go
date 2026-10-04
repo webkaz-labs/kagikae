@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/companion"
@@ -110,8 +109,8 @@ func (app *App) companionTokenDriftChecks(ctx context.Context, live bool) []adap
 // tokenDriftInactiveMessage frames the binding-not-active case: the token env var is
 // empty, so the bound token never reaches the tool and a command would fall back
 // to whatever credential the tool finds on its own.
-func tokenDriftInactiveMessage(profile, id, envVar, expected string) string {
-	return fmt.Sprintf(
+func tokenDriftInactiveMessage(profile, id, envVar, expected string) message {
+	return msgf(
 		"profile %s: %s is bound to login %q but %s is unset here; the binding is not active in this shell, so %s would act as the wrong account; run: mise env, or mise trust if untrusted",
 		profile, id, sanitizeIdentity(expected), envVar, id,
 	)
@@ -121,15 +120,15 @@ func tokenDriftInactiveMessage(profile, id, envVar, expected string) string {
 // binding. A non-zero exit means the probe could not confirm the login (invalid
 // token or no network); exit zero with a different login means the directory's
 // token is for the wrong account. got is already sanitized.
-func tokenDriftMismatchMessage(profile, id, expected, got string, code int, stderr string) string {
+func tokenDriftMismatchMessage(profile, id, expected, got string, code int, stderr string) message {
 	expSafe := sanitizeIdentity(expected)
 	if code != 0 {
-		return fmt.Sprintf(
+		return msgf(
 			"profile %s: could not verify the %s token's login against the bound %q (%s); the token may be invalid or the network unreachable",
 			profile, id, expSafe, runner.Snippet(stderr),
 		)
 	}
-	return fmt.Sprintf(
+	return msgf(
 		"profile %s: the %s token resolves to login %q but the binding expects %q; this directory's token is for the wrong account",
 		profile, id, got, expSafe,
 	)

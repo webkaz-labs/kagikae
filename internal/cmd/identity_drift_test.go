@@ -330,7 +330,7 @@ func TestDoctorIdentityRecordInvalidClassification(t *testing.T) {
 				for _, c := range report.Checks {
 					if c.Code == constants.CheckIdentityRecordInvalid {
 						count++
-						if c.Tool != constants.ToolClaude || c.Status != constants.StatusWarn || !strings.Contains(c.Message, "claude/main") {
+						if c.Tool != constants.ToolClaude || c.Status != constants.StatusWarn || !strings.Contains(c.Message.Error(), "claude/main") {
 							t.Errorf("invalid record must name tool/account and warn: %+v", c)
 						}
 					}
@@ -387,7 +387,7 @@ func TestDoctorIdentityRecordChecksInactiveAccountsAndFilter(t *testing.T) {
 		for _, c := range report.Checks {
 			if c.Code == constants.CheckIdentityRecordInvalid {
 				count++
-				if !strings.Contains(c.Message, "claude/main") {
+				if !strings.Contains(c.Message.Error(), "claude/main") {
 					t.Errorf("wrong account: %+v", c)
 				}
 			}

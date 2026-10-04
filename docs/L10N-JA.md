@@ -78,6 +78,20 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | config file | 設定ファイル | 確定 | |
 | env var | 環境変数 | 確定 | `KAE_LANG` 等の名前は訳さない |
 | child process | 子プロセス | 確定 | |
+| refresh token | リフレッシュトークン | 決定 | 動詞の refresh は「リフレッシュ」。スナップショットを取り直す recapture は「更新」 |
+| adopt / declined to adopt | 取り込む / 取り込みを見送る | 決定 | |
+| pre-split | 分割前 | 決定 | |
+| capture time / Captured（見出し） | 登録日時 | 決定 | |
+| Identity（見出し） | 識別子 | 決定 | 本文の login identity は「ログイン識別子」 |
+| Active / In effect（見出し） | 有効 | 決定 | |
+| Notes / Current / Source / Applies / Level / Kind / Root（見出し） | 備考 / 現在 / 取得元 / 適用先 / レベル / 種別 / ルート | 決定 | |
+| present / absent | あり / なし | 決定 | 人向けのセル語。JSON は bool |
+| re-login now / N day(s) left | 今すぐ再ログイン / 残り N 日 | 決定 | |
+| keychain item / keyring | キーチェーン項目 / キーリング | 決定 | |
+| codex home | codex ホーム | 決定 | |
+| file driver | ファイルドライバー | 決定 | |
+| env profile | 環境変数プロファイル | 決定 | |
+| secret backend | シークレットストア | 決定 | secret store と同一視する |
 | cancel | キャンセル | 確定 | |
 
 ### 型と記号
@@ -107,6 +121,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | 表の見出し・ラベル・箇条書き | 体言止め | 「アカウント」「利用枠」 |
 | 失敗の述語 | 「〜できません」「〜に失敗しました」 | |
 | 対処（次にすること） | 「〜してください」。命令形と依頼形を混ぜない | 「kae add claude main を実行してください」 |
+| 文末の句点 | 警告・note・check の message は句点で終える。stdout の報告行（reportf）は英語の句点の有無に合わせる（英語に句点が無ければ付けない） | 「環境変数プロファイル claude/main を削除しました」 |
 
 ### 対処の書き方
 

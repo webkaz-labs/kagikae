@@ -136,12 +136,12 @@ type toolPlan struct {
 	// are handed the separately loaded active account instead, and Meta feeds only the
 	// switch-time freshness warning.
 	Meta     account.Account
-	Warnings []string
+	Warnings []message
 }
 
 // planTool resolves adapter, driver, and artifact specs for one tool.
 func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPlan, error) {
-	plan := toolPlan{Tool: tool, Account: accountName, Warnings: []string{}}
+	plan := toolPlan{Tool: tool, Account: accountName, Warnings: []message{}}
 	ad, err := adapter.ForTool(tool)
 	if err != nil {
 		return plan, err
@@ -334,7 +334,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		if !warning.empty() {
+		if !warning.Empty() {
 			warnMessage(warning)
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {

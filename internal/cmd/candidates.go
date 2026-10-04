@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/picker"
 	"github.com/webkaz-labs/kagikae/internal/textui"
 )
@@ -32,36 +33,28 @@ type candidateGroup struct {
 // found counts the places before missing ones were left out, for the request
 // that ends up with none.
 type placeCandidates struct {
-	reason func(listed int) string
-	// none, when set, words the not_found of a set with nothing listed (given
-	// found); otherwise reason(found) and "no existing place to choose" do.
-	none   func(found int) string
+	reason func(listed int) message
+	// none, when set, is the not_found of a set with nothing listed (given
+	// found); otherwise reason(found) and "no existing place to choose" word it.
+	none   func(found int) error
 	found  int
 	groups []candidateGroup
 }
 
 // constReason is a reason that does not depend on the number listed.
-func constReason(reason string) func(int) string { return func(int) string { return reason } }
+func constReason(reason message) func(int) message { return func(int) message { return reason } }
 
-// placeNoun is "place" for one and "places" otherwise.
-func placeNoun(n int) string {
-	if n == 1 {
-		return "place"
-	}
-	return "places"
-}
-
-// noneMessage is the not_found message for a set with nothing listed.
-func (s placeCandidates) noneMessage() string {
+// noneError is the not_found error for a set with nothing listed.
+func (s placeCandidates) noneError() error {
 	if s.none != nil {
 		return s.none(s.found)
 	}
-	return s.reason(s.found) + ", and no existing place to choose"
+	return errf(constants.ExitNotFound, "%s, and no existing place to choose", s.reason(s.found))
 }
 
 // newPlaceCandidates builds the set for req. With --root a place without a root
 // is not a candidate: the request would reach its root.
-func newPlaceCandidates(req lsRequest, reason func(listed int) string, groups ...candidateGroup) placeCandidates {
+func newPlaceCandidates(req lsRequest, reason func(listed int) message, groups ...candidateGroup) placeCandidates {
 	set := placeCandidates{reason: reason}
 	for _, g := range groups {
 		var rows []placeRow
@@ -94,7 +87,7 @@ func (s placeCandidates) listed() int {
 // lists is a candidate, group by group, in the order placeGroups.groups gives.
 func (app *App) allPlaceCandidates(ctx context.Context, req lsRequest) placeCandidates {
 	g := app.collectPlaceGroups(ctx, app.readState(), warnGroupOnce())
-	return newPlaceCandidates(req, constReason(fmt.Sprintf("kae %s needs a target", req.verb)), g.groups()...)
+	return newPlaceCandidates(req, constReason(msgf("kae %s needs a target", req.verb)), g.groups()...)
 }
 
 // pickCandidates is `--pick`: the places `kae ls <target>` lists (no target: all
@@ -103,14 +96,20 @@ func (app *App) allPlaceCandidates(ctx context.Context, req lsRequest) placeCand
 func (app *App) pickCandidates(ctx context.Context, opts commonOpts, req lsRequest) (*placeCandidates, int) {
 	words := slices.DeleteFunc([]string{"kae", req.verb, requestWords(req, false), "--pick"}, func(w string) bool { return w == "" })
 	head := strings.Join(words, " ")
-	reason := func(n int) string {
-		return fmt.Sprintf("%s needs a terminal to open the picker; it lists %d %s", head, n, placeNoun(n))
-	}
-	none := func(found int) string {
-		if found == 0 {
-			return head + " lists no place"
+	reason := func(n int) message {
+		if n == 1 {
+			return msgf("%s needs a terminal to open the picker; it lists %d place", head, n)
 		}
-		return fmt.Sprintf("%s lists %d %s, and no existing place to choose", head, found, placeNoun(found))
+		return msgf("%s needs a terminal to open the picker; it lists %d places", head, n)
+	}
+	none := func(found int) error {
+		switch found {
+		case 0:
+			return errf(constants.ExitNotFound, "%s lists no place", head)
+		case 1:
+			return errf(constants.ExitNotFound, "%s lists %d place, and no existing place to choose", head, found)
+		}
+		return errf(constants.ExitNotFound, "%s lists %d places, and no existing place to choose", head, found)
 	}
 	var groups []candidateGroup
 	switch {
@@ -177,7 +176,7 @@ func (app *App) offerCandidates(ctx context.Context, opts commonOpts, req lsRequ
 	value, cancelled, err := app.choose(ctx, tty, app.placePickerItems(req, set), picker.Options{NoColor: noColorRequested(opts.NoColor)})
 	switch {
 	case err != nil:
-		return "", finish(opts, errf(constants.ExitError, "%v", err))
+		return "", finish(opts, errf(constants.ExitError, "%v", l10n.Of(err)))
 	case cancelled:
 		return "", constants.ExitCancelled
 	}
@@ -194,7 +193,7 @@ func (app *App) choose(ctx context.Context, tty *textui.Terminal, items []picker
 
 // listCandidates lists, one per line, the command that reaches each candidate,
 // under a usage error whose reason is given the number listed. With none listed
-// it is not_found (noneMessage).
+// it is not_found (noneError).
 func listCandidates(opts commonOpts, req lsRequest, set placeCandidates) int {
 	var lines []string
 	for _, g := range set.groups {
@@ -213,19 +212,19 @@ func listCandidates(opts commonOpts, req lsRequest, set placeCandidates) int {
 		}
 	}
 	if len(lines) == 0 {
-		return finish(opts, errf(constants.ExitNotFound, "%s", set.noneMessage()))
+		return finish(opts, set.noneError())
 	}
-	return reportChoices(set.reason(len(lines))+"; choose one", lines)
+	return reportChoices(set.reason(len(lines)), lines)
 }
 
-// reportChoices prints a usage error and its candidates on stderr.
-func reportChoices(reason string, lines []string) int {
+// reportChoices prints a usage error and its candidates on stderr: the reason is a
+// message, localized, and the candidate lines are commands, verbatim.
+func reportChoices(reason message, lines []string) int {
 	var b strings.Builder
-	b.WriteString(reason + ":")
 	for _, line := range lines {
 		b.WriteString("\n  " + line)
 	}
-	return usageError("%s", b.String())
+	return usageError("%s; choose one:%s", reason, b.String())
 }
 
 // placePickerItems turns a candidate set into the picker's list: the groups

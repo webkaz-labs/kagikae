@@ -115,11 +115,11 @@ func buildProfileSave(_ context.Context, app *App, opts commonOpts, name string)
 }
 
 func printProfileSave(r *profileReport) {
-	verb := "Saved"
 	if r.DryRun {
-		verb = "Would save"
+		reportf("Would save profile %s from the active accounts:", r.Profile)
+	} else {
+		reportf("Saved profile %s from the active accounts:", r.Profile)
 	}
-	fmt.Printf("%s profile %s from the active accounts:\n", verb, r.Profile)
 	tools := make([]string, 0, len(r.Accounts))
 	for tool := range r.Accounts {
 		tools = append(tools, tool)
@@ -250,22 +250,22 @@ func buildProfileUnset(_ context.Context, app *App, opts commonOpts, name, tool 
 }
 
 func printProfileSet(r *profileReport) {
-	verb := "Set"
-	if r.DryRun {
-		verb = "Would set"
-	}
 	for tool, acc := range r.Accounts {
-		fmt.Printf("%s %s = %s in profile %s\n", verb, tool, acc, r.Profile)
+		if r.DryRun {
+			reportf("Would set %s = %s in profile %s", tool, acc, r.Profile)
+		} else {
+			reportf("Set %s = %s in profile %s", tool, acc, r.Profile)
+		}
 	}
 }
 
 func printProfileUnset(r *profileReport) {
-	verb := "Unset"
-	if r.DryRun {
-		verb = "Would unset"
-	}
 	for tool := range r.Accounts {
-		fmt.Printf("%s %s from profile %s\n", verb, tool, r.Profile)
+		if r.DryRun {
+			reportf("Would unset %s from profile %s", tool, r.Profile)
+		} else {
+			reportf("Unset %s from profile %s", tool, r.Profile)
+		}
 	}
 }
 
@@ -334,11 +334,11 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 }
 
 func printProfileRm(r *profileReport) {
-	verb := "Removed"
 	if r.DryRun {
-		verb = "Would remove"
+		reportf("Would remove profile %s", r.Profile)
+		return
 	}
-	fmt.Printf("%s profile %s\n", verb, r.Profile)
+	reportf("Removed profile %s", r.Profile)
 }
 
 func cmdProfileDefault(ctx context.Context, args []string) int {
@@ -407,15 +407,15 @@ func buildProfileDefault(_ context.Context, app *App, opts commonOpts, name stri
 func printProfileDefault(r *profileReport) {
 	if r.DryRun {
 		if r.DefaultProfile == "" {
-			fmt.Println("Would clear default_profile")
+			reportf("Would clear default_profile")
 		} else {
-			fmt.Printf("Would set default_profile to %s\n", r.DefaultProfile)
+			reportf("Would set default_profile to %s", r.DefaultProfile)
 		}
 		return
 	}
 	if r.DefaultProfile == "" {
-		fmt.Println("default_profile: (none)")
+		reportf("default_profile: (none)")
 		return
 	}
-	fmt.Printf("default_profile: %s\n", r.DefaultProfile)
+	reportf("default_profile: %s", r.DefaultProfile)
 }

@@ -59,6 +59,36 @@ var jaErrors = map[string]string{
 	"the global isolated fragment does not match state.synced, so account paths cannot be changed safely; stop every process using isolated homes, then run: kae use -s %s %s (regenerates it from state), then run: kae account rename %s %s %s":                                                                                       "グローバル独立環境のフラグメントが state.synced と一致しないため、アカウントのパスを安全に変更できません。独立ホームを使っているプロセスをすべて止めてから kae use -s %s %s を実行し（状態からフラグメントを作り直します）、続けて kae account rename %s %s %s を実行してください",
 	"account %s/%s is selected by global isolated mode; stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, then run: kae account rename %s %s %s":                                                                                       "アカウント %s/%s はグローバル独立モードで選択されています。その独立ホームを使っているプロセス（kae run -i の子プロセスや kae use -i で有効にしたターミナルを含む）をすべて止めてから kae use -s %s %s を実行し、続けて kae account rename %s %s %s を実行してください",
 
+	// account.go: the steps of kae account rm and rename, ahead of their cause.
+	"reload config before account removal: %w": "アカウントを削除する前に設定ファイルを読み込み直せません: %w",
+	"stat config before account removal: %w":   "アカウントを削除する前に設定ファイルの状態を確認できません: %w",
+	"delete secret %s: %w":                     "シークレットストアの項目 %s を削除できません: %w",
+	"remove snapshot dir: %w":                  "スナップショットのディレクトリを削除できません: %w",
+	"reload config before rename: %w":          "名前を変更する前に設定ファイルを読み込み直せません: %w",
+	"read secret %s: %w":                       "シークレットストアの項目 %s を読み取れません: %w",
+	"write secret %s: %w":                      "シークレットストアの項目 %s に書き込めません: %w",
+	"delete old secret %s: %w":                 "古いシークレットストアの項目 %s を削除できません: %w",
+	"remove old snapshot dir: %w":              "古いスナップショットのディレクトリを削除できません: %w",
+
+	// app.go: config edits and the global mise fragment kept with state.
+	"read config for edit: %w":           "編集する設定ファイルを読み取れません: %w",
+	"write config: %w":                   "設定ファイルに書き込めません: %w",
+	"reload config after edit: %w":       "編集後の設定ファイルを読み込み直せません: %w",
+	"reconcile global mise fragment: %w": "グローバル mise のフラグメントを状態に合わせられません: %w",
+	"regenerate global mise fragment: %w; restoring previous state also failed: %v": "グローバル mise のフラグメントを作り直せません: %w。以前の状態の復元にも失敗しました: %v",
+	"regenerate global mise fragment (previous state restored): %w":                 "グローバル mise のフラグメントを作り直せません（以前の状態は復元しました）: %w",
+
+	// capture.go.
+	"no live %s auth state found; log in with the official CLI first%s": "%s の現在の認証状態が見つかりません。先に公式の CLI でログインしてください%s",
+	"store captured payload: %w":                                        "登録する保存データをシークレットストアに書き込めません: %w",
+	"clear stale payload: %w":                                           "古い保存データを消去できません: %w",
+
+	// init.go and edit.go.
+	"inspect config: %w":        "設定ファイルを確認できません: %w",
+	"inspect config target: %w": "設定ファイルのリンク先を確認できません: %w",
+	"create %s: %w":             "%s を作成できません: %w",
+	"launch editor %s: %w":      "エディター %s を起動できません: %w",
+
 	// Saved data in the secret store.
 	"identity payload %s is missing from the secret store": "アカウント記録の保存データ %s がシークレットストアにありません",
 	"backup payload %s is missing from the secret store":   "バックアップの保存データ %s がシークレットストアにありません",
@@ -120,6 +150,9 @@ var jaErrors = map[string]string{
 	"no variables given":          "環境変数が指定されていません",
 	"env profile %s/%s not found": "env プロファイル %s/%s が見つかりません",
 	"env profile %s/%s not found; run: kae env set %s %s KEY=VALUE": "env プロファイル %s/%s が見つかりません。kae env set %s %s KEY=VALUE を実行してください",
+	"read value from stdin: %w":                                     "標準入力から値を読み取れません: %w",
+	"store %s: %w":                                                  "%s を保存できません: %w",
+	"delete %s: %w":                                                 "%s を削除できません: %w",
 
 	// kae companion.
 	"unknown companion subcommand: %s (add, rm, list)":                                         "不明な companion サブコマンドです: %s（add、rm、list のいずれか）",
@@ -131,6 +164,12 @@ var jaErrors = map[string]string{
 	"companion %s in profile %q has no knob %q":                                                "プロファイル %[2]q の周辺ツール %[1]s に設定項目 %[3]q はありません",
 	"no knobs given": "設定項目が指定されていません",
 	"pass either KEY=VALUE pairs (non-secret) or a single bare token KEY (value on stdin), not both": "KEY=VALUE の組（秘密でない値）か、=VALUE なしのトークンの KEY 1 つ（値は標準入力）のどちらかを指定してください。両方は指定できません",
+	"locate kae binary for companion token lookup: %w":                                               "周辺ツールのトークンを参照する kae のバイナリの場所を特定できません: %w",
+	"kae binary path %q contains a quote; companion token lookup cannot be templated safely":         "kae のバイナリのパス %q に引用符が含まれているため、周辺ツールのトークンを参照するテンプレートを安全に作れません",
+	"create companion dir: %w":     "周辺ツールのディレクトリを作成できません: %w",
+	"parse %s config template: %w": "%s の設定ファイルのテンプレートを解析できません: %w",
+	"render %s config: %w":         "%s の設定ファイルを生成できません: %w",
+	"companion token %s/%s/%s is not stored; run: kae companion add %s %s %s": "周辺ツールのトークン %s/%s/%s が保存されていません。kae companion add %s %s %s を実行してください",
 
 	// kae pin, kae unpin, kae relogin and kae mise init.
 	"--shared/--isolated/--tree do not apply to `kae pin <tool> <account>`; the directory's existing mode is left unchanged":                          "--shared/--isolated/--tree は kae pin <tool> <account> には使えません。ディレクトリの既存のモードはそのまま残ります",
@@ -242,6 +281,22 @@ var jaErrors = map[string]string{
 	"kae %s prints no report; for a place's path as JSON, run: kae ls <target> --current --json":                                                                                                                          "kae %s はレポートを出力しません。場所のパスを JSON で得るには kae ls <target> --current --json を実行してください",
 	"%s does not exist (kae ls marks it (missing))": "%s は存在しません（kae ls では (missing) と表示されます）",
 	"--at takes a place number from 1, got %q":      "--at には 1 以上の場所の番号を指定してください（指定値: %q）",
+	// candidates.go and open.go: why a request lists candidates rather than
+	// choosing one, the not_found of an empty set, and the picker's own failure.
+	"%s; choose one:%s":     "%s。1 つ選んでください:%s",
+	"kae %s needs a target": "kae %s には対象が必要です",
+	"%s needs a terminal to open the picker; it lists %d place":  "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s needs a terminal to open the picker; it lists %d places": "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s lists no place": "%s に該当する場所はありません",
+	"%s lists %d place, and no existing place to choose":  "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s lists %d places, and no existing place to choose": "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s, and no existing place to choose":                 "%s。存在していて選べる場所はありません",
+	"kae %s %s matches %d place":                          "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s matches %d places":                         "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s has no current place here":                 "ここには kae %s %s の現在の場所がありません",
+	"kae %s --%s needs a tool: %d tools are bound here":   "kae %s --%s にはツールが必要です: ここで固定しているツールは %d 個です",
+	"kae %s --%s needs a tool: no tool is bound here":     "kae %s --%s にはツールが必要です: ここで固定しているツールはありません",
+	"%v":              "%v",
 	"%s %s: %v":       "%s %s: %v",
 	"%s %s exited %d": "%s %s が終了コード %d で終了しました",
 

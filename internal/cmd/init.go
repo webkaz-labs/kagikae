@@ -7,6 +7,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -39,13 +40,13 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 
 	info, statErr := os.Lstat(app.ConfigPath)
 	if statErr != nil && !os.IsNotExist(statErr) {
-		return finish(opts, fmt.Errorf("inspect config: %w", statErr))
+		return finish(opts, l10n.Errorf("inspect config: %w", statErr))
 	}
 	if statErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			info, err = os.Stat(app.ConfigPath)
 			if err != nil {
-				return finish(opts, fmt.Errorf("inspect config target: %w", err))
+				return finish(opts, l10n.Errorf("inspect config target: %w", err))
 			}
 		}
 		if !info.Mode().IsRegular() {
@@ -57,7 +58,7 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 	}
 	for _, dir := range []string{app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.StateDir} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return finish(opts, fmt.Errorf("create %s: %w", dir, err))
+			return finish(opts, l10n.Errorf("create %s: %w", dir, err))
 		}
 	}
 	report := initReport{
@@ -68,7 +69,7 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 	if os.IsNotExist(statErr) {
 		content := config.InitialContent("")
 		if err := patch.WriteFileAtomic(app.ConfigPath, []byte(content), 0o600); err != nil {
-			return finish(opts, fmt.Errorf("write config: %w", err))
+			return finish(opts, l10n.Errorf("write config: %w", err))
 		}
 		report.Created = true
 	}
@@ -76,12 +77,13 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if report.Created {
-		fmt.Printf("Created %s\n", report.ConfigPath)
+		reportf("Created %s", report.ConfigPath)
 	} else {
-		fmt.Printf("Config already exists: %s\n", report.ConfigPath)
+		reportf("Config already exists: %s", report.ConfigPath)
 	}
-	fmt.Println("\nNext steps:")
-	fmt.Println("  kae doctor                             # check the environment")
-	fmt.Println("  kae add --no-login <tool> <account>    # snapshot the current login")
+	fmt.Println()
+	reportf("Next steps:")
+	reportf("  kae doctor                             # check the environment")
+	reportf("  kae add --no-login <tool> <account>    # snapshot the current login")
 	return constants.ExitOK
 }

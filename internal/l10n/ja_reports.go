@@ -76,6 +76,62 @@ var jaReports = map[string]string{
 	"kae directories:": "kae のディレクトリ:",
 	"Kind":             "種別",
 
+	// error.go (joinList): the separator of a list of names.
+	"%s, %s": "%s、%s",
+
+	// account.go.
+	"Removed %s/%s (%d secret item(s))":               "%s/%s を削除しました（シークレットストアの項目 %d 件）",
+	"Would remove %s/%s (%d secret item(s))":          "%s/%s を削除する予定です（シークレットストアの項目 %d 件）",
+	"  dropped the %s reference from profile(s): %v":  "  プロファイルから %s の参照を外しました: %v",
+	"  cleared the active %s account in state":        "  状態に記録した %s の有効なアカウントを解除しました",
+	"Renamed %s/%s to %s/%s (%d secret item(s))":      "%s/%s の名前を %s/%s に変更しました（シークレットストアの項目 %d 件）",
+	"Would rename %s/%s to %s/%s (%d secret item(s))": "%s/%s の名前を %s/%s に変更する予定です（シークレットストアの項目 %d 件）",
+	"  rewrote the %s reference in profile(s): %v":    "  プロファイルの %s の参照を書き換えました: %v",
+	"  updated the active %s account in state":        "  状態に記録した %s の有効なアカウントを更新しました",
+	"Set the %s/%s identity to %s":                    "%s/%s のログイン識別子を %s に設定しました",
+	"Would set the %s/%s identity to %s":              "%s/%s のログイン識別子を %s に設定する予定です",
+
+	// backup.go.
+	"no backups yet (backups are created automatically before each switch)": "バックアップはまだありません（バックアップは切替の前に毎回自動で作られます）",
+	"ID":                           "ID",
+	"Created":                      "作成日時",
+	"Reason":                       "理由",
+	"Tools":                        "ツール",
+	"Rolled back to backup %s":     "バックアップ %s に戻しました",
+	"Would roll back to backup %s": "バックアップ %s に戻す予定です",
+	"  %s: %d artifact(s)":         "  %s: 認証要素 %d 件",
+
+	// companion.go.
+	"Bound companion %s for profile %s: %s":                                  "プロファイル %[2]s に周辺ツール %[1]s を設定しました: %[3]s",
+	"To refresh its fragment, in a bound directory run: kae pin":             "フラグメントを更新するには、固定したディレクトリで kae pin を実行してください",
+	"Removed companion %s from profile %s":                                   "プロファイル %[2]s から周辺ツール %[1]s を削除しました",
+	"Removed %d knob(s) from companion %s in profile %s: %s":                 "プロファイル %[3]s の周辺ツール %[2]s から設定項目 %[1]d 件を削除しました: %[4]s",
+	"no companion bindings; run: kae companion add <profile> <id> KEY=VALUE": "周辺ツールの設定がありません。kae companion add <profile> <id> KEY=VALUE を実行してください",
+	"Companion": "周辺ツール",
+	"Knobs":     "設定項目",
+
+	// init.go and install.go.
+	"Created %s":                "%s を作成しました",
+	"Config already exists: %s": "設定ファイルはすでにあります: %s",
+	"Next steps:":               "次の手順:",
+	"  kae doctor                             # check the environment":      "  kae doctor                             # 環境の確認",
+	"  kae add --no-login <tool> <account>    # snapshot the current login": "  kae add --no-login <tool> <account>    # 現在のログインのスナップショット",
+	"Installed kae %s to %s (removal receipt recorded)":                     "kae %s を %s にインストールしました（削除に使うインストール記録を残しました）",
+
+	// profile.go.
+	"Saved profile %s from the active accounts:":      "有効なアカウントからプロファイル %s を保存しました:",
+	"Would save profile %s from the active accounts:": "有効なアカウントからプロファイル %s を保存する予定です:",
+	"Set %s = %s in profile %s":                       "プロファイル %[3]s に %[1]s = %[2]s を設定しました",
+	"Would set %s = %s in profile %s":                 "プロファイル %[3]s に %[1]s = %[2]s を設定する予定です",
+	"Unset %s from profile %s":                        "プロファイル %[2]s から %[1]s の割り当てを外しました",
+	"Would unset %s from profile %s":                  "プロファイル %[2]s から %[1]s の割り当てを外す予定です",
+	"Removed profile %s":                              "プロファイル %s を削除しました",
+	"Would remove profile %s":                         "プロファイル %s を削除する予定です",
+	"Would clear default_profile":                     "default_profile を解除する予定です",
+	"Would set default_profile to %s":                 "default_profile を %s に設定する予定です",
+	"default_profile: (none)":                         "default_profile: なし",
+	"default_profile: %s":                             "default_profile: %s",
+
 	// text.go (columnHeader).
 	"Tool":       "ツール",
 	"Account":    "アカウント",

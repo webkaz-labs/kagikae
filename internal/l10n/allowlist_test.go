@@ -50,7 +50,6 @@ var unmigrated = map[string]pendingCounts{
 	"internal/cmd/account.go":               {sink: 4},
 	"internal/cmd/app.go":                   {flag: 12},
 	"internal/cmd/backup.go":                {sink: 3},
-	"internal/cmd/candidates.go":            {sink: 3},
 	"internal/cmd/cmd.go":                   {sink: 1},
 	"internal/cmd/companion.go":             {sink: 4, print: 1},
 	"internal/cmd/completion.go":            {sink: 2},

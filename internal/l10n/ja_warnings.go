@@ -131,6 +131,13 @@ var jaWarnings = map[string]string{
 	"config is invalid or unreadable; listing metadata from the resolved state directory; check the selected config file and its permissions before recovery; run: kae doctor": "設定ファイルが不正か読み取れないため、解決した状態ディレクトリからメタデータを一覧しています。復旧の前に、選んだ設定ファイルとその権限を確認してください。kae doctor を実行してください。",
 
 	"metadata listing is incomplete; readable records are shown": "メタデータの一覧が不完全です。読み取れた記録だけを表示しています。",
+	// An issue's code and hashed entry are tokens; the remedy is a message.
+	"%s %s; %s": "%s %s。%s。",
+	"check the resolved state directory exists as a directory and is accessible; see docs/CLI.md Recovery guidance":       "解決した状態ディレクトリがディレクトリとして存在し、アクセスできることを確認してください。docs/CLI.md の Recovery guidance を参照してください",
+	"check metadata file and parent-directory permissions; keep the entry while investigating":                            "メタデータのファイルと親ディレクトリの権限を確認してください。調べている間はその項目を残してください",
+	"check metadata format against docs/DATA-MODEL.md; do not infer an account or delete the entry to clear this warning": "メタデータの形式を docs/DATA-MODEL.md と照らし合わせて確認してください。この警告を消すためにアカウントを推測したり、項目を削除したりしないでください",
+	"inspect the entry type without following symlinks; keep unexpected entries until their purpose is verified":          "symlink をたどらずに項目の種類を確認してください。想定外の項目は、目的を確認できるまで残してください",
+	"see docs/CLI.md Recovery guidance before recovery":                                                                   "復旧の前に docs/CLI.md の Recovery guidance を参照してください",
 	// ls.go.
 	"%s is bound but its fragment could not be read (%v), so it is not listed": "%s は固定されていますが、フラグメントを読み取れません（%v）。そのため一覧に載せていません。",
 	// lsplace.go.

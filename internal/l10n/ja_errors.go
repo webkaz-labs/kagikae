@@ -247,6 +247,22 @@ var jaErrors = map[string]string{
 	"kae cd moves the shell only through the kae shell function, which eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it, run: cd \"$(kae ls %s)\"": "kae cd がシェルを移動できるのは kae のシェル関数を通したときだけです。この関数は eval \"$(kae completion zsh)\"（bash も同様。fish は kae completion fish | source）か mise のフックが定義します。関数がない場合は cd \"$(kae ls %s)\" を実行してください",
 	"kae %s prints no report; for a place's path as JSON, run: kae ls <target> --current --json":                                                                                                                          "kae %s はレポートを出力しません。場所のパスを JSON で得るには kae ls <target> --current --json を実行してください",
 	"%s does not exist (kae ls marks it (missing))": "%s は存在しません（kae ls では (missing) と表示されます）",
+	// candidates.go and open.go: why a request lists candidates rather than
+	// choosing one, the not_found of an empty set, and the picker's own failure.
+	"%s; choose one:%s":     "%s。1 つ選んでください:%s",
+	"kae %s needs a target": "kae %s には対象が必要です",
+	"%s needs a terminal to open the picker; it lists %d place":  "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s needs a terminal to open the picker; it lists %d places": "%s がピッカーを開くには端末が必要です。対象の場所は %d 件です",
+	"%s lists no place": "%s に該当する場所はありません",
+	"%s lists %d place, and no existing place to choose":  "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s lists %d places, and no existing place to choose": "%s に該当する場所は %d 件ですが、存在していて選べる場所はありません",
+	"%s, and no existing place to choose":                 "%s。存在していて選べる場所はありません",
+	"kae %s %s matches %d place":                          "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s matches %d places":                         "kae %s %s に一致する場所が %d 件あります",
+	"kae %s %s has no current place here":                 "ここには kae %s %s の現在の場所がありません",
+	"kae %s --%s needs a tool: %d tools are bound here":   "kae %s --%s にはツールが必要です: ここで固定しているツールは %d 個です",
+	"kae %s --%s needs a tool: no tool is bound here":     "kae %s --%s にはツールが必要です: ここで固定しているツールはありません",
+	"%v":              "%v",
 	"%s %s: %v":       "%s %s: %v",
 	"%s %s exited %d": "%s %s が終了コード %d で終了しました",
 

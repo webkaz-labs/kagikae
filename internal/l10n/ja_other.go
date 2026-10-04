@@ -15,6 +15,11 @@ var jaOther = map[string]string{
 	"Ensure this is on your fpath, e.g. add to ~/.zshrc:\n  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.": "次の行が fpath に入っていることを確認してください（例: ~/.zshrc に追加する）:\n  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nそのあと新しいシェルを開いてください。",
 	"Open a new shell to load it.": "読み込むには新しいシェルを開いてください。",
 
+	// internal/picker: the empty result, the footer and the empty filter's placeholder.
+	"no matching place": "一致する場所がありません",
+	"up/down move   enter choose   esc clear or cancel": "上下 移動   Enter 決定   Esc 絞り込み解除またはキャンセル",
+	"type to filter": "入力して絞り込み",
+
 	// uninstall.go.
 	"Apply this exact removal plan? Type uninstall to confirm: ": "この削除計画をそのまま適用する場合は uninstall と入力してください: ",
 	// preservation.go. The answer is the ID itself, in every language.

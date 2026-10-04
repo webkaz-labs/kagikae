@@ -9,10 +9,10 @@ import (
 )
 
 // usageError prints a usage error, localized, and returns the usage exit code.
-// It forwards its unchanged format and args to l10n.Sprintf, which keeps it a
-// `go vet` printf wrapper; the newline is added by Fprintln, not to the format.
+// It forwards its unchanged format and args to stderrf, which keeps it a
+// `go vet` printf wrapper; the newline is added by stderrf, not to the format.
 func usageError(format string, args ...any) int {
-	fmt.Fprintln(os.Stderr, l10n.Sprintf(format, args...))
+	stderrf(format, args...)
 	return constants.ExitUsage
 }
 

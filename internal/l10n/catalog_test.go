@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -208,6 +209,9 @@ var shippedPlatforms = []string{"darwin", "linux"}
 // package's last path element otherwise, any receiver for a method).
 func (s *scan) addOtherPlatformUses() error {
 	for _, goos := range shippedPlatforms {
+		if goos == runtime.GOOS {
+			continue // already in s.files
+		}
 		list := exec.Command("go", "list", "-deps", "-json=ImportPath,Dir,GoFiles,Standard", modulePath)
 		list.Dir = s.root
 		list.Env = append(os.Environ(), "GOOS="+goos)

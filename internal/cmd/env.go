@@ -20,7 +20,7 @@ import (
 //	kae env list [--json]
 func CmdEnv(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageError("usage: %s env <set|unset|list> ...", toolName)
+		return usageLine(toolName + " env <set|unset|list> ...")
 	}
 	sub, rest := args[0], args[1:]
 	flags, positionals := splitArgs(rest)
@@ -36,7 +36,7 @@ func CmdEnv(ctx context.Context, args []string) int {
 		return runEnvUnset(ctx, app, opts, positionals)
 	case "list":
 		if len(positionals) != 0 {
-			return usageError("usage: %s env list [--json]", toolName)
+			return usageLine(toolName + " env list [--json]")
 		}
 		return runEnvList(ctx, app, opts)
 	default:
@@ -155,7 +155,7 @@ func printEnvProfileDeleted(tool, accountName string) {
 
 func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []string) int {
 	if len(positionals) < 2 {
-		return usageError("usage: %s env unset <tool> <account> [KEY...]", toolName)
+		return usageLine(toolName + " env unset <tool> <account> [KEY...]")
 	}
 	tool, accountName := positionals[0], positionals[1]
 	tool, err := canonicalToolAccount(tool, accountName)

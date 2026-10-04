@@ -20,7 +20,7 @@ import (
 //	kae profile default [<name>|--clear]    show or set default_profile
 func CmdProfile(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageError("usage: %s profile save|set|unset|rm|default ...", toolName)
+		return usageLine(toolName + " profile save|set|unset|rm|default ...")
 	}
 	switch args[0] {
 	case "save":
@@ -66,7 +66,7 @@ func cmdProfileSave(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 1 {
-		return usageError("usage: %s profile save <name>", toolName)
+		return usageLine(toolName + " profile save <name>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileSave(ctx, app, opts, positionals[0])
@@ -137,7 +137,7 @@ func cmdProfileSet(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 3 {
-		return usageError("usage: %s profile set <name> <tool> <account>", toolName)
+		return usageLine(toolName + " profile set <name> <tool> <account>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileSet(ctx, app, opts, positionals[0], positionals[1], positionals[2])
@@ -189,7 +189,7 @@ func cmdProfileUnset(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 2 {
-		return usageError("usage: %s profile unset <name> <tool>", toolName)
+		return usageLine(toolName + " profile unset <name> <tool>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileUnset(ctx, app, opts, positionals[0], positionals[1])
@@ -279,7 +279,7 @@ func cmdProfileRm(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 1 {
-		return usageError("usage: %s profile rm <name> [--force]", toolName)
+		return usageLine(toolName + " profile rm <name> [--force]")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileRm(ctx, app, opts, positionals[0], force)
@@ -351,7 +351,7 @@ func cmdProfileDefault(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) > 1 || (clear && len(positionals) == 1) {
-		return usageError("usage: %s profile default [<name>|--clear]", toolName)
+		return usageLine(toolName + " profile default [<name>|--clear]")
 	}
 	app := newApp(opts.ConfigPath)
 	name := ""

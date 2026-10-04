@@ -63,7 +63,7 @@ func errNoPlaces(target string) *cmdError {
 	return errf(constants.ExitNotFound, "kae resolves no places for %s", target)
 }
 
-const lsUsage = "usage: kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [-f|--full] [--json]"
+const lsUsage = "kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [-f|--full] [--json]"
 
 // resolveLsTarget matches a target word: the exact words first, then a prefix
 // of a tool name (and only a tool name). verb names the command in the error.
@@ -132,7 +132,7 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 			return req, usageError("-i names an account's isolated home: kae %s -i <tool> <account>", verb)
 		}
 		if len(positionals) > 2 {
-			return req, usageError("%s", usage)
+			return req, usageLine(usage)
 		}
 	case f.shared:
 		if len(positionals) == 2 {
@@ -146,7 +146,7 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 			return req, usageError("a shared home holds whichever account is active, so an account needs -i: kae %s -i %s %s", verb, positionals[0], positionals[1])
 		}
 		if len(positionals) > 2 {
-			return req, usageError("%s", usage)
+			return req, usageLine(usage)
 		}
 	}
 	if len(positionals) > 0 {

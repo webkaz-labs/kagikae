@@ -31,7 +31,7 @@ const (
 // with `kae pin -s|-i|-t`, which owns its own mise fragment.
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
-		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
+		return usageLine(toolName + " mise init [--profile NAME] [--auto] [--write]")
 	}
 	flags, positionals := splitArgs(args[1:], "--profile", "P", "--mode")
 	var profileName, mode string
@@ -43,7 +43,7 @@ func CmdMise(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
+		return usageLine(toolName + " mise init [--profile NAME] [--auto] [--write]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runMiseInit(ctx, app, opts, profileName, mode, auto, write)

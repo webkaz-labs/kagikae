@@ -60,7 +60,7 @@ func CmdPin(ctx context.Context, args []string) int {
 		warnIfLegacyPinBlock()
 		return runPin(ctx, app, opts, profileName, mode, noLink)
 	default:
-		return usageError("usage: %s pin [-s|-i|-t] [<profile>] | %s pin <tool> <account>", toolName, toolName)
+		return usageLine(toolName + " pin [-s|-i|-t] [<profile>] | " + toolName + " pin <tool> <account>")
 	}
 }
 
@@ -346,7 +346,7 @@ func CmdUnpin(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s unpin [--purge]", toolName)
+		return usageLine(toolName + " unpin [--purge]")
 	}
 	return runUnpin(ctx, newApp(opts.ConfigPath), opts, purge)
 }

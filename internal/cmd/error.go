@@ -16,6 +16,13 @@ func usageError(format string, args ...any) int {
 	return constants.ExitUsage
 }
 
+// usageLine prints `usage: <synopsis>` and returns the usage exit code. Only the
+// `usage:` prefix is translated; the synopsis is verbatim in every language
+// (docs/CLI.md § Localization).
+func usageLine(synopsis string) int {
+	return usageError("usage: %s", synopsis)
+}
+
 // warnf writes a `kae: warning:` line, localized. The prefix stays English
 // (docs/CLI.md § Localization) and the catalog key is the text after it, without
 // the newline. Like usageError it forwards its unchanged format and args to

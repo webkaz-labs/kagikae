@@ -42,7 +42,7 @@ func CmdRelogin(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) > 1 {
-		return usageError("usage: %s relogin [<tool>]", toolName)
+		return usageLine(toolName + " relogin [<tool>]")
 	}
 	explicitTool := ""
 	if len(positionals) == 1 {

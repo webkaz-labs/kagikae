@@ -112,6 +112,8 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 訳さない集合は [CLI.md](CLI.md) § Localization の "What is never localized" が持ちます。ここでは日本語の文に埋め込むときの書き方だけを決めます。
 
 - コマンド名・フラグ名・tool 名・account 名・profile 名は、文中の日本語に埋め込んでもそのまま書く（「アカウント `claude/main`」）。
+- usage の synopsis（`usage: kae use <tool>/<account> [flags]` の `usage:` 以外）は訳さない。接頭辞は「使い方:」と書く。
+- フラグの説明は英語に合わせ、文末に「。」を付けない体言止めの 1 句にする。説明にバッククォートを含めない（`--help` の値の名前として誤って取り出されるため）。
 
 ## 文体
 

@@ -91,7 +91,7 @@ Japanese output has its own explicit layer rather than inheriting a locale:
 - **Catalog test.** One test (`internal/l10n/catalog_test.go`, over the Japanese catalog in `internal/l10n`) reads the source and fails when:
   - a sink's format argument is not a constant string expression (as `go/types` evaluates it, so `"a" + "b"` counts) present in the Japanese catalog (kept per area, not per source file);
   - the catalog holds a key no call uses;
-  - a flag description registered with the `flag` package is not in the catalog;
+  - a flag description registered with the `flag` package is not in the catalog, or holds a backquote in English or in its Japanese (the usage block would print the quoted word as the value's name);
   - a Japanese string's format verbs disagree with its English key (count and verbs; explicit indices are allowed);
   - a Japanese string contains an East Asian Ambiguous character (`displayWidth` in `internal/cmd/text.go` counts those as one column);
   - a human-output sink prints a literal outside the catalog.

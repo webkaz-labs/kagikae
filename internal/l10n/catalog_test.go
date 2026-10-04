@@ -119,7 +119,11 @@ type scan struct {
 	// "pkg.Func"; strayFlagSets are the positions of every other call.
 	flagSetMaker  string
 	strayFlagSets []string
-	pkg           string // the package being checked
+	// backquotedFlags are the flag registrations whose description holds a
+	// backquote in English or in the catalog's Japanese: the flag package would
+	// print the quoted word as the value's name (docs/L10N-JA.md § 訳さないもの).
+	backquotedFlags []string
+	pkg             string // the package being checked
 }
 
 // flagSetMaker is the function every flag.FlagSet comes from: it silences the
@@ -445,6 +449,10 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 			usage, isConst := constString(info, call.Args[index])
 			if isConst {
 				s.used[usage] = true
+				ja, _ := lookup(usage)
+				if strings.Contains(usage+ja, "`") {
+					s.backquotedFlags = append(s.backquotedFlags, fmt.Sprintf("%s: %q", fset.Position(call.Pos()), usage))
+				}
 			}
 			if !isConst || !inCatalog(usage) {
 				add(kindFlag, fmt.Sprintf("flag.%s: description %q is not in the catalog", name, usage))
@@ -608,6 +616,12 @@ func TestCatalogValuesKeepVerbsAndAvoidAmbiguousCharacters(t *testing.T) {
 func TestFlagSetsComeFromNewFlagSet(t *testing.T) {
 	for _, pos := range scanSource(t).strayFlagSets {
 		t.Errorf("%s: flag.NewFlagSet outside %s; call newFlagSet so kae renders the parse failures", pos, flagSetMaker)
+	}
+}
+
+func TestFlagDescriptionsHaveNoBackquotes(t *testing.T) {
+	for _, flag := range scanSource(t).backquotedFlags {
+		t.Errorf("%s: a flag description holds a backquote in English or Japanese; the usage block would print the quoted word as the value's name", flag)
 	}
 }
 

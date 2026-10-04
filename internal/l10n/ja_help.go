@@ -1,7 +1,7 @@
 package l10n
 
-// jaHelp renders `--help`, usage synopses and the flag descriptions, and what a
-// flag parse failure prints (internal/cmd/flagusage.go).
+// jaHelp renders `--help`, usage synopses and what a flag parse failure prints
+// (internal/cmd/flagusage.go); the flag descriptions are jaFlags.
 var jaHelp = map[string]string{
 	"flag provided but not defined: %s":   "定義されていないフラグです: %s",
 	"flag needs an argument: %s":          "フラグに値が指定されていません: %s",

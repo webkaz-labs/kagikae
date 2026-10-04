@@ -131,7 +131,7 @@ func TestParseFailureKindsAreRenderedPerKind(t *testing.T) {
 		if c.args[0] != "-h" && !strings.Contains(got, "\nls の使い方:\n") {
 			t.Errorf("%q: the usage block must follow the error line:\n%s", c.args, got)
 		}
-		if !strings.Contains(got, "\n  -format string\n    \toutput format: text or json（既定値: \"text\"）\n") {
+		if !strings.Contains(got, "\n  -format string\n    \t出力形式: text または json（既定値: \"text\"）\n") {
 			t.Errorf("%q: the usage block must localize its default suffix:\n%s", c.args, got)
 		}
 	}
@@ -170,5 +170,30 @@ func TestFlagValueErrorsAreLocalizedAndEnglishInJSONMode(t *testing.T) {
 		if !strings.Contains(stderr, "\nUsage of "+c.args[0]+":\n") {
 			t.Errorf("Root(%q): the usage block must stay English:\n%s", jsonArgs, stderr)
 		}
+	}
+}
+
+// TestUsageBlockPrintsTheCatalogsFlagDescriptions runs `kae use -h` through Root:
+// the descriptions are the catalog's Japanese for a person, a one-letter flag
+// keeping its description on the same line, and English in JSON mode.
+func TestUsageBlockPrintsTheCatalogsFlagDescriptions(t *testing.T) {
+	l10ntest.UseJapanese(t)
+	code, stderr := captureStderr(t, func() int { return Root([]string{"use", "-h"}) })
+	if code != constants.ExitUsage {
+		t.Errorf("use -h: exit %d, want %d", code, constants.ExitUsage)
+	}
+	for _, want := range []string{
+		"use の使い方:\n",
+		"\n  -P string\n    \t--profile の別名\n",
+		"\n  -s\t--shared の別名\n",
+		"\n  -auto\n    \tグローバルな独立環境の選択を保ったまま、解決したプロファイルを適用\n",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("use -h: the usage block lacks %q:\n%s", want, stderr)
+		}
+	}
+	_, stderr = captureStderr(t, func() int { return Root([]string{"use", "--json", "-h"}) })
+	if !strings.Contains(stderr, "\n  -P string\n    \talias for --profile\n") {
+		t.Errorf("use --json -h: the descriptions must stay English:\n%s", stderr)
 	}
 }

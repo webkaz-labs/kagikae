@@ -36,9 +36,4 @@ var notLocalized = map[string]string{
 // shrinks: migrating a call fails the test until its count is lowered, and a new
 // unmigrated call fails it until its message is in the catalog. Done when empty
 // (docs/ROADMAP.md, localization stage 5).
-var unmigrated = map[string]pendingCounts{
-	"internal/cmd/app.go":       {flag: 12},
-	"internal/cmd/flagspec.go":  {flag: 30},
-	"internal/cmd/install.go":   {flag: 3},
-	"internal/cmd/uninstall.go": {flag: 1},
-}
+var unmigrated = map[string]pendingCounts{}

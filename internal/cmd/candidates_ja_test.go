@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/picker"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
@@ -117,9 +118,12 @@ func TestListIssueGuidanceIsLocalized(t *testing.T) {
 	if got := run(t); got != ja {
 		t.Errorf("japanese:\n got %q\nwant %q", got, ja)
 	}
-	for _, code := range []string{constants.ListIssueEnumeration, constants.ListIssueInvalid, constants.ListIssueEntry, "unknown"} {
-		if got := listIssueGuidance(code); got.Error() == "" || strings.ContainsAny(got.Error(), "。、") {
-			t.Errorf("guidance for %s: English %q", code, got.Error())
+	// The issue line ends each remedy with its own 。, so a remedy that carries
+	// one would print 。。.
+	for _, code := range []string{constants.ListIssueRead, constants.ListIssueEnumeration, constants.ListIssueInvalid, constants.ListIssueEntry, "unknown"} {
+		got := listIssueGuidance(code)
+		if ja := l10n.Render(got); ja == got.Error() || strings.HasSuffix(ja, "。") {
+			t.Errorf("guidance for %s: Japanese %q is untranslated or ends in 。", code, ja)
 		}
 	}
 }

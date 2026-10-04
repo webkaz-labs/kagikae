@@ -81,7 +81,7 @@ func TestPatchErrorsRenderInJapanese(t *testing.T) {
 		{
 			"pointer value", func() error { return set(`{}`, "/a", `{"x":1,"x":2}`) },
 			`pointer value: parse json: duplicate object member "x"`,
-			`ポインターに設定する値を解析できません: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
+			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
 		},
 		{
 			"root not an object", func() error { return set(`[]`, "/a", `1`) },
@@ -107,7 +107,7 @@ func TestPatchErrorsRenderInJapanese(t *testing.T) {
 		{
 			"jsonc pointer value", func() error { return setJSONC(`{}`, "/a", `{"x":1,"x":2}`) },
 			`pointer value: parse json: duplicate object member "x"`,
-			`ポインターに設定する値を解析できません: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
+			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
 		},
 	}
 	l10ntest.UseJapanese(t)

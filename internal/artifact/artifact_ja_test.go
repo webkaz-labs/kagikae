@@ -88,7 +88,7 @@ func TestArtifactErrorsRenderInJapanese(t *testing.T) {
 			unsafe: true,
 			en: `unsafe operation refused: keychain item "Example Service" is identified by service and account,` +
 				` but this record carries no account; refusing to touch the service as a whole`,
-			ja: `安全でない操作を拒否しました: キーチェーン項目 "Example Service" はサービスとアカウントで識別しますが、` +
+			ja: `安全でない操作を拒否しました: キーチェーン項目 "Example Service" はサービスとアカウントで識別されますが、` +
 				`この記録にはアカウントがありません。サービス全体には触れません`,
 		},
 		{

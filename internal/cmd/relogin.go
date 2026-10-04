@@ -415,7 +415,7 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 // retired since the fragment was written, rather than dropping it. A dropped name
 // is the one that would have explained why the directory needs re-pinning. Like
 // l10n.List, the result is a `%s` argument: the names, or the message "no tools".
-func boundToolList(fragment fragmentInfo) any {
+func boundToolList(fragment fragmentInfo) message {
 	bound := boundTools(fragment.Accounts)
 	if len(bound) == 0 {
 		return msgf("no tools")

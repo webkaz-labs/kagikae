@@ -397,10 +397,6 @@ var jaErrors = map[string]string{
 	"create lock dir: %w": "ロックのディレクトリを作成できません: %w",
 	"open lock file: %w":  "ロックファイルを開けません: %w",
 	"flock: %w":           "flock でロックを取得できません: %w",
-	// Stores below internal/cmd: a failed step names itself before its cause
-	// (`<verb> <object>: %w`); an external cause stays verbatim. Shared by
-	// internal/account and internal/envprofile.
-
 	// internal/account.
 	"create account dir: %w":      "アカウントのディレクトリを作成できません: %w",
 	"encode account metadata: %w": "アカウントのメタデータをエンコードできません: %w",
@@ -465,7 +461,7 @@ var jaErrors = map[string]string{
 	"unexpected delimiter %q":                "予期しない区切り文字 %q があります",
 	"invalid json pointer %q":                "JSON ポインター %q が不正です",
 	"invalid json pointer escape in %q":      "JSON ポインター %q のエスケープが不正です",
-	"pointer value: %w":                      "ポインターに設定する値を解析できません: %w",
+	"pointer value: %w":                      "ポインターに設定する値が不正です: %w",
 	"document root is not a json object":     "ドキュメントの最上位が JSON オブジェクトではありません",
 	"pointer %s parent does not exist":       "ポインター %s の親が存在しません",
 	"pointer %s traverses a non-object":      "ポインター %s がオブジェクトでない値をたどっています",
@@ -518,7 +514,7 @@ var jaErrors = map[string]string{
 	"no openai email claim or accountId in %s": "%s に openai の email クレームも accountId もありません",
 
 	// artifact.go: the live-state primitives and their structure guards.
-	"%w: keychain item %q is identified by service and account, but this record carries no account; refusing to touch the service as a whole": "%w: キーチェーン項目 %q はサービスとアカウントで識別しますが、この記録にはアカウントがありません。サービス全体には触れません",
+	"%w: keychain item %q is identified by service and account, but this record carries no account; refusing to touch the service as a whole": "%w: キーチェーン項目 %q はサービスとアカウントで識別されますが、この記録にはアカウントがありません。サービス全体には触れません",
 	"%w: keychain item %q payload is empty":                       "%w: キーチェーン項目 %q の内容が空です",
 	"%w: keychain item %q payload is not a single line":           "%w: キーチェーン項目 %q の内容が 1 行ではありません",
 	"%w: keychain item %q payload is not the expected JSON shape": "%w: キーチェーン項目 %q の内容が想定した JSON の形ではありません",

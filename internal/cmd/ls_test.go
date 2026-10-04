@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -543,13 +542,13 @@ func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
 	if got, want := toolAccountList(accounts), "codex:b agy:d gemini:c zeta-tool:a"; got != want {
 		t.Errorf("toolAccountList = %q, want %q", got, want)
 	}
-	if got, want := fmt.Sprint(boundToolList(fragmentInfo{Accounts: accounts})),
+	if got, want := boundToolList(fragmentInfo{Accounts: accounts}).Error(),
 		"codex, agy, gemini, zeta-tool"; got != want {
 		t.Errorf("boundToolList = %q, want %q", got, want)
 	}
 	// The empty case is boundToolList's own, and it is what a caller prints when a
 	// fragment binds nothing kae recognizes at all.
-	if got := fmt.Sprint(boundToolList(fragmentInfo{Accounts: map[string]string{}})); got != "no tools" {
+	if got := boundToolList(fragmentInfo{Accounts: map[string]string{}}).Error(); got != "no tools" {
 		t.Errorf("boundToolList(empty) = %q, want %q", got, "no tools")
 	}
 }

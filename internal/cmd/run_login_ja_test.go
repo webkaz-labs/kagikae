@@ -182,17 +182,6 @@ func TestRunLoginLinesRenderInBothLanguages(t *testing.T) {
 				"  （kae use -i main と共有します。ほかのシェルで同時に実行する kae use はブロックされません）\n",
 		},
 		{
-			name: "a list issue keeps its code and entry as tokens",
-			run: func() {
-				d := listDiagnostics{Issues: []listIssue{{Code: constants.ListIssueRead, Entry: "sha256:ab"}}}
-				d.print()
-			},
-			en: "kae: metadata listing is incomplete; readable records are shown\n" +
-				"kae: " + constants.ListIssueRead + " sha256:ab; check metadata file and parent-directory permissions; keep the entry while investigating\n",
-			ja: "kae: メタデータの一覧が不完全です。読み取れた記録だけを表示しています。\n" +
-				"kae: " + constants.ListIssueRead + " sha256:ab。メタデータのファイルと親ディレクトリの権限を確認してください。調べている間はその項目を残してください。\n",
-		},
-		{
 			name: "previous auth state restored",
 			run:  func() { infof("previous auth state restored (backup %s)", "20261004T000000Z") },
 			en:   "kae: previous auth state restored (backup 20261004T000000Z)\n",

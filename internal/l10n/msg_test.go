@@ -109,3 +109,31 @@ func TestPlainPercentSMsgKeepsTheFullStop(t *testing.T) {
 		t.Fatalf("Unstopped: %q", got)
 	}
 }
+
+// A List joins its items with ", " for Error() and JSON and with "、" for a
+// Japanese human sink, alone or as a message's argument; an item is never split.
+func TestListJoinsBySelectedLanguage(t *testing.T) {
+	items := []string{"claude", "codex", "a, b"}
+	l := List(items)
+	items[0] = "changed" // List keeps its own copy
+	parent := Msgf("tools: %s", l)
+	if got := Render(parent); got != "tools: claude, codex, a, b" {
+		t.Errorf("English Render = %q", got)
+	}
+	withJapanese(t, map[string]string{"tools: %s": "ツール: %s"})
+	if got := Render(l); got != "claude、codex、a, b" {
+		t.Errorf("Render = %q", got)
+	}
+	if got := Render(parent); got != "ツール: claude、codex、a, b" {
+		t.Errorf("Render(parent) = %q", got)
+	}
+	if got := parent.Error(); got != "tools: claude, codex, a, b" {
+		t.Errorf("Error() under Japanese = %q, must stay English", got)
+	}
+	if text, err := l.MarshalText(); err != nil || string(text) != "claude, codex, a, b" {
+		t.Errorf("MarshalText = %q, %v", text, err)
+	}
+	if !List(nil).Empty() || Render(List(nil)) != "" {
+		t.Error("an empty List is the zero Msg")
+	}
+}

@@ -38,7 +38,6 @@ var notLocalized = map[string]string{
 // (docs/ROADMAP.md, localization stage 5).
 var unmigrated = map[string]pendingCounts{
 	"internal/cmd/account.go":      {sink: 4},
-	"internal/cmd/app.go":          {flag: 12},
 	"internal/cmd/backup.go":       {sink: 3},
 	"internal/cmd/cmd.go":          {sink: 1},
 	"internal/cmd/companion.go":    {sink: 4, print: 1},
@@ -46,9 +45,7 @@ var unmigrated = map[string]pendingCounts{
 	"internal/cmd/doctor.go":       {sink: 1},
 	"internal/cmd/edit.go":         {sink: 1},
 	"internal/cmd/env.go":          {sink: 4},
-	"internal/cmd/flagspec.go":     {flag: 30},
 	"internal/cmd/init.go":         {sink: 1},
-	"internal/cmd/install.go":      {flag: 3},
 	"internal/cmd/login.go":        {sink: 1},
 	"internal/cmd/lsplace.go":      {sink: 2},
 	"internal/cmd/miseinit.go":     {sink: 2},
@@ -59,5 +56,5 @@ var unmigrated = map[string]pendingCounts{
 	"internal/cmd/run.go":          {sink: 1},
 	"internal/cmd/status.go":       {sink: 2},
 	"internal/cmd/switch.go":       {sink: 1},
-	"internal/cmd/uninstall.go":    {sink: 1, flag: 1},
+	"internal/cmd/uninstall.go":    {sink: 1},
 }

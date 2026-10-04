@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -152,14 +153,14 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 
 	lockedConfig, _, err := config.Load(app.ConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("reload config before account removal: %w", err)
+		return nil, l10n.Errorf("reload config before account removal: %w", err)
 	}
 	// A missing file legitimately means the already-loaded defaults. Direct App
 	// tests also inject the file backend there without materializing config.toml.
 	if _, statErr := os.Stat(app.ConfigPath); os.IsNotExist(statErr) {
 		lockedConfig = app.Config
 	} else if statErr != nil {
-		return nil, fmt.Errorf("stat config before account removal: %w", statErr)
+		return nil, l10n.Errorf("stat config before account removal: %w", statErr)
 	}
 	profiles = profilesReferencing(lockedConfig, tool, accountName)
 	report.ProfilesUpdated = profiles
@@ -215,11 +216,11 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 	// metadata needed to retry; missing ref deletion is idempotent.
 	for _, name := range acc.ArtifactNames() {
 		if err := be.Delete(ctx, acc.Artifacts[name].SecretRef); err != nil {
-			return nil, fmt.Errorf("delete secret %s: %w", acc.Artifacts[name].SecretRef, err)
+			return nil, l10n.Errorf("delete secret %s: %w", acc.Artifacts[name].SecretRef, err)
 		}
 	}
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, accountName)); err != nil {
-		return nil, fmt.Errorf("remove snapshot dir: %w", err)
+		return nil, l10n.Errorf("remove snapshot dir: %w", err)
 	}
 	app.warnPinnedAccountGone(tool, accountName, "")
 	return report, nil
@@ -450,7 +451,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// additions/removals.
 	lockedConfig, _, err := config.Load(app.ConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("reload config before rename: %w", err)
+		return nil, l10n.Errorf("reload config before rename: %w", err)
 	}
 	profiles = profilesReferencing(lockedConfig, tool, oldName)
 	report.ProfilesUpdated = profiles
@@ -528,11 +529,11 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		if art.Present {
 			payload, ok, err := be.Get(ctx, art.SecretRef)
 			if err != nil {
-				return nil, fmt.Errorf("read secret %s: %w", art.SecretRef, err)
+				return nil, l10n.Errorf("read secret %s: %w", art.SecretRef, err)
 			}
 			if ok {
 				if err := be.Set(ctx, newRef, payload); err != nil {
-					return nil, fmt.Errorf("write secret %s: %w", newRef, err)
+					return nil, l10n.Errorf("write secret %s: %w", newRef, err)
 				}
 				supersededRefs = append(supersededRefs, art.SecretRef)
 			}
@@ -588,11 +589,11 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// that has to land on a check that fires everywhere.
 	for _, ref := range supersededRefs {
 		if err := be.Delete(ctx, ref); err != nil {
-			return nil, fmt.Errorf("delete old secret %s: %w", ref, err)
+			return nil, l10n.Errorf("delete old secret %s: %w", ref, err)
 		}
 	}
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, oldName)); err != nil {
-		return nil, fmt.Errorf("remove old snapshot dir: %w", err)
+		return nil, l10n.Errorf("remove old snapshot dir: %w", err)
 	}
 	app.warnPinnedAccountGone(tool, oldName, newName)
 	return report, nil

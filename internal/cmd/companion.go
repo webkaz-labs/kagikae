@@ -99,7 +99,7 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 			return finish(opts, err)
 		}
 		if err := be.Set(ctx, companion.SecretRef(profileName, id, secretKnob), []byte(inline[secretKnob])); err != nil {
-			return finish(opts, fmt.Errorf("store %s: %w", secretKnob, err))
+			return finish(opts, l10n.Errorf("store %s: %w", secretKnob, err))
 		}
 		// Record the login this token resolves to so doctor can flag token drift.
 		// Best-effort: a probe failure (offline, CLI missing, invalid token)
@@ -232,7 +232,7 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 				continue // non-secret metadata; nothing to delete from the backend
 			}
 			if err := be.Delete(ctx, companion.SecretRef(profileName, id, knob)); err != nil {
-				return finish(opts, fmt.Errorf("delete secret %s: %w", knob, err))
+				return finish(opts, l10n.Errorf("delete secret %s: %w", knob, err))
 			}
 		}
 	}
@@ -354,7 +354,7 @@ func companionToken(ctx context.Context, app *App, args []string) int {
 		return exitOf(err)
 	}
 	if !found {
-		fmt.Fprintf(os.Stderr, "kae: companion token %s/%s/%s is not stored; run: kae companion add %s %s %s\n",
+		infof("companion token %s/%s/%s is not stored; run: kae companion add %s %s %s",
 			args[0], args[1], args[2], args[0], args[1], args[2])
 		return constants.ExitNotFound
 	}

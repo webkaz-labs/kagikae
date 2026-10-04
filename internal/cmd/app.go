@@ -437,7 +437,7 @@ func (app *App) mutateSyncedWithRegenerator(prepare func() error, mutate func(*s
 			return st, nil
 		}
 		if err := regen(st.Synced); err != nil {
-			return nil, fmt.Errorf("reconcile global mise fragment: %w", err)
+			return nil, l10n.Errorf("reconcile global mise fragment: %w", err)
 		}
 		return st, nil
 	}
@@ -473,9 +473,9 @@ func saveSyncedStateAndFragment(previous, next *state.State,
 	}
 	if err := regenerate(next.Synced); err != nil {
 		if restoreErr := save(previous); restoreErr != nil {
-			return fmt.Errorf("regenerate global mise fragment: %w; restoring previous state also failed: %v", err, restoreErr)
+			return l10n.Errorf("regenerate global mise fragment: %w; restoring previous state also failed: %v", err, restoreErr)
 		}
-		return fmt.Errorf("regenerate global mise fragment (previous state restored): %w", err)
+		return l10n.Errorf("regenerate global mise fragment (previous state restored): %w", err)
 	}
 	return nil
 }
@@ -487,7 +487,7 @@ func saveSyncedStateAndFragment(previous, next *state.State,
 func (app *App) editConfig(mutate func(*config.Editor)) error {
 	data, err := os.ReadFile(app.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("read config for edit: %w", err)
+		return l10n.Errorf("read config for edit: %w", err)
 	}
 	ed, err := config.NewEditor(data)
 	if err != nil {
@@ -499,11 +499,11 @@ func (app *App) editConfig(mutate func(*config.Editor)) error {
 		return err
 	}
 	if err := patch.WriteFileAtomic(app.ConfigPath, out, 0o600); err != nil {
-		return fmt.Errorf("write config: %w", err)
+		return l10n.Errorf("write config: %w", err)
 	}
 	cfg, _, err := config.Load(app.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("reload config after edit: %w", err)
+		return l10n.Errorf("reload config after edit: %w", err)
 	}
 	app.Config = cfg
 	return nil

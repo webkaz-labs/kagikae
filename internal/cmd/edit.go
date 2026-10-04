@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -46,7 +46,7 @@ func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 	parts := strings.Fields(editor)
 	code, err := runner.RunInteractive(ctx, nil, parts[0], append(parts[1:], app.ConfigPath)...)
 	if err != nil {
-		return finish(opts, fmt.Errorf("launch editor %s: %w", parts[0], err))
+		return finish(opts, l10n.Errorf("launch editor %s: %w", parts[0], err))
 	}
 	if code != 0 {
 		return finish(opts, errf(constants.ExitError,

@@ -76,16 +76,14 @@ var jaReports = map[string]string{
 	"kae directories:": "kae のディレクトリ:",
 	"Kind":             "種別",
 
-	// error.go (joinList): the separator of a list of names.
-
 	// account.go.
 	"Removed %s/%s (%d secret item(s))":               "%s/%s を削除しました（シークレットストアの項目 %d 件）",
 	"Would remove %s/%s (%d secret item(s))":          "%s/%s を削除する予定です（シークレットストアの項目 %d 件）",
-	"  dropped the %s reference from profile(s): %v":  "  プロファイルから %s の参照を外しました: %v",
+	"  dropped the %s reference from profile(s): %s":  "  プロファイルから %s の参照を外しました: %s",
 	"  cleared the active %s account in state":        "  状態に記録した %s の有効なアカウントを解除しました",
 	"Renamed %s/%s to %s/%s (%d secret item(s))":      "%s/%s の名前を %s/%s に変更しました（シークレットストアの項目 %d 件）",
 	"Would rename %s/%s to %s/%s (%d secret item(s))": "%s/%s の名前を %s/%s に変更する予定です（シークレットストアの項目 %d 件）",
-	"  rewrote the %s reference in profile(s): %v":    "  プロファイルの %s の参照を書き換えました: %v",
+	"  rewrote the %s reference in profile(s): %s":    "  プロファイルの %s の参照を書き換えました: %s",
 	"  updated the active %s account in state":        "  状態に記録した %s の有効なアカウントを更新しました",
 	"Set the %s/%s identity to %s":                    "%s/%s のログイン識別子を %s に設定しました",
 	"Would set the %s/%s identity to %s":              "%s/%s のログイン識別子を %s に設定する予定です",

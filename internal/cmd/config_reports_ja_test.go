@@ -24,7 +24,7 @@ func configReportCases() []useReportCase {
 			return out
 		}
 	}
-	rm := accountRmReport{Tool: "claude", Account: "side", SecretsRemoved: 2, ProfilesUpdated: []string{"main", "work"}, ActiveCleared: true}
+	rm := accountRmReport{Tool: "claude", Account: "side", SecretsRemoved: 2, ProfilesUpdated: []string{"main", "side"}, ActiveCleared: true}
 	dryRm := rm
 	dryRm.DryRun = true
 	rename := accountRenameReport{Tool: "claude", Old: "side", New: "alt", SecretsMoved: 1, ProfilesUpdated: []string{"main"}, ActiveUpdated: true}
@@ -40,33 +40,33 @@ func configReportCases() []useReportCase {
 			name: "account rm",
 			run:  stdout(func() { printAccountRm(&rm) }),
 			en: "Removed claude/side (2 secret item(s))\n" +
-				"  dropped the claude reference from profile(s): [main work]\n" +
+				"  dropped the claude reference from profile(s): main, side\n" +
 				"  cleared the active claude account in state\n",
 			ja: "claude/side を削除しました（シークレットストアの項目 2 件）\n" +
-				"  プロファイルから claude の参照を外しました: [main work]\n" +
+				"  プロファイルから claude の参照を外しました: main、side\n" +
 				"  状態に記録した claude の有効なアカウントを解除しました\n",
 		},
 		{
 			name: "account rm --dry-run",
 			run:  stdout(func() { printAccountRm(&dryRm) }),
-			en:   "Would remove claude/side (2 secret item(s))\n  dropped the claude reference from profile(s): [main work]\n  cleared the active claude account in state\n",
-			ja:   "claude/side を削除する予定です（シークレットストアの項目 2 件）\n  プロファイルから claude の参照を外しました: [main work]\n  状態に記録した claude の有効なアカウントを解除しました\n",
+			en:   "Would remove claude/side (2 secret item(s))\n  dropped the claude reference from profile(s): main, side\n  cleared the active claude account in state\n",
+			ja:   "claude/side を削除する予定です（シークレットストアの項目 2 件）\n  プロファイルから claude の参照を外しました: main、side\n  状態に記録した claude の有効なアカウントを解除しました\n",
 		},
 		{
 			name: "account rename",
 			run:  stdout(func() { printAccountRename(&rename) }),
 			en: "Renamed claude/side to claude/alt (1 secret item(s))\n" +
-				"  rewrote the claude reference in profile(s): [main]\n" +
+				"  rewrote the claude reference in profile(s): main\n" +
 				"  updated the active claude account in state\n",
 			ja: "claude/side の名前を claude/alt に変更しました（シークレットストアの項目 1 件）\n" +
-				"  プロファイルの claude の参照を書き換えました: [main]\n" +
+				"  プロファイルの claude の参照を書き換えました: main\n" +
 				"  状態に記録した claude の有効なアカウントを更新しました\n",
 		},
 		{
 			name: "account rename --dry-run",
 			run:  stdout(func() { printAccountRename(&dryRename) }),
-			en:   "Would rename claude/side to claude/alt (1 secret item(s))\n  rewrote the claude reference in profile(s): [main]\n  updated the active claude account in state\n",
-			ja:   "claude/side の名前を claude/alt に変更する予定です（シークレットストアの項目 1 件）\n  プロファイルの claude の参照を書き換えました: [main]\n  状態に記録した claude の有効なアカウントを更新しました\n",
+			en:   "Would rename claude/side to claude/alt (1 secret item(s))\n  rewrote the claude reference in profile(s): main\n  updated the active claude account in state\n",
+			ja:   "claude/side の名前を claude/alt に変更する予定です（シークレットストアの項目 1 件）\n  プロファイルの claude の参照を書き換えました: main\n  状態に記録した claude の有効なアカウントを更新しました\n",
 		},
 		{
 			name: "account set-identity",

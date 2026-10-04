@@ -85,9 +85,9 @@ func TestStoreLinkReportsInJapanese(t *testing.T) {
 		return 0
 	})
 	want := ".config/claude をこのディレクトリのストアにリンクしました。\n" +
-		".config/claude, .config/codex をこのディレクトリのストアにリンクしました。\n" +
+		".config/claude、.config/codex をこのディレクトリのストアにリンクしました。\n" +
 		"ストアへのリンク .config/agy を削除しました。\n" +
-		"ストアへのリンク .config/a, .config/b を削除しました。\n"
+		"ストアへのリンク .config/a、.config/b を削除しました。\n"
 	if out != want {
 		t.Errorf("store link report =\n%s\nwant\n%s", out, want)
 	}

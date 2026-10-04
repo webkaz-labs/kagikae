@@ -303,7 +303,7 @@ func printAccountRm(r *accountRmReport) {
 		reportf("Removed %s/%s (%d secret item(s))", r.Tool, r.Account, r.SecretsRemoved)
 	}
 	if len(r.ProfilesUpdated) > 0 {
-		reportf("  dropped the %s reference from profile(s): %v", r.Tool, r.ProfilesUpdated)
+		reportf("  dropped the %s reference from profile(s): %s", r.Tool, l10n.List(r.ProfilesUpdated))
 	}
 	if r.ActiveCleared {
 		reportf("  cleared the active %s account in state", r.Tool)
@@ -619,7 +619,7 @@ func printAccountRename(r *accountRenameReport) {
 		reportf("Renamed %s/%s to %s/%s (%d secret item(s))", r.Tool, r.Old, r.Tool, r.New, r.SecretsMoved)
 	}
 	if len(r.ProfilesUpdated) > 0 {
-		reportf("  rewrote the %s reference in profile(s): %v", r.Tool, r.ProfilesUpdated)
+		reportf("  rewrote the %s reference in profile(s): %s", r.Tool, l10n.List(r.ProfilesUpdated))
 	}
 	if r.ActiveUpdated {
 		reportf("  updated the active %s account in state", r.Tool)

@@ -51,7 +51,8 @@ for claude, with its R3 real-machine check recorded through § Place navigation 
 tree mode; its codex slice stays gated on R1 and R2 there.
 
 In progress: **localized human output (Japanese)**, requested by the operator on
-2026-09-30. Stages 0 to 4 are implemented; stage 5 remains.
+2026-09-30. Stages 0 to 5 are implemented; stage 5 awaits the operator's review of
+its Japanese strings.
 
 - **Contract.** [CLI.md](CLI.md) § Localization is the contract and
   [VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested. Both are
@@ -64,9 +65,7 @@ In progress: **localized human output (Japanese)**, requested by the operator on
 - **Same-commit updates.** Every stage that changes or translates a message updates,
   in the same commit, the smoke assertions and the documents that quote it, the
   Japanese guide's quotations included.
-- **Done when** stage 5 is accepted and the second allowlist is empty; that commit
-  removes the "migration in progress" notes in README.md, README.ja.md and
-  GUIDE.ja.md.
+- **Done when** the operator accepts stage 5's Japanese strings.
 
 0. Stage 0 ships no Japanese: the glossary and style rules are in
    [L10N-JA.md](L10N-JA.md), and the English wording of near-duplicate messages is
@@ -95,8 +94,7 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    choosing its columns by identifier before the headers are translated, with `--full`
    tested under Japanese), then the `use`, `pin`/`ls`, `status`/`doctor` and adapter
    slices. `listIssueGuidance` belongs to `kae backup list` and `kae preservation
-   list`, not `kae ls`: stage 4 takes it. The second allowlist's counts may rise while
-   the value type lands, and fall to zero for these files by the end of the stage.
+   list`, not `kae ls`: stage 4 takes it.
 4. The remaining human output, including the messages that still take an already
    composed English sentence as an argument (the `why` of the snapshot-unchanged
    warnings); the catalog test cannot see them, so each
@@ -107,7 +105,7 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    wraps one renders it localized); until then they reach the `kae:` line in
    English. An error kae never shows goes on a permanent allowlist instead
    (VALIDATION § Output language in tests).
-5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it. A `flag.Value` whose `Set` fails (`kae ls --at`, `kae uninstall --dir`) returns a message value, but the `flag` package's `failf` flattens it into its own English `invalid value` line, so that error stays English until kae keeps the value itself and renders the line per kind as CLI.md § Localization states.
+5. `--help` and usage text: `kae help`, the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. A `flag.Value` whose `Set` fails (`kae ls --at`, `kae uninstall --dir`) returns a message value that kae keeps before the `flag` package flattens it, and kae renders the `invalid value` line per kind as CLI.md § Localization states. With it the catalog test fails on every finding outside its two permanent allowlists (VALIDATION § Output language in tests).
 
 § Agent orchestration and remote authentication — deferred exploration follows the
 localization work and still requires investigation and an explicit implementation decision.

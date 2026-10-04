@@ -13,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
 const (
@@ -629,7 +630,7 @@ func TestReadRecordedCredentialRefusesAnErroringBackend(t *testing.T) {
 	if rec := readRecordedCredential(ctx, testBackend(t, app), meta, constants.ToolClaude); !rec.Present || !rec.Orderable() {
 		t.Fatalf("the backup must record an orderable credential for this test to mean anything: %+v", rec)
 	}
-	if rec := readRecordedCredential(ctx, erroringBackend{}, meta, constants.ToolClaude); rec.Present || rec.Orderable() {
+	if rec := readRecordedCredential(ctx, secrettest.FailingBackend{GetErr: secrettest.ErrBackendDown}, meta, constants.ToolClaude); rec.Present || rec.Orderable() {
 		t.Fatalf("a payload kae could not read is not a credential worth comparing: %+v", rec)
 	}
 }

@@ -66,6 +66,17 @@ func ErrorText(t *testing.T, name string, err error, english, localized string, 
 	}
 }
 
+// WrappedCause returns the one cause err wraps with %w, and fails t if err wraps
+// none or several.
+func WrappedCause(t *testing.T, err error) error {
+	t.Helper()
+	wrapper, ok := err.(interface{ Unwrap() []error })
+	if !ok || len(wrapper.Unwrap()) != 1 {
+		t.Fatalf("%q does not wrap exactly one cause", err)
+	}
+	return wrapper.Unwrap()[0]
+}
+
 // English returns the English text of each message, which is what JSON carries,
 // so an assertion on a list of warnings reads strings whatever language is selected.
 func English(messages []l10n.Msg) []string {

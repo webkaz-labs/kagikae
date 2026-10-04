@@ -2,7 +2,6 @@ package envprofile
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,16 +9,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
-
-// failingBackend is a secret backend whose Get and Delete fail with an external
-// error.
-type failingBackend struct{ *secrettest.MemBackend }
-
-func (failingBackend) Get(context.Context, string) ([]byte, bool, error) {
-	return nil, false, errors.New("backend down")
-}
-
-func (failingBackend) Delete(context.Context, string) error { return errors.New("backend down") }
 
 // The env profile's errors are message values: Error() keeps the English text,
 // and a human sink renders the catalog's Japanese before the external cause.
@@ -30,7 +19,7 @@ func TestEnvProfileErrorsRenderInJapanese(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := Profile{Tool: "claude", Account: "main", Vars: []string{"API_KEY"}}
-	failing := failingBackend{secrettest.NewMem()}
+	failing := secrettest.FailingBackend{MemBackend: secrettest.NewMem(), GetErr: secrettest.ErrBackendDown, DeleteErr: secrettest.ErrBackendDown}
 	l10ntest.UseJapanese(t)
 
 	_, _, err := Load(dir)

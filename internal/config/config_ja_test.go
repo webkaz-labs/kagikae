@@ -130,12 +130,7 @@ func TestLoadErrorsRenderInJapanese(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected a load error")
 			}
-			if got := err.Error(); got != tc.en {
-				t.Errorf("English:\n got %q\nwant %q", got, tc.en)
-			}
-			if got := l10n.Render(err); got != tc.ja {
-				t.Errorf("Japanese:\n got %q\nwant %q", got, tc.ja)
-			}
+			l10ntest.ErrorText(t, tc.name, err, tc.en, tc.ja, false)
 		})
 	}
 }
@@ -154,38 +149,24 @@ func TestLoadCauseErrorsKeepTheirCause(t *testing.T) {
 		if !errors.As(err, &cause) {
 			t.Fatalf("the OS cause is not reachable: %v", err)
 		}
-		if got, want := err.Error(), "read config: "+cause.Error(); got != want {
-			t.Errorf("English: got %q, want %q", got, want)
+		if !strings.HasSuffix(err.Error(), cause.Error()) {
+			t.Errorf("English %q does not end in the OS cause %q", err.Error(), cause.Error())
 		}
-		if got, want := l10n.Render(err), "設定ファイルを読み取れません: "+cause.Error(); got != want {
-			t.Errorf("Japanese: got %q, want %q", got, want)
-		}
+		l10ntest.ErrorText(t, "read", err, "read config: ", "設定ファイルを読み取れません: ", true)
 	})
 	t.Run("parse", func(t *testing.T) {
 		_, _, err := Load(writeConfig(t, "version = \n"))
 		if err == nil {
 			t.Fatal("expected a parse error")
 		}
-		cause := strings.TrimPrefix(err.Error(), "parse config: ")
-		if cause == err.Error() {
-			t.Fatalf("English lost its prefix: %q", err.Error())
-		}
-		if got, want := l10n.Render(err), "設定ファイルを解析できません: "+cause; got != want {
-			t.Errorf("Japanese: got %q, want %q", got, want)
-		}
+		l10ntest.ErrorText(t, "parse", err, "parse config: ", "設定ファイルを解析できません: ", true)
 	})
 	t.Run("editor", func(t *testing.T) {
 		_, err := NewEditor([]byte("[profiles\n"))
 		if err == nil {
 			t.Fatal("expected a parse error")
 		}
-		cause := strings.TrimPrefix(err.Error(), "parse config for editing: ")
-		if cause == err.Error() {
-			t.Fatalf("English lost its prefix: %q", err.Error())
-		}
-		if got, want := l10n.Render(err), "編集する設定ファイルを解析できません: "+cause; got != want {
-			t.Errorf("Japanese: got %q, want %q", got, want)
-		}
+		l10ntest.ErrorText(t, "editor", err, "parse config for editing: ", "編集する設定ファイルを解析できません: ", true)
 	})
 }
 

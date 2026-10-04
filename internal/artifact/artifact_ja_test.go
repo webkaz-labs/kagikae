@@ -14,16 +14,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
-// causeOf returns the one cause err wraps with %w.
-func causeOf(t *testing.T, err error) error {
-	t.Helper()
-	wrapper, ok := err.(interface{ Unwrap() []error })
-	if !ok || len(wrapper.Unwrap()) != 1 {
-		t.Fatalf("%q does not wrap exactly one cause", err)
-	}
-	return wrapper.Unwrap()[0]
-}
-
 // Every error the primitives build is kae's message: Japanese for a person, its
 // English text unchanged for JSON and errors.Is (ErrUnsafe still selects exit code
 // 10). An OS or patch cause stays verbatim inside it. None of these cases reaches
@@ -195,7 +185,7 @@ func TestArtifactErrorsRenderInJapanese(t *testing.T) {
 			}
 			en, ja := tc.en, tc.ja
 			if strings.Contains(en, "$CAUSE") {
-				cause := causeOf(t, tc.err)
+				cause := l10ntest.WrappedCause(t, tc.err)
 				en, ja = strings.ReplaceAll(en, "$CAUSE", cause.Error()), strings.ReplaceAll(ja, "$CAUSE", l10n.Render(cause))
 			}
 			if got := tc.err.Error(); got != en {

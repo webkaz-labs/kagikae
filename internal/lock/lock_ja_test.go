@@ -7,9 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -45,9 +45,7 @@ func TestAcquireErrorsRenderInJapanese(t *testing.T) {
 		if !errors.Is(err, ErrBusy) {
 			t.Fatalf("want ErrBusy, got %v", err)
 		}
-		if got, want := l10n.Render(err), "ロックが競合しています"; got != want {
-			t.Errorf("Japanese: got %q, want %q", got, want)
-		}
+		l10ntest.ErrorText(t, "busy", err, "lock busy", "ロックが競合しています", false)
 	})
 }
 
@@ -57,10 +55,8 @@ func wantRendered(t *testing.T, err error, en, ja string) {
 	if !errors.As(err, &cause) {
 		t.Fatalf("the OS cause is not reachable: %v", err)
 	}
-	if got, want := err.Error(), en+cause.Error(); got != want {
-		t.Errorf("English: got %q, want %q", got, want)
+	if !strings.HasSuffix(err.Error(), cause.Error()) {
+		t.Errorf("English %q does not end in the OS cause %q", err.Error(), cause.Error())
 	}
-	if got, want := l10n.Render(err), ja+cause.Error(); got != want {
-		t.Errorf("Japanese: got %q, want %q", got, want)
-	}
+	l10ntest.ErrorText(t, "lock", err, en, ja, true)
 }

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -31,12 +30,7 @@ func TestFinalizationFailureRendersInJapanese(t *testing.T) {
 	if !errors.Is(err, failure) {
 		t.Fatalf("storage failure hidden: %v", err)
 	}
-	if got, want := err.Error(),
-		"binary installed; receipt finalization failed; reinstall to repair: receipt storage failed"; got != want {
-		t.Errorf("English: got %q, want %q", got, want)
-	}
-	if got, want := l10n.Render(err),
-		"バイナリはインストールしましたが、インストール記録を確定できませんでした。再インストールして修復してください: receipt storage failed"; got != want {
-		t.Errorf("Japanese: got %q, want %q", got, want)
-	}
+	l10ntest.ErrorText(t, "finalize", err,
+		"binary installed; receipt finalization failed; reinstall to repair: "+failure.Error(),
+		"バイナリはインストールしましたが、インストール記録を確定できませんでした。再インストールして修復してください: "+failure.Error(), false)
 }

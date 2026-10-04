@@ -2,20 +2,11 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
-
-// erroringBackend wraps a backend and fails every Get, to exercise the
-// comparator's error return (callers choose the policy).
-type erroringBackend struct{ *secrettest.MemBackend }
-
-func (erroringBackend) Get(context.Context, string) ([]byte, bool, error) {
-	return nil, false, errors.New("backend down")
-}
 
 func TestSnapshotArtifactDiffers(t *testing.T) {
 	ctx := context.Background()
@@ -54,7 +45,7 @@ func TestSnapshotArtifactDiffers(t *testing.T) {
 
 	// A backend read error is returned (the caller decides the policy); it is
 	// only reached when both sides are present.
-	be2 := erroringBackend{secrettest.NewMem()}
+	be2 := secrettest.FailingBackend{MemBackend: secrettest.NewMem(), GetErr: secrettest.ErrBackendDown}
 	if _, err := snapshotArtifactDiffers(ctx, be2, ref, true, artifact.Value{Present: true, Data: []byte("x")}); err == nil {
 		t.Fatal("expected the backend read error to propagate")
 	}

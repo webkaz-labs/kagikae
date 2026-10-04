@@ -64,16 +64,6 @@ func cursorIdentity(fake *runnertest.Fake) func(t *testing.T) (string, error) {
 	}
 }
 
-// wrappedCause returns the one cause err wraps with %w.
-func wrappedCause(t *testing.T, err error) error {
-	t.Helper()
-	wrapper, ok := err.(interface{ Unwrap() []error })
-	if !ok || len(wrapper.Unwrap()) != 1 {
-		t.Fatalf("%q does not wrap exactly one cause", err)
-	}
-	return wrapper.Unwrap()[0]
-}
-
 // Every error an adapter builds is kae's message: Japanese for a person, its English
 // text unchanged for JSON and errors.Is. An external cause (the OS or a decoder)
 // stays verbatim inside it.
@@ -305,7 +295,7 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 			expand := func(s string) string {
 				s = strings.ReplaceAll(s, "$HOME", home)
 				if strings.Contains(s, "$CAUSE") {
-					s = strings.ReplaceAll(s, "$CAUSE", wrappedCause(t, err).Error())
+					s = strings.ReplaceAll(s, "$CAUSE", l10ntest.WrappedCause(t, err).Error())
 				}
 				return s
 			}

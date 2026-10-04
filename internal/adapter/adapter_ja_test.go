@@ -284,11 +284,36 @@ func TestAdapterMessagesStayEnglishInJSON(t *testing.T) {
 		t.Fatalf("warnings json = %s, %v", warnings, err)
 	}
 
-	// An unsupported platform's cause is an external error, shown as it is.
-	unsupported := testEnv(t, "windows", nil)
-	for _, c := range claudeAdapter.Doctor(context.Background(), unsupported) {
-		if c.Code == constants.CheckUnsupported && l10n.Render(c.Message) != c.Message.Error() {
-			t.Errorf("an external cause must render verbatim: %q", l10n.Render(c.Message))
-		}
+	// An unsupported platform's refusal is kae's own error: the check renders it in
+	// Japanese and its JSON stays English.
+	unsupported := claudeAdapter.Doctor(context.Background(), testEnv(t, "windows", nil))
+	if len(unsupported) != 1 || unsupported[0].Code != constants.CheckUnsupported {
+		t.Fatalf("checks = %+v, want one unsupported check", unsupported)
+	}
+	if got := l10n.Render(unsupported[0].Message); got != "対応していません: windows では claude の認証の切替に対応していません" {
+		t.Errorf("unsupported check = %q", got)
+	}
+	raw, err = json.Marshal(unsupported)
+	if err != nil || !strings.Contains(string(raw), `"message":"unsupported: claude auth switching is not supported on windows"`) {
+		t.Errorf("unsupported json = %s, %v", raw, err)
+	}
+
+	// An external cause inside kae's error is quoted verbatim: the TOML decoder's
+	// text stays English after the Japanese head.
+	env = testEnv(t, "linux", nil)
+	write(t, filepath.Join(env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \n")
+	checks = codexAdapter.Doctor(context.Background(), env)
+	if len(checks) == 0 || checks[0].Code != constants.CheckUnsupported {
+		t.Fatalf("checks = %+v, want an unsupported check first", checks)
+	}
+	_, args := checks[0].Message.MessageFormat()
+	inner, ok := args[0].(*l10n.Error)
+	if !ok || len(inner.Unwrap()) != 1 {
+		t.Fatalf("check message %q does not carry kae's error with one cause", checks[0].Message.Error())
+	}
+	cause := inner.Unwrap()[0]
+	got := l10n.Render(checks[0].Message)
+	if !strings.HasSuffix(got, " を解析できません: "+cause.Error()) {
+		t.Errorf("parse failure = %q, want the TOML cause %q verbatim", got, cause.Error())
 	}
 }

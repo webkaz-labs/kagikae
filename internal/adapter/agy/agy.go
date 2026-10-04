@@ -14,7 +14,6 @@ package agy
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,16 +143,16 @@ func (Agy) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := googleAccountsPath(env)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", l10n.Errorf("read %s: %w", path, err)
 	}
 	var doc struct {
 		Active string `json:"active"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, err)
 	}
 	if doc.Active == "" {
-		return "", fmt.Errorf("no active Google account in %s", path)
+		return "", l10n.Errorf("no active Google account in %s", path)
 	}
 	return doc.Active, nil
 }

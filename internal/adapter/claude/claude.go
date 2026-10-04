@@ -298,7 +298,7 @@ func driver(env adapter.Env) (string, error) {
 	// hand-set one from being read as isolation. Checked before the driver override
 	// because it invalidates the file location too, not just the keychain one.
 	if env.IsSet(EnvSecureStorageDir) && env.Getenv(EnvSecureStorageDir) == "" {
-		return "", fmt.Errorf(
+		return "", l10n.Errorf(
 			"%w: %s is set to an empty value, which collapses every config dir onto claude's one"+
 				" global credential item (unset it to let kae manage claude)",
 			adapter.ErrUnsupported, EnvSecureStorageDir,
@@ -309,7 +309,7 @@ func driver(env adapter.Env) (string, error) {
 	// override only redirects the credential to a file, while the suffix also moves
 	// the identity file the oauth_account artifact patches.
 	if env.Getenv(EnvCustomOAuthURL) != "" {
-		return "", fmt.Errorf(
+		return "", l10n.Errorf(
 			"%w: %s is set, which renames claude's keychain item and identity file"+
 				" (unset it to let kae manage claude)",
 			adapter.ErrUnsupported, EnvCustomOAuthURL,
@@ -326,7 +326,7 @@ func driver(env adapter.Env) (string, error) {
 		if v == constants.DriverValueFile {
 			return constants.DriverClaudeFilePatch, nil
 		}
-		return "", fmt.Errorf("%w: %s=%q is invalid (only %q is supported)",
+		return "", l10n.Errorf("%w: %s=%q is invalid (only %q is supported)",
 			adapter.ErrUnsupported, constants.EnvKaeClaudeDriver, v, constants.DriverValueFile)
 	}
 	switch env.GOOS {
@@ -335,7 +335,7 @@ func driver(env adapter.Env) (string, error) {
 	case "linux":
 		return constants.DriverClaudeFilePatch, nil
 	default:
-		return "", fmt.Errorf("%w: claude auth switching is not supported on %s", adapter.ErrUnsupported, env.GOOS)
+		return "", l10n.Errorf("%w: claude auth switching is not supported on %s", adapter.ErrUnsupported, env.GOOS)
 	}
 }
 
@@ -429,7 +429,7 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := claudeJSONPath(env)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", l10n.Errorf("read %s: %w", path, err)
 	}
 	var doc struct {
 		OAuthAccount struct {
@@ -437,10 +437,10 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 		} `json:"oauthAccount"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, err)
 	}
 	if doc.OAuthAccount.EmailAddress == "" {
-		return "", fmt.Errorf("no oauthAccount.emailAddress in %s", path)
+		return "", l10n.Errorf("no oauthAccount.emailAddress in %s", path)
 	}
 	return doc.OAuthAccount.EmailAddress, nil
 }

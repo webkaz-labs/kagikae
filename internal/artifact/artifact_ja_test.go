@@ -120,14 +120,14 @@ func TestArtifactErrorsRenderInJapanese(t *testing.T) {
 			}(),
 			unsafe: true,
 			en:     "unsafe operation refused: " + notObject + " is not a JSON object (" + getErr.Error() + ")",
-			ja:     "安全でない操作を拒否しました: " + notObject + " が JSON オブジェクトではありません（" + getErr.Error() + "）",
+			ja:     "安全でない操作を拒否しました: " + notObject + " が JSON オブジェクトではありません（" + l10n.Render(getErr) + "）",
 		},
 		{
 			name:   "rewrite refused",
 			err:    ApplyLive(ctx, Spec{Kind: constants.KindJSONPointer, Target: notObject, Pointer: "/oauthAccount"}, Value{Data: []byte(`{}`), Present: true}),
 			unsafe: true,
 			en:     "unsafe operation refused: refusing to rewrite " + notObject + " (" + setErr.Error() + ")",
-			ja:     "安全でない操作を拒否しました: " + notObject + " を書き換えません（" + setErr.Error() + "）",
+			ja:     "安全でない操作を拒否しました: " + notObject + " を書き換えません（" + l10n.Render(setErr) + "）",
 		},
 		{
 			name:   "unresolvable symlink",
@@ -195,8 +195,8 @@ func TestArtifactErrorsRenderInJapanese(t *testing.T) {
 			}
 			en, ja := tc.en, tc.ja
 			if strings.Contains(en, "$CAUSE") {
-				cause := causeOf(t, tc.err).Error()
-				en, ja = strings.ReplaceAll(en, "$CAUSE", cause), strings.ReplaceAll(ja, "$CAUSE", cause)
+				cause := causeOf(t, tc.err)
+				en, ja = strings.ReplaceAll(en, "$CAUSE", cause.Error()), strings.ReplaceAll(ja, "$CAUSE", l10n.Render(cause))
 			}
 			if got := tc.err.Error(); got != en {
 				t.Errorf("Error() = %q, want %q", got, en)

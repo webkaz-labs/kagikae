@@ -539,11 +539,10 @@ func printDoctorReport(report *doctorReport, opts commonOpts) {
 			fmt.Printf("%s %s\n", label, l10n.Render(check.Message))
 		}
 	}
+	fmt.Println()
 	if report.OK {
-		fmt.Println()
 		reportf("no blocking problems found")
 	} else {
-		fmt.Println()
 		reportf("errors found; fix them before switching")
 	}
 }

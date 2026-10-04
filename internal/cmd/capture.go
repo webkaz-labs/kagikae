@@ -8,17 +8,16 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 type captureResult struct {
-	Tool     string     `json:"tool"`
-	Account  string     `json:"account"`
-	Driver   string     `json:"driver"`
-	Captured bool       `json:"captured"`
-	Actions  []action   `json:"actions"`
-	Warnings []l10n.Msg `json:"warnings"`
+	Tool     string    `json:"tool"`
+	Account  string    `json:"account"`
+	Driver   string    `json:"driver"`
+	Captured bool      `json:"captured"`
+	Actions  []action  `json:"actions"`
+	Warnings []message `json:"warnings"`
 }
 
 type captureReport struct {

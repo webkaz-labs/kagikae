@@ -1,11 +1,9 @@
 package l10n
 
 // jaReports renders the human reports on stdout: tables, headers and summaries.
-// Keys are grouped by the localization stage 3 slice that adds them, so slices
-// running in parallel append to their own section.
+// Keys are grouped by source file.
 var jaReports = map[string]string{
-	// S1 use: switch.go, useauto.go, usebare.go, capture.go, env.go, text.go
-	// (printResultWarnings) and the lead-time cells of freshness.go.
+	// switch.go, useauto.go, usebare.go, capture.go, env.go, text.go (printResultWarnings).
 	"Would switch profile to %s": "プロファイル %s に切り替える予定です",
 	"%s -> %s (driver: %s)":      "%s -> %s（ドライバー: %s）",
 	"  patch %s %s":              "  %s の %s を書き換えます",
@@ -29,13 +27,12 @@ var jaReports = map[string]string{
 	"Deleted env profile %s/%s":                                    "環境変数プロファイル %s/%s を削除しました",
 	"Removed %d variable(s) from env profile %s/%s":                "環境変数プロファイル %[2]s/%[3]s から環境変数 %[1]d 件を削除しました",
 	"no env profiles; run: kae env set <tool> <account> KEY=VALUE": "環境変数プロファイルがありません。kae env set <tool> <account> KEY=VALUE を実行してください",
-	"Variables":          "変数",
-	"%d day(s) left":     "残り %d 日",
-	"%d hour(s) left":    "残り %d 時間",
-	"under an hour left": "残り 1 時間未満",
+	"Variables": "変数",
 	"refreshed %s/%s snapshot from the live store before switching away": "別のアカウントに切り替える前に、現在の認証ストアから %s/%s のスナップショットを更新しました",
 
-	// S2 pin-ls.
+	// freshness.go (shared with doctor and pin).
+	"%s left": "残り %s",
+
 	"Bound this directory: profile %s (%s)":                                                         "このディレクトリを固定しました: プロファイル %s（%s）",
 	"Wrote %s (ignored via %s); your mise.toml is left unchanged.":                                  "%s を書き込みました（%s で Git の対象外にしています）。mise.toml は変更していません。",
 	"Wrote %s; your mise.toml is left unchanged.":                                                   "%s を書き込みました。mise.toml は変更していません。",
@@ -79,8 +76,7 @@ var jaReports = map[string]string{
 	"kae directories:": "kae のディレクトリ:",
 	"Kind":             "種別",
 
-	// S3 status-doctor.
-	// Column headers of the account tables (columnHeader in text.go).
+	// text.go (columnHeader).
 	"Tool":       "ツール",
 	"Account":    "アカウント",
 	"Identity":   "識別子",
@@ -109,6 +105,4 @@ var jaReports = map[string]string{
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
 	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
-
-	// S4 adapter.
 }

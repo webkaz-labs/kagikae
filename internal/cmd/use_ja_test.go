@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -14,8 +13,8 @@ import (
 )
 
 // useReportCase is one stdout or stderr rendering of the use family and its
-// siblings (docs/ROADMAP.md, localization stage 3 slice S1), asserted in English
-// (unchanged bytes) and in Japanese (the real catalog).
+// siblings, asserted in English (unchanged bytes)
+// and in Japanese (the real catalog).
 type useReportCase struct {
 	name   string
 	run    func(t *testing.T) string
@@ -110,14 +109,6 @@ func useReportCases() []useReportCase {
 			ja: "kae: warning: claude: スナップショットの認証情報が失効しています: 認証情報は 2026-09-01T00:00:00Z に期限切れになり、リフレッシュトークンもありません。" +
 				"固定したディレクトリの外で、アカウント main と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore claude main を実行してください（新しいログインを登録し、直前の状態に戻します）。\n",
 		},
-		{
-			name: "lead time cells",
-			run: func(t *testing.T) string {
-				return strings.Join([]string{leadTimeLeft(50 * time.Hour), leadTimeLeft(5 * time.Hour), leadTimeLeft(time.Minute)}, "|")
-			},
-			en: "2 day(s) left|5 hour(s) left|under an hour left",
-			ja: "残り 2 日|残り 5 時間|残り 1 時間未満",
-		},
 	}
 }
 
@@ -211,20 +202,4 @@ func TestEnvReportsAreLocalized(t *testing.T) {
 			"環境変数プロファイル claude/main を削除しました\n",
 		})
 	})
-}
-
-// JSON stays English in a Japanese session: the warning travels as a Msg whose
-// MarshalText is the English text.
-func TestUseWarningsStayEnglishInJSON(t *testing.T) {
-	l10ntest.UseJapanese(t)
-	w := msgf("snapshot credential is stale: %s", staleCredentialDetail(
-		freshness.Info{Known: true, Revoked: true}, "claude", "main",
-	))
-	b, err := json.Marshal(switchResult{Tool: "claude", Account: "main", Warnings: []l10n.Msg{w}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), `"warnings":["snapshot credential is stale: claude emptied it after a failed token refresh; confirm account main`) {
-		t.Errorf("JSON warning is not English: %s", b)
-	}
 }

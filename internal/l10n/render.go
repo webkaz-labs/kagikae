@@ -43,14 +43,16 @@ func Render(err error) string {
 		return err.Error()
 	}
 	format, args := m.MessageFormat()
-	if format == ofFormat && len(args) == 1 {
-		if cause, ok := args[0].(error); ok {
-			return Render(cause)
-		}
-	}
-	if format == unstoppedFormat && len(args) == 1 {
-		if inner, ok := args[0].(Msg); ok {
-			return strings.TrimSuffix(Render(inner), "。")
+	if msg, ok := err.(Msg); ok && len(args) == 1 {
+		switch msg.kind {
+		case kindOf:
+			if cause, ok := args[0].(error); ok {
+				return Render(cause)
+			}
+		case kindUnstopped:
+			if inner, ok := args[0].(Msg); ok {
+				return strings.TrimSuffix(Render(inner), "。")
+			}
 		}
 	}
 	if ja, ok := japanese(format); ok {

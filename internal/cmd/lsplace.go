@@ -741,7 +741,7 @@ func printToolPlaces(app *App, tool string, rows []placeRow, color bool) {
 			orDash(row.Source), orDash(row.Mode), orDash(row.Account), orDash(strings.Join(row.Applies, ",")),
 		})
 	}
-	printTable([]string{"#", l10n.Sprintf("Level"), l10n.Sprintf("Path"), l10n.Sprintf("In effect"), l10n.Sprintf("Source"), l10n.Sprintf("Mode"), columnHeader(colAccount), l10n.Sprintf("Applies")}, table, color)
+	printTable([]string{"#", l10n.Sprintf("Level"), l10n.Sprintf("Path"), l10n.Sprintf("In effect"), l10n.Sprintf("Source"), l10n.Sprintf("Mode"), l10n.Sprintf("Account"), l10n.Sprintf("Applies")}, table, color)
 }
 
 func printRepoPlaces(app *App, rows []placeRow, color bool) {

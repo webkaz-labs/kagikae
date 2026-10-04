@@ -349,51 +349,24 @@ func expiringCredentialDetail(deadline, now time.Time, tool, accountName string)
 	return msgf("%s; %s", when, globalLoginRemedy(tool, accountName))
 }
 
-// leadUnit is the unit a lead time is read in.
-type leadUnit int
-
-const (
-	leadUnderHour leadUnit = iota
-	leadHours
-	leadDays
-)
-
-// leadTime splits a lead time the way a human reads a deadline. Under a day it
-// counts hours, because "in 0 days" is worse than useless on the last day; a
-// fraction of a unit is rounded down so the number never overstates the time left.
-// The words each unit takes are a constant format per unit (leadTimeMessage and
-// leadTimeLeft), so a translation can word a count as its language needs.
-func leadTime(d time.Duration) (unit leadUnit, n int) {
+// leadTimeMessage is the lead time as a fragment ("2 day(s)") that another message
+// embeds. It is read the way a human reads a deadline: under a day it counts hours,
+// because "in 0 days" is worse than useless on the last day, and a fraction of a
+// unit is rounded down so the number never overstates the time left. Each unit is a
+// constant format of its own, so a translation can word a count as its language needs.
+func leadTimeMessage(d time.Duration) message {
 	if days := int(d / (24 * time.Hour)); days >= 1 {
-		return leadDays, days
+		return msgf("%d day(s)", days)
 	}
 	if hours := int(d / time.Hour); hours >= 1 {
-		return leadHours, hours
-	}
-	return leadUnderHour, 0
-}
-
-// leadTimeMessage is the lead time as a fragment ("2 day(s)") that another message
-// embeds.
-func leadTimeMessage(d time.Duration) message {
-	switch unit, n := leadTime(d); unit {
-	case leadDays:
-		return msgf("%d day(s)", n)
-	case leadHours:
-		return msgf("%d hour(s)", n)
+		return msgf("%d hour(s)", hours)
 	}
 	return msgf("under an hour")
 }
 
 // leadTimeLeft is the lead time as a table cell ("2 day(s) left").
 func leadTimeLeft(d time.Duration) string {
-	switch unit, n := leadTime(d); unit {
-	case leadDays:
-		return l10n.Sprintf("%d day(s) left", n)
-	case leadHours:
-		return l10n.Sprintf("%d hour(s) left", n)
-	}
-	return l10n.Sprintf("under an hour left")
+	return l10n.Sprintf("%s left", leadTimeMessage(d))
 }
 
 // utcStamp formats a credential timestamp for a human-readable warning.

@@ -8,18 +8,17 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 type switchResult struct {
-	Tool     string     `json:"tool"`
-	Account  string     `json:"account"`
-	Driver   string     `json:"driver"`
-	Applied  bool       `json:"applied"`
-	Actions  []action   `json:"actions"`
-	Warnings []l10n.Msg `json:"warnings"`
+	Tool     string    `json:"tool"`
+	Account  string    `json:"account"`
+	Driver   string    `json:"driver"`
+	Applied  bool      `json:"applied"`
+	Actions  []action  `json:"actions"`
+	Warnings []message `json:"warnings"`
 }
 
 type switchReport struct {

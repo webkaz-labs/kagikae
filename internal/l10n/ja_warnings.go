@@ -228,5 +228,6 @@ var jaWarnings = map[string]string{
 	"%s is not a kae link; leaving it unchanged. This directory's %s store is %s": "%[1]s は kae のリンクではないため、変更せずに残します。このディレクトリの %[2]s のストアは %[3]s です。",
 	"could not update the store link %s: %v":                                      "ストアへのリンク %s を更新できませんでした: %v",
 	// switch.go.
+	"%s: %s": "%s: %s",
 	"%d tools need a re-login before use: %s": "使う前に再ログインが必要なツールが %d 個あります: %s",
 }

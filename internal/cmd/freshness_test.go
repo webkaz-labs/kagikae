@@ -774,3 +774,34 @@ func TestMissingSnapshotRecoveryVerifiesBeforeCapture(t *testing.T) {
 		}
 	}
 }
+
+// The lead time words are a constant format per unit; English is the text the
+// report carried before, and the Japanese cell is the same count in the catalog's
+// wording.
+func TestLeadTimeWords(t *testing.T) {
+	cases := []struct {
+		d            time.Duration
+		msg, left    string
+		leftJapanese string
+	}{
+		{49*time.Hour + 30*time.Minute, "2 day(s)", "2 day(s) left", "残り 2 日"},
+		{23*time.Hour + 59*time.Minute, "23 hour(s)", "23 hour(s) left", "残り 23 時間"},
+		{time.Hour, "1 hour(s)", "1 hour(s) left", "残り 1 時間"},
+		{59 * time.Minute, "under an hour", "under an hour left", "残り 1 時間未満"},
+		{-time.Minute, "under an hour", "under an hour left", "残り 1 時間未満"},
+	}
+	for _, tc := range cases {
+		if got := leadTimeMessage(tc.d).Error(); got != tc.msg {
+			t.Errorf("leadTimeMessage(%v) = %q, want %q", tc.d, got, tc.msg)
+		}
+		if got := leadTimeLeft(tc.d); got != tc.left {
+			t.Errorf("leadTimeLeft(%v) = %q, want %q", tc.d, got, tc.left)
+		}
+	}
+	l10ntest.UseJapanese(t)
+	for _, tc := range cases {
+		if got := leadTimeLeft(tc.d); got != tc.leftJapanese {
+			t.Errorf("japanese leadTimeLeft(%v) = %q, want %q", tc.d, got, tc.leftJapanese)
+		}
+	}
+}

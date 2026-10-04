@@ -3,7 +3,6 @@ package cmd
 import (
 	"testing"
 
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -54,5 +53,4 @@ func TestLoggedOutDuringRunWarningAdapterWarnings(t *testing.T) {
 			}
 		})
 	}
-	_ = l10n.Msg{}
 }

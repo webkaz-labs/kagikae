@@ -23,11 +23,11 @@ type toolStatus struct {
 	// Identity is the active account's recorded login identity, additive and
 	// omitempty so the JSON contract stays schema_version 1; blank for a
 	// pre-identity snapshot or a tool/account with no readable identity.
-	Identity    string     `json:"identity,omitempty"`
-	Driver      string     `json:"driver"`
-	AuthPresent bool       `json:"auth_present"`
-	Accounts    []string   `json:"accounts"`
-	Warnings    []l10n.Msg `json:"warnings"`
+	Identity    string    `json:"identity,omitempty"`
+	Driver      string    `json:"driver"`
+	AuthPresent bool      `json:"auth_present"`
+	Accounts    []string  `json:"accounts"`
+	Warnings    []message `json:"warnings"`
 	// Credential / ReloginBy describe the *active* account's snapshot freshness,
 	// the same pair accountItem carries and with the same "absent is not fine"
 	// rule. Additive and omitempty; both absent when no account is active.
@@ -158,7 +158,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		return nil, err
 	}
 	for i, tool := range tools {
-		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []l10n.Msg{}, Accounts: []string{}}
+		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []message{}, Accounts: []string{}}
 		if names, ok := capturedByTool[tool]; ok {
 			sort.Strings(names)
 			ts.Accounts = names

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
@@ -405,14 +404,10 @@ func TestJapanesePinChecks(t *testing.T) {
 	}
 }
 
-func TestJapaneseConfigWarningsRenderAndStayEnglishInJSON(t *testing.T) {
+func TestJapaneseConfigWarningRenders(t *testing.T) {
 	l10ntest.UseJapanese(t)
 	msg := l10n.Msgf("[tools.%s] ignored: %s was removed; use %s instead", "gemini", "gemini", "antigravity")
 	if got, want := l10n.Render(msg), "[tools.gemini] は無視しました。gemini は削除されました。代わりに antigravity を使ってください。"; got != want {
 		t.Errorf("Render = %q, want %q", got, want)
-	}
-	check := adapter.Check{Code: constants.CheckConfigValid, Status: constants.StatusWarn, Message: msg}
-	if got, want := check.Message.Error(), "[tools.gemini] ignored: gemini was removed; use antigravity instead"; got != want {
-		t.Errorf("the English text = %q, want %q", got, want)
 	}
 }

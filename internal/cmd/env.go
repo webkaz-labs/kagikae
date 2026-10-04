@@ -260,6 +260,6 @@ func runEnvList(_ context.Context, app *App, opts commonOpts) int {
 	for _, item := range report.Profiles {
 		rows = append(rows, []string{item.Tool, item.Account, strings.Join(item.Vars, ", ")})
 	}
-	printTable([]string{columnHeader(colTool), columnHeader(colAccount), l10n.Sprintf("Variables")}, rows, colorEnabled(opts.NoColor))
+	printTable([]string{l10n.Sprintf("Tool"), l10n.Sprintf("Account"), l10n.Sprintf("Variables")}, rows, colorEnabled(opts.NoColor))
 	return constants.ExitOK
 }

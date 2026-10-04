@@ -96,3 +96,16 @@ func TestOfCarriesAnErrorAsAMessage(t *testing.T) {
 		t.Errorf("MarshalText = %q, %v", text, err)
 	}
 }
+
+// A plain Msg whose format is "%s" is not Unstopped: the kind, not the format,
+// decides, so the argument's full stop stays.
+func TestPlainPercentSMsgKeepsTheFullStop(t *testing.T) {
+	withJapanese(t, map[string]string{"stopped": "止まりました。", "%s": "%s"})
+	inner := Msgf("stopped")
+	if got := Render(Msgf("%s", inner)); got != "止まりました。" {
+		t.Fatalf("plain %%s Msg: %q", got)
+	}
+	if got := Render(Unstopped(inner)); got != "止まりました" {
+		t.Fatalf("Unstopped: %q", got)
+	}
+}

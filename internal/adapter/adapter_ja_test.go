@@ -16,9 +16,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
-// jaChecks renders every Doctor message of adp for env in Japanese, and returns
+// renderedChecks renders every Doctor message of adp for env in Japanese, and returns
 // the English text of the same messages so a test can pin both.
-func jaChecks(t *testing.T, adp adapter.Adapter, env adapter.Env) (ja, en []string) {
+func renderedChecks(t *testing.T, adp adapter.Adapter, env adapter.Env) (ja, en []string) {
 	t.Helper()
 	for _, c := range adp.Doctor(context.Background(), env) {
 		ja = append(ja, l10n.Render(c.Message))
@@ -27,7 +27,7 @@ func jaChecks(t *testing.T, adp adapter.Adapter, env adapter.Env) (ja, en []stri
 	return ja, en
 }
 
-func jaWarnings(t *testing.T, adp adapter.Adapter, env adapter.Env) (ja, en []string) {
+func renderedWarnings(t *testing.T, adp adapter.Adapter, env adapter.Env) (ja, en []string) {
 	t.Helper()
 	info, err := adp.Detect(context.Background(), env)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 
 	t.Run("claude", func(t *testing.T) {
 		env := testEnv(t, "linux", nil)
-		ja, en := jaChecks(t, claudeAdapter, env)
+		ja, en := renderedChecks(t, claudeAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "claude が PATH に見つかりません。", "ドライバー: ",
 			"現在のサブスクリプションの認証情報がありません（先に claude でログインしてください）。")
@@ -82,37 +82,37 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 		if err := os.Chmod(creds, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		ja, en = jaChecks(t, claudeAdapter, env)
+		ja, en = renderedChecks(t, claudeAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "現在のサブスクリプションの認証情報があります。", "がグループまたは全員に読み取れる権限になっています。0600 にしてください。")
 
 		rel := testEnv(t, "linux", map[string]string{
 			"CLAUDE_CONFIG_DIR": "rel", "CLAUDE_SECURESTORAGE_CONFIG_DIR": "rel2",
 		})
-		ja, en = jaWarnings(t, claudeAdapter, rel)
+		ja, en = renderedWarnings(t, claudeAdapter, rel)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "CLAUDE_CONFIG_DIR が相対パスです。", "CLAUDE_SECURESTORAGE_CONFIG_DIR が相対パスです。")
-		ja, _ = jaChecks(t, claudeAdapter, rel)
+		ja, _ = renderedChecks(t, claudeAdapter, rel)
 		wantAll(t, ja, "CLAUDE_CONFIG_DIR が相対パスです。")
 	})
 
 	t.Run("codex file store", func(t *testing.T) {
 		env := testEnv(t, "linux", nil)
 		write(t, filepath.Join(env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \"auto\"\n")
-		ja, en := jaChecks(t, codexAdapter, env)
+		ja, en := renderedChecks(t, codexAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "認証ストア: ", "（auth.json）", "auth.json がありません。先に codex でログインしてください。")
-		ja, en = jaWarnings(t, codexAdapter, env)
+		ja, en = renderedWarnings(t, codexAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "auth.json が見つかりません。codex がログインしていないか")
 
 		write(t, filepath.Join(env.Home, ".codex", "auth.json"), `{"tokens":{}}`)
-		ja, en = jaChecks(t, codexAdapter, env)
+		ja, en = renderedChecks(t, codexAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "auth.json があります。")
 
 		rel := testEnv(t, "linux", map[string]string{"CODEX_HOME": "rel"})
-		ja, en = jaWarnings(t, codexAdapter, rel)
+		ja, en = renderedWarnings(t, codexAdapter, rel)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "CODEX_HOME が相対パスです。")
 	})
@@ -121,16 +121,16 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 		env := testEnv(t, "darwin", nil)
 		write(t, filepath.Join(env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
 		runner.With(&runnertest.Fake{Stderr: "could not be found", Code: 44}, func() {
-			ja, en := jaChecks(t, codexAdapter, env)
+			ja, en := renderedChecks(t, codexAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "認証ストア: keyring（この codex ホームに対応する Codex Auth のキーチェーン項目）",
 				"この codex ホームに対応する Codex Auth のキーチェーン項目がありません。先に codex でログインしてください。")
-			ja, en = jaWarnings(t, codexAdapter, env)
+			ja, en = renderedWarnings(t, codexAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "この codex ホームに対応する Codex Auth のキーチェーン項目がありません。")
 		})
 		runner.With(&runnertest.Fake{Stdout: `{"tokens":{"access_token":"a","refresh_token":"r"}}`}, func() {
-			ja, en := jaChecks(t, codexAdapter, env)
+			ja, en := renderedChecks(t, codexAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "この codex ホームに対応する Codex Auth のキーチェーン項目があります。")
 		})
@@ -139,7 +139,7 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 	t.Run("codex contradicted store", func(t *testing.T) {
 		env := testEnv(t, "darwin", nil)
 		runner.With(&runnertest.Fake{Stdout: "{}"}, func() {
-			ja, en := jaChecks(t, codexAdapter, env)
+			ja, en := renderedChecks(t, codexAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "kae は file ストア（auth.json）に解決しました。",
 				"config.toml の cli_auth_credentials_store を確認し")
@@ -148,41 +148,41 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 
 	t.Run("copilot", func(t *testing.T) {
 		env := testEnv(t, "linux", nil)
-		ja, en := jaChecks(t, copilotAdapter, env)
+		ja, en := renderedChecks(t, copilotAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "config.json に有効なアカウントがありません。先に copilot login でログインしてください。")
 
 		write(t, filepath.Join(env.Home, ".copilot", "config.json"),
 			`{"lastLoggedInUser":{"host":"https://github.com","login":"main"}}`)
-		ja, en = jaChecks(t, copilotAdapter, env)
+		ja, en = renderedChecks(t, copilotAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "config.json に有効なアカウントが記録されています。")
 
 		rel := testEnv(t, "linux", map[string]string{"COPILOT_HOME": "rel"})
-		ja, en = jaWarnings(t, copilotAdapter, rel)
+		ja, en = renderedWarnings(t, copilotAdapter, rel)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "COPILOT_HOME が相対パスです。")
 	})
 
 	t.Run("opencode", func(t *testing.T) {
 		env := testEnv(t, "linux", nil)
-		ja, en := jaChecks(t, opencodeAdapter, env)
+		ja, en := renderedChecks(t, opencodeAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "auth.json に openai（ChatGPT サブスクリプション）のログインがありません。先に opencode auth login でログインしてください。")
 
 		auth := filepath.Join(env.Home, ".local", "share", "opencode", "auth.json")
 		write(t, auth, `{"anthropic":{"type":"api","key":"x"}}`)
-		ja, en = jaWarnings(t, opencodeAdapter, env)
+		ja, en = renderedWarnings(t, opencodeAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "auth.json に openai の項目がありません。")
 
 		write(t, auth, `{"openai":{"type":"oauth","access":"a","refresh":"r","expires":1}}`)
-		ja, en = jaChecks(t, opencodeAdapter, env)
+		ja, en = renderedChecks(t, opencodeAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "auth.json に openai（ChatGPT サブスクリプション）のログインがあります。")
 
 		rel := testEnv(t, "linux", map[string]string{"XDG_DATA_HOME": "rel"})
-		ja, en = jaWarnings(t, opencodeAdapter, rel)
+		ja, en = renderedWarnings(t, opencodeAdapter, rel)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "XDG_DATA_HOME が相対パスです。")
 	})
@@ -190,13 +190,13 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 	t.Run("cursor", func(t *testing.T) {
 		env := testEnv(t, "darwin", nil)
 		runner.With(&runnertest.Fake{Stderr: "could not be found", Code: 44}, func() {
-			ja, en := jaChecks(t, cursorAdapter, env)
+			ja, en := renderedChecks(t, cursorAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "キーチェーンにアクセストークンがありません。先に cursor-agent login でログインしてください。",
 				"ドライバー: ")
 		})
 		runner.With(&runnertest.Fake{Stdout: "opaque-token\n"}, func() {
-			ja, en := jaChecks(t, cursorAdapter, env)
+			ja, en := renderedChecks(t, cursorAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "キーチェーンにアクセストークンがあります。")
 		})
@@ -205,16 +205,16 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 	t.Run("agy keychain", func(t *testing.T) {
 		env := testEnv(t, "darwin", nil)
 		runner.With(&runnertest.Fake{Stderr: "could not be found", Code: 44}, func() {
-			ja, en := jaChecks(t, agyAdapter, env)
+			ja, en := renderedChecks(t, agyAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "gemini/antigravity のキーチェーン項目がありません。先に Antigravity アプリでログインしてください。")
-			ja, en = jaWarnings(t, agyAdapter, env)
+			ja, en = renderedWarnings(t, agyAdapter, env)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "gemini/antigravity のキーチェーン項目がありません。")
 		})
 		bypass := testEnv(t, "darwin", map[string]string{"SSH_TTY": "/dev/ttys001"})
 		runner.With(&runnertest.Fake{Stdout: "opaque-token\n"}, func() {
-			ja, en := jaChecks(t, agyAdapter, bypass)
+			ja, en := renderedChecks(t, agyAdapter, bypass)
 			wantTranslated(t, ja, en)
 			wantAll(t, ja, "gemini/antigravity のキーチェーン項目があります。",
 				"SSH_TTY が設定されています。ここでは agy がキーチェーンを使わず")
@@ -223,26 +223,26 @@ func TestAdapterChecksAndWarningsRenderInJapanese(t *testing.T) {
 
 	t.Run("agy file", func(t *testing.T) {
 		env := testEnv(t, "linux", nil)
-		ja, en := jaChecks(t, agyAdapter, env)
+		ja, en := renderedChecks(t, agyAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "（このマシンでは agy を設定していません）",
 			"ドライバー: ", "（ファイル形式。このプラットフォームではキーリングの切替に対応していません）")
-		ja, en = jaWarnings(t, agyAdapter, env)
+		ja, en = renderedWarnings(t, agyAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "このプラットフォームの agy アダプターは、ファイル形式の認証情報だけを扱います。")
 
 		if err := os.MkdirAll(filepath.Join(env.Home, ".gemini", "antigravity-cli"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		ja, en = jaChecks(t, agyAdapter, env)
+		ja, en = renderedChecks(t, agyAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "（agy は OS のキーリングを使っている可能性が高く、このプラットフォームでは kae は切り替えられません）")
-		ja, en = jaWarnings(t, agyAdapter, env)
+		ja, en = renderedWarnings(t, agyAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "認証情報のファイルが見つかりません。")
 
 		write(t, filepath.Join(env.Home, ".gemini", "antigravity-cli", "credentials.json"), `{}`)
-		ja, en = jaChecks(t, agyAdapter, env)
+		ja, en = renderedChecks(t, agyAdapter, env)
 		wantTranslated(t, ja, en)
 		wantAll(t, ja, "ファイル形式の認証情報があります。")
 	})

@@ -13,10 +13,20 @@ import "fmt"
 // struct, so `omitempty` never omits it: a string field that carried `omitempty` keeps
 // its JSON bytes only if the Msg field drops the tag and the writer skips the empty case.
 type Msg struct {
+	kind    msgKind
 	format  string
 	args    []any
 	english string
 }
+
+// msgKind says how Render treats a Msg, so no format string doubles as a marker.
+type msgKind int
+
+const (
+	kindPlain     msgKind = iota // a catalog format and its arguments
+	kindOf                       // only carries an error (Of)
+	kindUnstopped                // only drops its argument's closing full stop (Unstopped)
+)
 
 // Msgf builds a Msg. It hands its unchanged format and args to fmt.Sprintf,
 // which keeps it a `go vet` printf wrapper; the catalog test judges its callers'
@@ -24,10 +34,6 @@ type Msg struct {
 func Msgf(format string, args ...any) Msg {
 	return Msg{format: format, args: args, english: fmt.Sprintf(format, args...)}
 }
-
-// ofFormat is the format of a Msg that only carries an error (Of); it has no
-// catalog entry, Render renders the error itself.
-const ofFormat = "%v"
 
 // Of carries an error as a Msg: the field type of a check message or a warning
 // that is sometimes a kae message and sometimes the text of an external cause (an
@@ -42,12 +48,8 @@ func Of(err error) Msg {
 	if m, ok := err.(Msg); ok {
 		return m
 	}
-	return Msg{format: ofFormat, args: []any{err}, english: err.Error()}
+	return Msg{kind: kindOf, format: "%v", args: []any{err}, english: err.Error()}
 }
-
-// unstoppedFormat is the format of a Msg that only drops its argument's closing
-// full stop when rendered (Unstopped); it has no catalog entry.
-const unstoppedFormat = "%s"
 
 // Unstopped carries m so that a human sink renders it without a closing Japanese
 // full stop ("。"), for a message that is a sentence when shown alone but is joined
@@ -57,7 +59,7 @@ func Unstopped(m Msg) Msg {
 	if m.Empty() {
 		return m
 	}
-	return Msg{format: unstoppedFormat, args: []any{m}, english: m.english}
+	return Msg{kind: kindUnstopped, format: "%s", args: []any{m}, english: m.english}
 }
 
 // Error renders the English text, which is what generated files and errors.Is/As

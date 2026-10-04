@@ -25,7 +25,7 @@ func CmdInit(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageLine(toolName + " init [--json]")
+		return usageLine("init [--json]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runInit(ctx, app, opts)

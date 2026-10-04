@@ -63,7 +63,7 @@ func errNoPlaces(target string) *cmdError {
 	return errf(constants.ExitNotFound, "kae resolves no places for %s", target)
 }
 
-const lsUsage = "kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [-f|--full] [--json]"
+const lsUsage = "ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [-f|--full] [--json]"
 
 // resolveLsTarget matches a target word: the exact words first, then a prefix
 // of a tool name (and only a tool name). verb names the command in the error.

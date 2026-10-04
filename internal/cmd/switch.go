@@ -61,7 +61,7 @@ func CmdUse(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) > 2 {
-		return usageLine(toolName + " use [-s|-i] [-P <profile>] | " + toolName + " use [-s|-i] <profile> | " + toolName + " use [-s|-i] <tool> <account>")
+		return usageLine("use [-s|-i] [-P <profile>] | " + toolName + " use [-s|-i] <profile> | " + toolName + " use [-s|-i] <tool> <account>")
 	}
 	scopeExplicit := false
 	useFlags.Visit(func(f *flag.Flag) {

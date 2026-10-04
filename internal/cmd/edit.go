@@ -25,7 +25,7 @@ func CmdEdit(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageLine(toolName + " edit")
+		return usageLine("edit")
 	}
 	app := newApp(opts.ConfigPath)
 	return runEdit(ctx, app, opts)

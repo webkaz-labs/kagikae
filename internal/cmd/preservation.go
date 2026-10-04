@@ -56,7 +56,7 @@ func (app *App) recheckPreservationObservation(ctx context.Context, observed pre
 // labels describe bindings, never an attribution of the preserved payload.
 func CmdPreservation(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageLine(toolName + " preservation <list|restore|rm> [<id>]")
+		return usageLine("preservation <list|restore|rm> [<id>]")
 	}
 	action := args[0]
 	if action != "list" && action != "restore" && action != "rm" {
@@ -68,7 +68,7 @@ func CmdPreservation(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if (action == "list" && len(pos) != 0) || (action != "list" && len(pos) != 1) {
-		return usageLine(toolName + " preservation " + action + " [<id>]")
+		return usageLine("preservation " + action + " [<id>]")
 	}
 	id := ""
 	if len(pos) > 0 {

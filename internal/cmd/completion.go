@@ -62,12 +62,12 @@ func CmdCompletion(_ context.Context, args []string) int {
 	// takes no shell argument and does not combine with --install.
 	if refresh {
 		if install || noFunction || len(positionals) != 0 {
-			return usageLine(toolName + " completion --refresh")
+			return usageLine("completion --refresh")
 		}
 		return runCompletionRefresh(newApp(opts.ConfigPath), opts)
 	}
 	if len(positionals) != 1 || (install && noFunction) {
-		return usageLine(toolName + " completion <bash|zsh|fish> [--install | --no-function] | " + toolName + " completion --refresh")
+		return usageLine("completion <bash|zsh|fish> [--install | --no-function] | " + toolName + " completion --refresh")
 	}
 	shell := positionals[0]
 	script, ok := completionScript(shell)

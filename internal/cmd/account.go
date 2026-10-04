@@ -23,7 +23,7 @@ import (
 // (kae accounts, plural, lists them.)
 func CmdAccount(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageLine(toolName + " account rm|rename|set-identity ...")
+		return usageLine("account rm|rename|set-identity ...")
 	}
 	switch args[0] {
 	case "rm", "remove":
@@ -58,7 +58,7 @@ func cmdAccountRm(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 2 {
-		return usageLine(toolName + " account rm <tool> <account> [--force]")
+		return usageLine("account rm <tool> <account> [--force]")
 	}
 	tool, accountName := positionals[0], positionals[1]
 	report, err := buildAccountRm(ctx, newApp(opts.ConfigPath), opts, tool, accountName, force)
@@ -329,7 +329,7 @@ func cmdAccountRename(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 3 {
-		return usageLine(toolName + " account rename <tool> <old> <new>")
+		return usageLine("account rename <tool> <old> <new>")
 	}
 	tool, oldName, newName := positionals[0], positionals[1], positionals[2]
 	report, err := buildAccountRename(ctx, newApp(opts.ConfigPath), opts, tool, oldName, newName)
@@ -647,7 +647,7 @@ func cmdAccountSetIdentity(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 3 {
-		return usageLine(toolName + " account set-identity <tool> <account> <value>")
+		return usageLine("account set-identity <tool> <account> <value>")
 	}
 	report, err := buildAccountSetIdentity(newApp(opts.ConfigPath), opts, positionals[0], positionals[1], positionals[2])
 	if err != nil {

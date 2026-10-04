@@ -63,7 +63,7 @@ func CmdRun(ctx context.Context, args []string) int {
 	}
 	target, name, ok := runTargetArgs(profileFlag, positionals)
 	if !ok {
-		return usageLine(toolName + " run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>")
+		return usageLine("run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>")
 	}
 	app := newApp(opts.ConfigPath)
 	return runRun(ctx, app, opts, runMode, target, name, childCmd)

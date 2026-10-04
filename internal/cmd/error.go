@@ -16,11 +16,14 @@ func usageError(format string, args ...any) int {
 	return constants.ExitUsage
 }
 
-// usageLine prints `usage: <synopsis>` and returns the usage exit code. Only the
-// `usage:` prefix is translated; the synopsis is verbatim in every language
-// (docs/CLI.md § Localization).
+// usageLine prints `usage: kae <synopsis>` and returns the usage exit code; the
+// synopsis starts after the command name. Only the `usage:` prefix is
+// translated; the synopsis is verbatim in every language (docs/CLI.md
+// § Localization), and the catalog test does not read it. A synopsis followed by
+// prose (companion add, env set) is not one: usageError takes that whole line as
+// one catalog key.
 func usageLine(synopsis string) int {
-	return usageError("usage: %s", synopsis)
+	return usageError("usage: %s", toolName+" "+synopsis)
 }
 
 // warnf writes a `kae: warning:` line, localized. The prefix stays English

@@ -41,7 +41,7 @@ func CmdDoctor(ctx context.Context, args []string) int {
 			return finish(opts, err)
 		}
 	default:
-		return usageLine(toolName + " doctor [tool] [--json]")
+		return usageLine("doctor [tool] [--json]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runDoctor(ctx, app, opts, toolFilter)

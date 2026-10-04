@@ -193,7 +193,7 @@ func CmdVersion(args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageLine(toolName + " version [--format text|json]")
+		return usageLine("version [--format text|json]")
 	}
 	report := buildVersionReport()
 	if opts.Format == formatJSON {

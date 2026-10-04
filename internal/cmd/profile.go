@@ -20,7 +20,7 @@ import (
 //	kae profile default [<name>|--clear]    show or set default_profile
 func CmdProfile(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageLine(toolName + " profile save|set|unset|rm|default ...")
+		return usageLine("profile save|set|unset|rm|default ...")
 	}
 	switch args[0] {
 	case "save":
@@ -66,7 +66,7 @@ func cmdProfileSave(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 1 {
-		return usageLine(toolName + " profile save <name>")
+		return usageLine("profile save <name>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileSave(ctx, app, opts, positionals[0])
@@ -137,7 +137,7 @@ func cmdProfileSet(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 3 {
-		return usageLine(toolName + " profile set <name> <tool> <account>")
+		return usageLine("profile set <name> <tool> <account>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileSet(ctx, app, opts, positionals[0], positionals[1], positionals[2])
@@ -189,7 +189,7 @@ func cmdProfileUnset(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 2 {
-		return usageLine(toolName + " profile unset <name> <tool>")
+		return usageLine("profile unset <name> <tool>")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileUnset(ctx, app, opts, positionals[0], positionals[1])
@@ -279,7 +279,7 @@ func cmdProfileRm(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 1 {
-		return usageLine(toolName + " profile rm <name> [--force]")
+		return usageLine("profile rm <name> [--force]")
 	}
 	app := newApp(opts.ConfigPath)
 	report, err := buildProfileRm(ctx, app, opts, positionals[0], force)
@@ -351,7 +351,7 @@ func cmdProfileDefault(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) > 1 || (clear && len(positionals) == 1) {
-		return usageLine(toolName + " profile default [<name>|--clear]")
+		return usageLine("profile default [<name>|--clear]")
 	}
 	app := newApp(opts.ConfigPath)
 	name := ""

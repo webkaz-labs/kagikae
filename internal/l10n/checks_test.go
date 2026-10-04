@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -126,5 +127,32 @@ func TestMethodSinksAreJudgedAtTheirCallersAndSkippedInTheirBodies(t *testing.T)
 	want = []string{"App.wrap error", "use error"}
 	if got := findingSummary(s); !slices.Equal(got, want) {
 		t.Fatalf("unregistered findings = %q, want %q", got, want)
+	}
+}
+
+// flagSetFixture calls flag.NewFlagSet from the allowed maker and from elsewhere.
+const flagSetFixture = `package fx
+
+import "flag"
+
+func newFlagSet(name string) *flag.FlagSet { return flag.NewFlagSet(name, flag.ContinueOnError) }
+
+func elsewhere() *flag.FlagSet { return flag.NewFlagSet("x", flag.ContinueOnError) }
+`
+
+func TestOnlyTheFlagSetMakerCallsNewFlagSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fx.go"), []byte(flagSetFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	s := newScan(dir, map[string]int{})
+	s.flagSetMaker = "fx.newFlagSet"
+	pkg := listedPackage{ImportPath: "fx", Dir: dir, GoFiles: []string{"fx.go"}}
+	if err := s.checkPackage(fset, importer.ForCompiler(fset, "source", nil), pkg); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.strayFlagSets) != 1 || !strings.HasSuffix(s.strayFlagSets[0], "fx.go:7:41") {
+		t.Fatalf("stray flag sets = %q, want the one in elsewhere", s.strayFlagSets)
 	}
 }

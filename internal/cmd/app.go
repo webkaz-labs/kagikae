@@ -606,13 +606,15 @@ type commonOpts struct {
 // extra, when non-nil, registers command-specific flags on the same set.
 func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.FlagSet)) (commonOpts, bool) {
 	var opts commonOpts
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet(name)
 	jsonFlag := registerCommonFlags(fs, &opts, withDryRun)
 	if extra != nil {
 		extra(fs)
 	}
+	help := snapshotFlags(fs) // before the wrappers hide the Values' types
+	failed := recordSetFailures(fs)
 	if err := fs.Parse(args); err != nil {
+		reportParseError(fs, args, err, *failed, help)
 		return opts, false
 	}
 	if *jsonFlag {

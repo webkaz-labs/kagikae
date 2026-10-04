@@ -115,10 +115,20 @@ type scan struct {
 	used map[string]bool
 	// files is every file in the build, relative to the module root.
 	files map[string]bool
+	// flagSetMaker is the one function allowed to call flag.NewFlagSet, as
+	// "pkg.Func"; strayFlagSets are the positions of every other call.
+	flagSetMaker  string
+	strayFlagSets []string
+	pkg           string // the package being checked
 }
 
+// flagSetMaker is the function every flag.FlagSet comes from: it silences the
+// flag package's own printing so kae renders parse failures and usage
+// (docs/CLI.md § Localization, "The `flag` package").
+const flagSetMaker = cmdPkg + ".newFlagSet"
+
 func newScan(root string, sinks map[string]int) *scan {
-	return &scan{root: root, sinks: sinks, used: map[string]bool{}, files: map[string]bool{}}
+	return &scan{root: root, sinks: sinks, used: map[string]bool{}, files: map[string]bool{}, flagSetMaker: flagSetMaker}
 }
 
 // scanOnce type-checks the kae binary's packages once per test process.
@@ -314,6 +324,7 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, p listedPac
 	// Errors count everywhere but in l10n, whose own fmt.Errorf renders a
 	// message rather than composing one.
 	countErrors := p.ImportPath != l10nPkg
+	s.pkg = p.ImportPath
 	for _, f := range files {
 		rel, err := filepath.Rel(s.root, fset.File(f.Pos()).Name())
 		if err != nil {
@@ -427,6 +438,9 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 		return
 	}
 	if pkg == "flag" {
+		if name == "NewFlagSet" && s.pkg+"."+fn != s.flagSetMaker {
+			s.strayFlagSets = append(s.strayFlagSets, fset.Position(call.Pos()).String())
+		}
 		if index, ok := flagUsageArg[name]; ok && index < len(call.Args) {
 			usage, isConst := constString(info, call.Args[index])
 			if isConst {
@@ -588,6 +602,12 @@ func TestCatalogValuesKeepVerbsAndAvoidAmbiguousCharacters(t *testing.T) {
 		if rs := ambiguousRunes(ja); len(rs) > 0 {
 			t.Errorf("%q holds East Asian Ambiguous characters %q (docs/L10N-JA.md § 使える文字)", ja, string(rs))
 		}
+	}
+}
+
+func TestFlagSetsComeFromNewFlagSet(t *testing.T) {
+	for _, pos := range scanSource(t).strayFlagSets {
+		t.Errorf("%s: flag.NewFlagSet outside %s; call newFlagSet so kae renders the parse failures", pos, flagSetMaker)
 	}
 }
 

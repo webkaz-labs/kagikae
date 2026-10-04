@@ -177,7 +177,7 @@ func flagSetFor(cmd string) *flag.FlagSet {
 	if canon, ok := commandAliases[cmd]; ok {
 		cmd = canon
 	}
-	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	fs := newFlagSet(cmd)
 	var opts commonOpts
 	spec := commandFlagSpecs[cmd]
 	registerCommonFlags(fs, &opts, spec.dryRun)

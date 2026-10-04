@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -246,7 +246,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true // partially-applied tool needs restore too
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
-				return nil, doubleFailure("switch "+plan.Tool, err, restoreErr, meta.ID)
+				return nil, doubleFailure(msgf("switch %s", plan.Tool), err, restoreErr, meta.ID)
 			}
 			return nil, errf(exitOf(err), "switch %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
@@ -261,7 +261,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		// live state changed but the record failed: restore so state.json and
 		// reality cannot diverge.
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
-			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
+			return nil, doubleFailure(msgf("recording state"), err, restoreErr, meta.ID)
 		}
 		return nil, errf(exitOf(err), "recording state"+restoredFromBackup, meta.ID, err)
 	}
@@ -291,7 +291,7 @@ func warnBeforeApply(results []switchResult, staleTools []string) {
 	// naming them; a single-tool switch already said it once.
 	if len(staleTools) > 1 {
 		warnf("%d tools need a re-login before use: %s",
-			len(staleTools), strings.Join(staleTools, ", "))
+			len(staleTools), joinNames(staleTools))
 	}
 }
 
@@ -383,7 +383,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	}
 
 	supported, err := isolatableTargets(targets, profileName != "",
-		"global isolated mode (kae use -i)", "use -i")
+		msgf("global isolated mode (kae use -i)"), "use -i")
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -427,7 +427,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		}
 		for _, r := range report.Results {
 			if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account, profileName != ""); err != nil {
-				return fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err)
+				return l10n.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err)
 			}
 		}
 		return nil

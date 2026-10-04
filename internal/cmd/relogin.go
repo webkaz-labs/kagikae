@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -150,7 +148,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 			if err != nil {
 				return finish(opts, preservationError(err))
 			}
-			fmt.Fprintf(os.Stderr, "kae: preserved the existing credential as %s; its account ownership is unknown; run: kae preservation list\n", saved.Record.ID)
+			infof("preserved the existing credential as %s; its account ownership is unknown; run: kae preservation list", saved.Record.ID)
 		}
 	}
 
@@ -183,9 +181,8 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		}
 	}
 
-	fmt.Fprintf(os.Stderr,
-		"kae: complete the %s login flow; kae is running it against this directory's own store (%s), "+
-			"so it refreshes %s/%s and not the real home\n",
+	infof("complete the %s login flow; kae is running it against this directory's own store (%s), "+
+		"so it refreshes %s/%s and not the real home",
 		tool, strings.Join(shown, " "), tool, accountName)
 	code, err := runner.RunInteractive(ctx, loginEnv, command[0], command[1:]...)
 	if err != nil {
@@ -194,7 +191,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	if code != 0 {
 		// Same reading as `kae add`: a non-zero exit does not prove nothing was
 		// written, so go on and let what is in the store decide.
-		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; kae is checking what is in the store now\n", command[0], code)
+		infof("%s exited with %d; kae is checking what is in the store now", command[0], code)
 	}
 	// Resolved **again**, because the login is precisely the event that can move the
 	// answer: codex under `cli_auth_credentials_store = "auto"` probes the keychain to
@@ -301,9 +298,9 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// are the ones that decide that. Only the wording depends on both answers.
 	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
 	if changed && attributed {
-		fmt.Printf("Captured the changed %s credential for %s/%s from this directory's store\n", tool, tool, accountName)
+		reportf("Captured the changed %s credential for %s/%s from this directory's store", tool, tool, accountName)
 	} else {
-		fmt.Printf("Ran the %s login flow in this directory\n", tool)
+		reportf("Ran the %s login flow in this directory", tool)
 	}
 	return constants.ExitOK
 }
@@ -406,7 +403,7 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 		return candidates[0], nil
 	default:
 		return "", errf(constants.ExitUsage, "this directory binds %s; name the one to log in; run: kae relogin <tool>",
-			strings.Join(candidates, ", "))
+			joinNames(candidates))
 	}
 }
 
@@ -414,13 +411,14 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 // the directory *does* hold. The order comes from boundTools, which is also what
 // `kae ls --pins` renders through — canonical order first, then any tool kae has
 // retired since the fragment was written, rather than dropping it. A dropped name
-// is the one that would have explained why the directory needs re-pinning.
-func boundToolList(fragment fragmentInfo) string {
+// is the one that would have explained why the directory needs re-pinning. Like
+// joinNames, the result is a `%s` argument: the names, or the message "no tools".
+func boundToolList(fragment fragmentInfo) any {
 	bound := boundTools(fragment.Accounts)
 	if len(bound) == 0 {
-		return "no tools"
+		return msgf("no tools")
 	}
-	return strings.Join(bound, ", ")
+	return joinNames(bound)
 }
 
 // preserveBeforeRelogin offers the pre-login copy to the existing attribution
@@ -582,7 +580,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 				"kae read another account's name in %s — this login can be "+
 				"captured once %s/%s is the account named there; "+
 				"to apply the snapshot's own copy, run: kae use %s %s",
-				tool, tool, accountName, refused.Why, strings.Join(shown, ", "), tool, accountName, tool, accountName)
+				tool, tool, accountName, refused.Why, joinNames(shown), tool, accountName, tool, accountName)
 			return false
 		}
 		warnf("kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+

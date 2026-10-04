@@ -6,6 +6,8 @@ package l10n
 var jaErrors = map[string]string{
 	// Shared fragments.
 	" — did you mean %q?": "。もしかして: %q",
+	"%s, %s":              "%s、%s",
+	"%s: %w":              "%s: %w",
 	"first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture": "まず %s の現在のログインがアカウント %s のもので、意図したグローバルの認証ストアを使っていることを確認してください。確認できた場合に限り、登録し直すには kae add --no-login %s %s を実行してください。ログアウトしている場合や確信が持てない場合は、登録する前に docs/CLI.md の Recovery guidance を参照してください",
 
 	// Command line and configuration.
@@ -80,6 +82,15 @@ var jaErrors = map[string]string{
 	"compare auth after login failed, previous state restored from backup %s: %v":                                                  "ログイン後の認証の比較に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
 	"detect the logged-in account failed, previous state restored from backup %s: %v":                                              "ログインしたアカウントの検出に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
 	"capture after login failed, previous state restored from backup %s: %v":                                                       "ログイン後の登録に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
+	"compare auth after login failed (previous state is in backup %s): %w":                                                         "ログイン後の認証の比較に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"detect the logged-in account failed (previous state is in backup %s): %w":                                                     "ログインしたアカウントの検出に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"capture after login failed (previous state is in backup %s): %w":                                                              "ログイン後の登録に失敗しました（以前の状態はバックアップ %s に残っています）: %w",
+	"launch %s login: %w":          "%s のログインを開始できません: %w",
+	"read live %s/%s: %w":          "現在の %s/%s を読み取れません: %w",
+	"read backup payload %s: %w":   "バックアップの保存データ %s を読み取れません: %w",
+	"compare auth after login":     "ログイン後の認証の比較",
+	"detect the logged-in account": "ログインしたアカウントの検出",
+	"capture after login":          "ログイン後の登録",
 
 	// kae use, kae run and kae rollback.
 	"switch %s failed, previous state restored from backup %s: %v":                                                                            "%s の切替に失敗したため、バックアップ %s から以前の状態を復元しました: %v",
@@ -102,6 +113,24 @@ var jaErrors = map[string]string{
 	"a profile target runs no single binary; name the command explicitly; run: kae run [-s|-i|--env] <tool|all> <name> -- <cmd...>":           "プロファイルを対象にすると実行するバイナリが 1 つに決まりません。コマンドを明示して kae run [-s|-i|--env] <tool|all> <name> -- <cmd...> を実行してください",
 	"%s has no launchable binary; name the command explicitly; run: kae run %s %s -- <cmd...>":                                                "%s には起動できるバイナリがありません。コマンドを明示して kae run %s %s -- <cmd...> を実行してください",
 	"no tool in this profile supports home isolation; nothing to isolate":                                                                     "このプロファイルにはホームを独立させられるツールがないため、独立させるものはありません",
+	"%s failed (%v) and restore also failed (%v); run: kae rollback --to %s":                                                                  "%sに失敗し（%v）、元の状態への復元にも失敗しました（%v）。kae rollback --to %s を実行してください",
+	"apply %s":                             "%s の適用",
+	"switch %s":                            "%s の切替",
+	"recording state":                      "状態の記録",
+	"backup %s: %w":                        "%s をバックアップできません: %w",
+	"store backup payload: %w":             "バックアップの保存データを保存できません: %w",
+	"save backup metadata: %w":             "バックアップのメタデータを保存できません: %w",
+	"restore %s/%s: %w":                    "%s/%s を復元できません: %w",
+	"clear a stale identity cache: %w":     "古いログイン中アカウントの記録を消去できません: %w",
+	"read payload %s: %w":                  "保存データ %s を読み取れません: %w",
+	"clear %s/%s: %w":                      "%s/%s を消去できません: %w",
+	"run %s: %w":                           "%s を実行できません: %w",
+	"prepare isolated home for %s/%s: %w":  "%s/%s の独立ホームを準備できません: %w",
+	"create global isolated home: %w":      "グローバル独立環境のホームを作成できません: %w",
+	"materialize credential for %s/%s: %w": "%s/%s の認証情報を書き出せません: %w",
+	"%s has no home-isolation env var; %s supports claude and codex only": "%s にはホームを独立させる環境変数がありません。%sが対応するのは claude と codex だけです",
+	"run -i (isolated home)":            "run -i（独立ホーム）",
+	"global isolated mode (kae use -i)": "グローバル独立モード（kae use -i）",
 
 	// kae profile and kae env.
 	"unknown profile subcommand %q (save, set, unset, rm, default)": "不明な profile サブコマンドです: %q（save、set、unset、rm、default のいずれか）",
@@ -158,6 +187,10 @@ var jaErrors = map[string]string{
 	"the %s login flow left this directory's credential unchanged, so there is nothing to capture back":                                               "%s のログイン手順でこのディレクトリの認証情報が変わらなかったため、取り込み直すものはありません",
 	"kae has no login command for %s, so it cannot log this directory in (see docs/ADAPTERS.md)":                                                      "kae には %s のログインコマンドがないため、このディレクトリでログインできません（docs/ADAPTERS.md を参照してください）",
 	"this directory binds %s; name the one to log in; run: kae relogin <tool>":                                                                        "このディレクトリは %s を固定しています。ログインするツールを指定して kae relogin <tool> を実行してください",
+	"this directory does not bind %s; it binds %s":                                                                                                    "このディレクトリは %s を固定していません（固定しているツール: %s）",
+	"this directory binds no tool kae can drive a login for (it binds %s)":                                                                            "このディレクトリには、kae がログインを実行できるツールが固定されていません（固定しているツール: %s）",
+	"no tools":                          "なし",
+	"resolve the current directory: %w": "カレントディレクトリを解決できません: %w",
 
 	// kae preservation.
 	"unknown preservation action %q": "不明な preservation の操作です: %q",

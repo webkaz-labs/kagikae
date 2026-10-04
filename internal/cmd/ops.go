@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -54,7 +54,7 @@ func resolveToolArg(input string) (string, error) {
 		return input, nil // unknown; validateToolAccount emits the unknown-tool error
 	default:
 		return "", errf(constants.ExitUsage,
-			"ambiguous tool prefix %q (matches: %s)", input, strings.Join(matches, ", "))
+			"ambiguous tool prefix %q (matches: %s)", input, joinNames(matches))
 	}
 }
 
@@ -95,7 +95,7 @@ func validateTool(tool string) error {
 				"%s was removed in v0.6.0; use %s instead (captured %s accounts on disk are left unchanged)",
 				tool, successor, tool)
 		}
-		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)%s", tool, strings.Join(constants.Tools, ", "), didYouMean(tool, constants.Tools))
+		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)%s", tool, joinNames(constants.Tools), didYouMean(tool, constants.Tools))
 	}
 	return nil
 }
@@ -262,12 +262,12 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 		for _, sp := range plan.Specs {
 			value, err := artifact.ReadLive(ctx, sp)
 			if err != nil {
-				return meta, fmt.Errorf("backup %s: %w", plan.Tool, err)
+				return meta, l10n.Errorf("backup %s: %w", plan.Tool, err)
 			}
 			ref := backup.SecretRef(id, plan.Tool, sp.Name)
 			if value.Present {
 				if err := be.Set(ctx, ref, value.Data); err != nil {
-					return meta, fmt.Errorf("store backup payload: %w", err)
+					return meta, l10n.Errorf("store backup payload: %w", err)
 				}
 			}
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
@@ -281,7 +281,7 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 		}
 	}
 	if err := backup.Save(app.Paths.BackupsDir(), meta); err != nil {
-		return meta, fmt.Errorf("save backup metadata: %w", err)
+		return meta, l10n.Errorf("save backup metadata: %w", err)
 	}
 	return meta, nil
 }
@@ -338,7 +338,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 			warnMessage(warning)
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
-			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
+			return l10n.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
 	return nil
@@ -362,7 +362,7 @@ func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.M
 		return err
 	}
 	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
-		return fmt.Errorf("clear a stale identity cache: %w", err)
+		return l10n.Errorf("clear a stale identity cache: %w", err)
 	}
 	return nil
 }
@@ -378,7 +378,7 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 	}
 	data, found, err := be.Get(ctx, ref)
 	if err != nil {
-		return artifact.Value{}, fmt.Errorf("read payload %s: %w", ref, err)
+		return artifact.Value{}, l10n.Errorf("read payload %s: %w", ref, err)
 	}
 	switch {
 	case found:
@@ -553,7 +553,7 @@ func clearUnrecordedIdentity(ctx context.Context, meta backup.Meta, current map[
 				continue
 			}
 			if err := artifact.ApplyLive(ctx, sp, artifact.Value{}); err != nil {
-				return fmt.Errorf("clear %s/%s: %w", tool, sp.Name, err)
+				return l10n.Errorf("clear %s/%s: %w", tool, sp.Name, err)
 			}
 		}
 	}
@@ -624,8 +624,8 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 }
 
 // Error convention in this file: use errf only where a specific stable exit
-// code applies (not_found, auth_missing, ...); plain fmt.Errorf flows through
-// exitOf's default branch as a general error.
+// code applies (not_found, auth_missing, ...); an l10n.Errorf wrap attaches
+// none, so exitOf reads the code of the cause it wraps, or the general error.
 
 // restoredFromBackup ends the error of an operation that failed and was rolled back from
 // its backup; each caller supplies the constant head naming the operation.
@@ -633,8 +633,9 @@ const restoredFromBackup = " failed, previous state restored from backup %s: %v"
 
 // doubleFailure reports the catastrophic case: the primary operation failed
 // AND restoring from the backup failed too. The manual escape hatch is
-// always the same.
-func doubleFailure(op string, opErr, restoreErr error, backupID string) error {
+// always the same. op names the operation as a message (msgf("apply %s", tool)),
+// so it renders in the selected language inside the error.
+func doubleFailure(op message, opErr, restoreErr error, backupID string) error {
 	return errf(exitOf(opErr),
 		"%s failed (%v) and restore also failed (%v); run: kae rollback --to %s",
 		op, opErr, restoreErr, backupID)
@@ -648,7 +649,7 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 	for _, tgt := range targets {
 		plan, err := app.planTool(ctx, tgt.Tool, tgt.Account)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", tgt.Tool, err)
+			return nil, l10n.Errorf("%s: %w", tgt.Tool, err)
 		}
 		acc, found, err := account.Load(app.Paths.AccountDir(tgt.Tool, tgt.Account))
 		if err != nil {

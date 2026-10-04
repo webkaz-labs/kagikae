@@ -105,4 +105,19 @@ var jaReports = map[string]string{
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
 	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
+
+	// login.go and relogin.go.
+	"Captured %s/%s and restored the previous login":                           "登録しました: %s/%s（以前のログインを復元しました）",
+	"Captured %s/%s (now active)":                                              "登録しました: %s/%s（有効にしました）",
+	"Captured the changed %s credential for %s/%s from this directory's store": "このディレクトリのストアから、変更された %s の認証情報を %s/%s へ取り込み直しました",
+	"Ran the %s login flow in this directory":                                  "このディレクトリで %s のログイン手順を実行しました",
+
+	// preservation.go (the table header and the action reports).
+	"Binding account (owner unknown)":       "固定したアカウント（所有者は不明）",
+	"State":                                 "状態",
+	"Bytes":                                 "バイト数",
+	"Would restore preservation %s":         "保全記録 %s を復元する予定です",
+	"Would rm preservation %s":              "保全記録 %s を削除する予定です",
+	"Completed preservation restore for %s": "保全記録 %s を復元しました",
+	"Completed preservation rm for %s":      "保全記録 %s を削除しました",
 }

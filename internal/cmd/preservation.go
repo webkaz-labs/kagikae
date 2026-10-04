@@ -156,7 +156,11 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 		for _, r := range listing.Preservations {
 			rows = append(rows, []string{r.ID, r.Tool, app.displayPath(r.Directory), r.BoundAccount, r.State, fmt.Sprint(r.SizeBytes)})
 		}
-		printTable([]string{"ID", "Tool", "Directory", "Binding account (owner unknown)", "State", "Bytes"}, rows, colorEnabled(opts.NoColor))
+		header := []string{
+			"ID", l10n.Sprintf("Tool"), l10n.Sprintf("Directory"),
+			l10n.Sprintf("Binding account (owner unknown)"), l10n.Sprintf("State"), l10n.Sprintf("Bytes"),
+		}
+		printTable(header, rows, colorEnabled(opts.NoColor))
 		return listing.exitCode()
 	}
 	if err := app.requireConfig(); err != nil {
@@ -249,16 +253,23 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	if opts.DryRun {
-		fmt.Printf("Would %s preservation %s\n", action, id)
-	} else {
-		fmt.Printf("Completed preservation %s for %s\n", action, id)
+	// One format per action and outcome: the action is a subcommand token, and a
+	// sentence built around it as an argument could not be translated.
+	switch {
+	case opts.DryRun && action == "rm":
+		reportf("Would rm preservation %s", id)
+	case opts.DryRun:
+		reportf("Would restore preservation %s", id)
+	case action == "rm":
+		reportf("Completed preservation rm for %s", id)
+	default:
+		reportf("Completed preservation restore for %s", id)
 	}
 	return constants.ExitOK
 }
 
 func confirmPreservationRemoval(id string) bool {
-	fmt.Fprintf(os.Stderr, "Preserved copy %s may be the only surviving credential copy. Permanently delete it? Type its ID to confirm: ", id)
+	promptf("Preserved copy %s may be the only surviving credential copy. Permanently delete it? Type its ID to confirm: ", id)
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	return err == nil && strings.TrimSpace(line) == id
 }

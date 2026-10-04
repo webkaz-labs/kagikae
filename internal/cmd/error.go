@@ -87,15 +87,30 @@ func joinMessages(ms []message) message {
 	return joined
 }
 
+// joinNames lists names a message inserts verbatim (tools, accounts, paths) in the
+// selected language's enumeration: ", " in English, 「、」 in Japanese
+// (docs/L10N-JA.md). One name is returned as itself and more as a message, so the
+// result is a `%s` argument, never compared. It has at least one element.
+func joinNames(names []string) any {
+	if len(names) == 1 {
+		return names[0]
+	}
+	joined := msgf("%s, %s", names[0], names[1])
+	for _, name := range names[2:] {
+		joined = msgf("%s, %s", joined, name)
+	}
+	return joined
+}
+
 // unsupportedShellFormat is the usage error for a shell kae has no completion for.
 const unsupportedShellFormat = "unsupported shell %q (supported: bash, zsh, fish)"
 
 // errLaunchLogin wraps the failure to start a tool's own login flow.
 func errLaunchLogin(tool string, err error) error {
-	return fmt.Errorf("launch %s login: %w", tool, err)
+	return l10n.Errorf("launch %s login: %w", tool, err)
 }
 
 // errResolveCwd wraps the failure to read the working directory.
 func errResolveCwd(err error) error {
-	return fmt.Errorf("resolve the current directory: %w", err)
+	return l10n.Errorf("resolve the current directory: %w", err)
 }

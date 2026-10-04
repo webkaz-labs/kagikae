@@ -3,7 +3,6 @@ package cmd
 import (
 	"crypto/sha256"
 	"fmt"
-	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -51,21 +50,23 @@ func (d listDiagnostics) print() {
 		infof("metadata listing is incomplete; readable records are shown")
 	}
 	for _, issue := range d.Issues {
-		fmt.Fprintf(os.Stderr, "kae: %s %s; %s\n", issue.Code, issue.Entry, listIssueGuidance(issue.Code))
+		infof("%s %s; %s", issue.Code, issue.Entry, listIssueGuidance(issue.Code))
 	}
 }
 
-func listIssueGuidance(code string) string {
+// listIssueGuidance is the remedy for an issue code, as a message so the line
+// renders in the selected language (the code and the entry stay tokens).
+func listIssueGuidance(code string) message {
 	switch code {
 	case constants.ListIssueEnumeration:
-		return "check the resolved state directory exists as a directory and is accessible; see docs/CLI.md Recovery guidance"
+		return msgf("check the resolved state directory exists as a directory and is accessible; see docs/CLI.md Recovery guidance")
 	case constants.ListIssueRead:
-		return "check metadata file and parent-directory permissions; keep the entry while investigating"
+		return msgf("check metadata file and parent-directory permissions; keep the entry while investigating")
 	case constants.ListIssueInvalid:
-		return "check metadata format against docs/DATA-MODEL.md; do not infer an account or delete the entry to clear this warning"
+		return msgf("check metadata format against docs/DATA-MODEL.md; do not infer an account or delete the entry to clear this warning")
 	case constants.ListIssueEntry:
-		return "inspect the entry type without following symlinks; keep unexpected entries until their purpose is verified"
+		return msgf("inspect the entry type without following symlinks; keep unexpected entries until their purpose is verified")
 	default:
-		return "see docs/CLI.md Recovery guidance before recovery"
+		return msgf("see docs/CLI.md Recovery guidance before recovery")
 	}
 }

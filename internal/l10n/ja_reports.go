@@ -77,7 +77,6 @@ var jaReports = map[string]string{
 	"Kind":             "種別",
 
 	// error.go (joinList): the separator of a list of names.
-	"%s, %s": "%s、%s",
 
 	// account.go.
 	"Removed %s/%s (%d secret item(s))":               "%s/%s を削除しました（シークレットストアの項目 %d 件）",
@@ -193,4 +192,18 @@ var jaReports = map[string]string{
 	"This executable is mise-managed. Inspect the installed mise help and owning configuration before removing its request; kae will not unlink a managed binary or shim.":                                                          "この実行ファイルは mise が管理しています。そのツール指定を削除する前に、インストール済みの mise のヘルプと、ツール指定を持つ設定ファイルを確認してください。kae は管理下のバイナリや shim を削除しません。",
 	"After integration cleanup, to remove this configured request, run: mise unuse --path %s %s. This also prunes versions unused by tracked configs; use --no-prune to retain installations. Other projects may still need them.":  "連携の後片付けのあと、設定済みのこのツール指定を削除するには mise unuse --path %s %s を実行してください。これは追跡中の設定ファイルが使っていないバージョンも削除します。インストールを残すには --no-prune を使ってください。ほかのプロジェクトがまだ必要としている場合があります。",
 	"This executable is mise-managed but no matching loaded request was identified. Inspect aliases, project requests and mise config ls --tracked-configs before removing the installation.":                                       "この実行ファイルは mise が管理していますが、一致する読み込み済みのツール指定を特定できませんでした。インストールを削除する前に、エイリアス、プロジェクトのツール指定、mise config ls --tracked-configs を確認してください。",
+	// login.go and relogin.go.
+	"Captured %s/%s and restored the previous login":                           "登録しました: %s/%s（以前のログインを復元しました）",
+	"Captured %s/%s (now active)":                                              "登録しました: %s/%s（有効にしました）",
+	"Captured the changed %s credential for %s/%s from this directory's store": "このディレクトリのストアから、変更された %s の認証情報を %s/%s へ取り込み直しました",
+	"Ran the %s login flow in this directory":                                  "このディレクトリで %s のログイン手順を実行しました",
+
+	// preservation.go (the table header and the action reports).
+	"Binding account (owner unknown)":       "固定したアカウント（所有者は不明）",
+	"State":                                 "状態",
+	"Bytes":                                 "バイト数",
+	"Would restore preservation %s":         "保全記録 %s を復元する予定です",
+	"Would rm preservation %s":              "保全記録 %s を削除する予定です",
+	"Completed preservation restore for %s": "保全記録 %s を復元しました",
+	"Completed preservation rm for %s":      "保全記録 %s を削除しました",
 }

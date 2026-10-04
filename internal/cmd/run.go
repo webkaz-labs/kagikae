@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -182,13 +182,13 @@ func (app *App) runEnvChild(ctx context.Context, opts commonOpts, targets []runT
 	for _, tgt := range targets {
 		entries, err := app.envModeEnv(ctx, be, tgt.Tool, tgt.Account)
 		if err != nil {
-			return finish(opts, fmt.Errorf("%s: %w", tgt.Tool, err))
+			return finish(opts, l10n.Errorf("%s: %w", tgt.Tool, err))
 		}
 		extraEnv = append(extraEnv, entries...)
 	}
 	code, err := runner.RunInteractive(ctx, extraEnv, childCmd[0], childCmd[1:]...)
 	if err != nil {
-		return finish(opts, fmt.Errorf("run %s: %w", childCmd[0], err))
+		return finish(opts, l10n.Errorf("run %s: %w", childCmd[0], err))
 	}
 	return code
 }
@@ -201,7 +201,7 @@ func (app *App) runEnvChild(ctx context.Context, opts commonOpts, targets []runT
 // home-isolation env var is skipped with a warning when it came from a profile
 // (claude/codex stay isolated), or exits 5 for a single explicit tool.
 func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets []runTarget, fromProfile bool, childCmd []string) int {
-	supported, err := isolatableTargets(targets, fromProfile, "run -i (isolated home)", "run -i")
+	supported, err := isolatableTargets(targets, fromProfile, msgf("run -i (isolated home)"), "run -i")
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -220,7 +220,7 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	for _, tgt := range supported {
 		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account, fromProfile)
 		if err != nil {
-			return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
+			return finish(opts, l10n.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
 		}
 		extraEnv = append(extraEnv, isolationEnvVar(tgt.Tool)+"="+home)
 		// The credential variable too, and pointed at the account's own store rather
@@ -238,13 +238,12 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	// Confusion guard: name the shared home so it is never invisible that
 	// run -i and kae use -i share one store per account.
 	for _, r := range rows {
-		fmt.Fprintf(os.Stderr,
-			"kae: run -i: %s runs in %s\n  (shared with `kae use -i %s`; concurrent `kae use` in other shells is not blocked)\n",
+		infof("run -i: %s runs in %s\n  (shared with `kae use -i %s`; concurrent `kae use` in other shells is not blocked)",
 			r.tool, r.home, r.account)
 	}
 	code, err := runner.RunInteractive(ctx, extraEnv, childCmd[0], childCmd[1:]...)
 	if err != nil {
-		return finish(opts, fmt.Errorf("run %s: %w", childCmd[0], err))
+		return finish(opts, l10n.Errorf("run %s: %w", childCmd[0], err))
 	}
 	return code
 }
@@ -253,10 +252,11 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 // (returned) and those without. A tool without one is skipped with a warning
 // when it came from a profile (fromProfile = true; claude/codex stay isolated),
 // or returns an exit-5 error for a single explicit tool. modeDesc names the mode
-// in the exit-5 message; flagName names the surface in the skip warning. An
+// in the exit-5 message, as a message so it renders in the selected language;
+// flagName names the surface (a command token) in the skip warning. An
 // empty result with no error cannot occur — a profile of only unsupported tools
 // returns exit 5.
-func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName string) ([]runTarget, error) {
+func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc message, flagName string) ([]runTarget, error) {
 	var supported []runTarget
 	for _, tgt := range targets {
 		if isolationEnvVar(tgt.Tool) != "" {
@@ -301,7 +301,7 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string, fromProfile bool) (string, error) {
 	home := app.Paths.GlobalIsolatedHomeDir(tool, account)
 	if err := os.MkdirAll(home, 0o700); err != nil {
-		return "", fmt.Errorf("create global isolated home: %w", err)
+		return "", l10n.Errorf("create global isolated home: %w", err)
 	}
 	// Before the write, like the pin-level pass: a home bound before the credential
 	// split still holds its own copy, and writing the snapshot over the account's
@@ -449,7 +449,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
-				return 0, doubleFailure("apply "+plan.Tool, err, restoreErr, meta.ID)
+				return 0, doubleFailure(msgf("apply %s", plan.Tool), err, restoreErr, meta.ID)
 			}
 			return 0, errf(exitOf(err), "apply %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
@@ -611,11 +611,11 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	}
 	app.pruneBackups(ctx, be)
 	if len(restore) > 0 {
-		fmt.Fprintf(os.Stderr, "kae: previous auth state restored (backup %s)\n", meta.ID)
+		infof("previous auth state restored (backup %s)", meta.ID)
 	}
 
 	if runErr != nil && !errors.Is(runErr, context.Canceled) {
-		return childCode, fmt.Errorf("run %s: %w", childCmd[0], runErr)
+		return childCode, l10n.Errorf("run %s: %w", childCmd[0], runErr)
 	}
 	return childCode, nil
 }

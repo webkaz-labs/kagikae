@@ -274,7 +274,7 @@ func TestCompanionReportsAreLocalized(t *testing.T) {
 // The unknown-companion refusal lists the companions with the line's separator in
 // a person's line and keeps the English list in JSON.
 func TestUnknownCompanionListFollowsTheLanguage(t *testing.T) {
-	err := errf(constants.ExitUsage, "unknown companion %q (known: %s)", "zz", joinList([]string{"gh", "git"}))
+	err := errf(constants.ExitUsage, "unknown companion %q (known: %s)", "zz", l10n.List([]string{"gh", "git"}))
 	if got := err.Error(); got != `unknown companion "zz" (known: gh, git)` {
 		t.Errorf("Error() = %q", got)
 	}
@@ -299,16 +299,16 @@ func TestJoinList(t *testing.T) {
 		{[]string{"a", "b", "c"}, "a, b, c", "a、b、c"},
 	}
 	for _, c := range cases {
-		m := joinList(c.items)
+		m := l10n.List(c.items)
 		if m.Error() != c.en {
-			t.Errorf("joinList(%q).Error() = %q, want %q", c.items, m.Error(), c.en)
+			t.Errorf("l10n.List(%q).Error() = %q, want %q", c.items, m.Error(), c.en)
 		}
 	}
 	l10ntest.UseJapanese(t)
 	for _, c := range cases {
-		m := joinList(c.items)
+		m := l10n.List(c.items)
 		if got := l10n.Render(m); got != c.ja {
-			t.Errorf("Render(joinList(%q)) = %q, want %q", c.items, got, c.ja)
+			t.Errorf("Render(l10n.List(%q)) = %q, want %q", c.items, got, c.ja)
 		}
 		if m.Error() != c.en {
 			t.Errorf("Japanese changed Error(): %q", m.Error())

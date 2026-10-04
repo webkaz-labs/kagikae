@@ -288,7 +288,7 @@ func stageOneCases(t *testing.T) []stageOneCase {
 				return captureStderr(t, func() int { return runSwitch(ctx, testApp(t, nil), text, "cluade", "main") })
 			},
 			en: "kae: unknown tool \"cluade\" (tools: " + tools + ") — did you mean \"claude\"?\n",
-			ja: "kae: 不明なツールです: \"cluade\"（ツール: " + tools + "）。もしかして: \"claude\"\n",
+			ja: "kae: 不明なツールです: \"cluade\"（ツール: " + strings.Join(constants.Tools, "、") + "）。もしかして: \"claude\"\n",
 		},
 		{
 			name: "account not captured",

@@ -67,7 +67,7 @@ func (app *App) resolveCompanionTarget(profileName, id string) (companion.Spec, 
 	spec, ok := companion.For(id)
 	if !ok {
 		return companion.Spec{}, errf(constants.ExitUsage,
-			"unknown companion %q (known: %s)", id, joinList(constants.Companions))
+			"unknown companion %q (known: %s)", id, l10n.List(constants.Companions))
 	}
 	return spec, nil
 }
@@ -124,7 +124,7 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 	}); err != nil {
 		return finish(opts, err)
 	}
-	reportf("Bound companion %s for profile %s: %s", id, profileName, joinList(names))
+	reportf("Bound companion %s for profile %s: %s", id, profileName, l10n.List(names))
 	if app.miseActivated() {
 		reportf("To refresh its fragment, in a bound directory run: kae pin")
 	}
@@ -253,7 +253,7 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 	if removeWhole {
 		reportf("Removed companion %s from profile %s", id, profileName)
 	} else {
-		reportf("Removed %d knob(s) from companion %s in profile %s: %s", len(drop), id, profileName, joinList(drop))
+		reportf("Removed %d knob(s) from companion %s in profile %s: %s", len(drop), id, profileName, l10n.List(drop))
 	}
 	return constants.ExitOK
 }

@@ -12,7 +12,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,19 +30,18 @@ import (
 // The catalog test of docs/VALIDATION.md § Output language in tests. It reads the
 // source of every package in the kae binary, type-checked so a format argument is
 // judged by its constant value ("a" + "b" counts) rather than by its spelling, and
-// fails on the conditions that section lists. What is not migrated yet is on the
-// second allowlist (allowlist_test.go), which can only shrink: its counts must
-// equal what the source holds, so a migrated call fails the test until its entry
-// is lowered, and a new unmigrated call fails it until the message is put in the
-// catalog.
+// fails on the conditions that section lists. Every finding fails it but those on
+// the two permanent allowlists (allowlist_test.go): the machine lines and the
+// errors kae never shows a person.
 //
 // What it does not see: a literal printed through anything but fmt's print
 // functions (io.WriteString, a Bubble Tea view), English composed with
 // fmt.Sprintf and printed later, a constant English argument handed to a sink
-// (it cannot tell prose from a token), and files outside this platform's build
-// (their allowlist entries are skipped, not checked; a literal format they pass
-// to a sink still counts as used, so a key used only on another shipped platform
-// is not an orphan). The package list comes from `go list -deps` of the kae binary.
+// (it cannot tell prose from a token), a literal inside the arguments of another
+// call a printed expression makes, and files outside this platform's build (a
+// literal format they pass to a sink still counts as used, so a key used only on
+// another shipped platform is not an orphan). The package list comes from
+// `go list -deps` of the kae binary.
 
 const (
 	modulePath = "github.com/webkaz-labs/kagikae"
@@ -90,7 +88,7 @@ var printFuncs = map[string]int{ // name -> index of the first printed argument
 	"Fprint": 1, "Fprintf": 1, "Fprintln": 1,
 }
 
-// Finding kinds, the columns of the second allowlist.
+// Finding kinds.
 const (
 	kindSink  = "sink"  // a sink's format is not a constant in the catalog
 	kindPrint = "print" // a fmt print call writes a literal outside the catalog
@@ -656,28 +654,10 @@ func TestCatalogHasNoOrphanKeys(t *testing.T) {
 	}
 }
 
-// pendingCounts is one row of the second allowlist.
-type pendingCounts struct{ sink, print, flag, error int }
-
-func (c pendingCounts) String() string {
-	var parts []string
-	for _, p := range []struct {
-		name string
-		n    int
-	}{{"sink", c.sink}, {"print", c.print}, {"flag", c.flag}, {"error", c.error}} {
-		if p.n != 0 {
-			parts = append(parts, fmt.Sprintf("%s: %d", p.name, p.n))
-		}
-	}
-	return "{" + strings.Join(parts, ", ") + "}"
-}
-
 func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	s := scanSource(t)
-	got := map[string]pendingCounts{}
 	machineHit := map[string]bool{}
 	notLocalizedHit := map[string]bool{}
-	var listed []finding
 	for _, f := range s.findings {
 		if f.kind == kindPrint && machineOutput[f.file+":"+f.fn] {
 			machineHit[f.file+":"+f.fn] = true
@@ -689,19 +669,7 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 				continue
 			}
 		}
-		c := got[f.file]
-		switch f.kind {
-		case kindSink:
-			c.sink++
-		case kindPrint:
-			c.print++
-		case kindFlag:
-			c.flag++
-		case kindError:
-			c.error++
-		}
-		got[f.file] = c
-		listed = append(listed, f)
+		t.Errorf("%s [%s] %s: %s", f.pos, f.kind, f.fn, f.what)
 	}
 	for key := range machineOutput {
 		if !machineHit[key] {
@@ -714,43 +682,6 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 			t.Errorf("not-localized allowlist entry %q matches no fmt.Errorf or errors.New: remove it", key)
 		}
 	}
-	files := map[string]bool{}
-	for file := range got {
-		files[file] = true
-	}
-	for file := range unmigrated {
-		files[file] = true
-	}
-	var mismatched []string
-	for file := range files {
-		want, have := unmigrated[file], got[file]
-		if want == have {
-			continue
-		}
-		if !s.files[file] {
-			if _, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(file))); err == nil {
-				continue // in the source, but not in this platform's build
-			}
-		}
-		mismatched = append(mismatched, file)
-		if have == (pendingCounts{}) {
-			t.Errorf("%s: nothing is left to migrate; remove its allowlist entry %v", file, want)
-		} else {
-			t.Errorf("%s: the source holds %v unmigrated, the allowlist says %v. A migrated call lowers the entry; "+
-				"a new message goes in the catalog rather than raising it", file, have, want)
-		}
-	}
-	if len(mismatched) > 0 {
-		slices.Sort(mismatched)
-		var b strings.Builder
-		for _, f := range listed {
-			if slices.Contains(mismatched, f.file) {
-				fmt.Fprintf(&b, "  %s [%s] %s: %s\n", f.pos, f.kind, f.fn, f.what)
-			}
-		}
-		t.Logf("findings in the mismatched files:\n%s", b.String())
-		t.Logf("the allowlist the source holds now:\n%s", formatAllowlist(got))
-	}
 }
 
 // notLocalizedKey returns the notLocalized entry an error finding falls under:
@@ -762,12 +693,4 @@ func notLocalizedKey(f finding) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func formatAllowlist(got map[string]pendingCounts) string {
-	var b strings.Builder
-	for _, k := range slices.Sorted(maps.Keys(got)) {
-		fmt.Fprintf(&b, "\t%q: %s,\n", k, got[k])
-	}
-	return b.String()
 }

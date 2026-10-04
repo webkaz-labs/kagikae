@@ -21,7 +21,6 @@ var machineOutput = map[string]bool{
 // they are not messages and stay English (docs/CLI.md § Localization, "Where
 // messages are composed"). Keyed "file" or "file:function", with the reason;
 // an entry that matches no `fmt.Errorf` or `errors.New` call fails the test.
-// Their calls do not count in unmigrated.
 var notLocalized = map[string]string{
 	"internal/preservation/store.go": "every error reaches a person only through cmd's preservationError, " +
 		"which maps the sentinels to its own messages and never prints the rest: a backend error may carry " +
@@ -29,11 +28,3 @@ var notLocalized = map[string]string{
 	"internal/companion/companion.go:Spec.validate": "called only by Register, which panics at init on a " +
 		"programmer error in the companion registry",
 }
-
-// unmigrated is the second allowlist: per file, the human sinks, flag
-// registrations and errors in internal/cmd or below whose text is not in the
-// catalog yet. The test requires each count to equal the source, so the list only
-// shrinks: migrating a call fails the test until its count is lowered, and a new
-// unmigrated call fails it until its message is in the catalog. Done when empty
-// (docs/ROADMAP.md, localization stage 5).
-var unmigrated = map[string]pendingCounts{}

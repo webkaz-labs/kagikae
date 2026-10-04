@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -283,9 +282,9 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// Derived once from the winner rather than carried alongside it: where the newest
 	// copy is says nothing the index does not, and a third value updated at each
 	// assignment site is a third chance to update two of them.
-	newestAt := fmt.Sprintf("snapshot %s/%s", group.Tool, group.Account)
+	newestAt := msgf("snapshot %s/%s", group.Tool, group.Account)
 	if newestIdx >= 0 {
-		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
+		newestAt = msgf("the store bound to %s", group.Stores[newestIdx].Dir)
 	}
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {
@@ -354,12 +353,12 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 // When the newer copy is another directory's store, the snapshot is *not* known to
 // be newer, so a re-bind could write something older still; a login is the only
 // answer that certainly produces a usable credential.
-func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) string {
+func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) message {
 	if newerIsSnapshot {
-		return fmt.Sprintf("re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s",
+		return msgf("re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s",
 			dir, tool, accountName)
 	}
-	return pinLoginRemedy(tool, dir).Error()
+	return pinLoginRemedy(tool, dir)
 }
 
 // storeHoldsAccount reports whether the credential a bound store reads is confirmed

@@ -329,20 +329,22 @@ func globalIsolatedStatuses(app *App, synced map[string]string) []globalIsolated
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
 	if report.Pinned != nil {
-		fmt.Printf("This directory: profile %s (bound, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
+		reportf("This directory: profile %s (bound, %s)", report.Pinned.Profile, report.Pinned.Mode)
+		fmt.Println()
 	}
 	if len(report.GlobalIsolated) > 0 {
-		fmt.Println("Global isolated homes (kae use -i / run -i share these):")
+		reportf("Global isolated homes (kae use -i / run -i share these):")
 		for _, gi := range report.GlobalIsolated {
 			fmt.Printf("  %s -> %s\n    %s\n", gi.Tool, gi.Account, gi.Home)
 		}
 		fmt.Println()
 	}
 	if report.ActiveProfile != nil {
-		fmt.Printf("Global active profile: %s\n\n", *report.ActiveProfile)
+		reportf("Global active profile: %s", *report.ActiveProfile)
 	} else {
-		fmt.Print("Global active profile: (none)\n\n")
+		reportf("Global active profile: (none)")
 	}
+	fmt.Println()
 	now := app.Now()
 	rows := [][]string{}
 	for _, ts := range report.Tools {
@@ -446,7 +448,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Accounts) == 0 {
-		fmt.Println("no captured accounts; run: kae add <tool> <account>")
+		reportf("no captured accounts; run: kae add <tool> <account>")
 		return constants.ExitOK
 	}
 	now := app.Now()

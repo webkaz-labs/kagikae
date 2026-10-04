@@ -9,6 +9,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -366,7 +367,7 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 		}
 		defer pinLock.Release()
 	} else if purge {
-		return finish(opts, fmt.Errorf("resolve the current directory for --purge: %w", absErr))
+		return finish(opts, l10n.Errorf("resolve the current directory for --purge: %w", absErr))
 	} else {
 		warnf("could not resolve this directory (%v); removing the fragment without the pin lock", absErr)
 	}

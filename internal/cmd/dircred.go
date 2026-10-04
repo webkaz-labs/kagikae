@@ -6,7 +6,6 @@ package cmd
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -98,7 +97,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	dirs := bindDirs{Config: configDir, Cred: app.credStoreDir(tool, accountName)}
 	if dirs.Cred != "" {
 		if err := os.MkdirAll(dirs.Cred, 0o700); err != nil {
-			return fmt.Errorf("create per-account credential store: %w", err)
+			return l10n.Errorf("create per-account credential store: %w", err)
 		}
 	}
 	// Resolved once for both halves. Asking the adapter twice is not free: codex
@@ -125,7 +124,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// capability still waits on is the pin round-trip on a real machine
 	// (docs/ROADMAP.md), so it stays undeclared rather than assumed.
 	if unbindableDirKeychain(sp) {
-		return fmt.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
+		return l10n.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}
 	acc, data, storedKind, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
@@ -248,7 +247,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// tool's own — independent evidence, which is what attribution is supposed to read.
 	if !keepLiveCopy {
 		if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
-			return fmt.Errorf("write %s credential for account %s: %w", tool, accountName, err)
+			return l10n.Errorf("write %s credential for account %s: %w", tool, accountName, err)
 		}
 		if sp.Kind == constants.KindKeychain {
 			// The keychain item is what the tool reads (reads try it first and only fall
@@ -279,7 +278,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 				for _, name := range app.pinCredItems(tool) {
 					stale := filepath.Join(dir, name)
 					if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
-						return fmt.Errorf("remove superseded credential copy %s: %w", stale, err)
+						return l10n.Errorf("remove superseded credential copy %s: %w", stale, err)
 					}
 				}
 			}

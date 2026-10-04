@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -55,9 +56,9 @@ type bindMode struct {
 	// listing minus the denylist; isolated and tree: isolated_shared_items) and writes
 	// the credential.
 	prepare func(app *App, ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error)
-	// rebindFailure names what a failed prepare was doing, for the error of
-	// `kae pin <tool> <account>`.
-	rebindFailure func(tool, account string) string
+	// rebindFailure wraps a failed prepare's err with what it was doing, for the
+	// error of `kae pin <tool> <account>`.
+	rebindFailure func(tool, account string, err error) error
 }
 
 // bindModes is the table of per-directory bind mechanisms, in the order the store
@@ -75,8 +76,8 @@ func bindModes() []bindMode {
 				return p.SharedDir(pinID, tool)
 			},
 			prepare: (*App).prepareBond,
-			rebindFailure: func(tool, _ string) string {
-				return "swap shared credential for " + tool
+			rebindFailure: func(tool, _ string, err error) error {
+				return l10n.Errorf("swap shared credential for %s: %w", tool, err)
 			},
 		},
 		{
@@ -86,8 +87,8 @@ func bindModes() []bindMode {
 			perAccount: true,
 			storeDir:   paths.Paths.IsolatedConfigDir,
 			prepare:    (*App).preparePinConfig,
-			rebindFailure: func(tool, account string) string {
-				return "prepare isolated config for " + tool + "/" + account
+			rebindFailure: func(tool, account string, err error) error {
+				return l10n.Errorf("prepare isolated config for %s/%s: %w", tool, account, err)
 			},
 		},
 		{
@@ -104,8 +105,8 @@ func bindModes() []bindMode {
 				return p.TreeDir(pinID, tool)
 			},
 			prepare: (*App).prepareTree,
-			rebindFailure: func(tool, account string) string {
-				return "prepare tree store for " + tool + "/" + account
+			rebindFailure: func(tool, account string, err error) error {
+				return l10n.Errorf("prepare tree store for %s/%s: %w", tool, account, err)
 			},
 		},
 	}

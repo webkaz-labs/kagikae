@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -262,7 +262,7 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 			return err
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
-			return fmt.Errorf("write %s identity for account %s: %w", acc.Tool, acc.Name, err)
+			return l10n.Errorf("write %s identity for account %s: %w", acc.Tool, acc.Name, err)
 		}
 	}
 	return nil
@@ -322,12 +322,12 @@ func retractDirIdentity(ctx context.Context, specs []artifact.Spec, configDir st
 func identityTargetEscapes(target, configDir string) (bool, error) {
 	root, err := filepath.EvalSymlinks(configDir)
 	if err != nil {
-		return false, fmt.Errorf("resolve store dir %s: %w", configDir, err)
+		return false, l10n.Errorf("resolve store dir %s: %w", configDir, err)
 	}
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return false, fmt.Errorf("resolve identity target %s: %w", target, err)
+			return false, l10n.Errorf("resolve identity target %s: %w", target, err)
 		}
 		// "Not exist" covers two states that need opposite answers, so ask what the
 		// path *is* rather than inferring it from the failure. A path that simply does
@@ -341,7 +341,7 @@ func identityTargetEscapes(target, configDir string) (bool, error) {
 		}
 		parent, perr := filepath.EvalSymlinks(filepath.Dir(target))
 		if perr != nil {
-			return false, fmt.Errorf("resolve identity target dir %s: %w", filepath.Dir(target), perr)
+			return false, l10n.Errorf("resolve identity target dir %s: %w", filepath.Dir(target), perr)
 		}
 		resolved = filepath.Join(parent, filepath.Base(target))
 	}
@@ -444,7 +444,7 @@ func (app *App) dirSpecs(ctx context.Context, tool string, dirs bindDirs) ([]art
 	}
 	specs, err := adp.Artifacts(ctx, env)
 	if err != nil {
-		return nil, fmt.Errorf("resolve %s artifacts for %s: %w", tool, dirs.Config, err)
+		return nil, l10n.Errorf("resolve %s artifacts for %s: %w", tool, dirs.Config, err)
 	}
 	return specs, nil
 }
@@ -476,7 +476,7 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 	}
 	data, found, err := be.Get(ctx, metaArt.SecretRef)
 	if err != nil {
-		return account.Account{}, nil, "", fmt.Errorf("read snapshot credential: %w", err)
+		return account.Account{}, nil, "", l10n.Errorf("read snapshot credential: %w", err)
 	}
 	if !found {
 		return account.Account{}, nil, "", errf(constants.ExitError,

@@ -105,4 +105,36 @@ var jaReports = map[string]string{
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
 	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
+
+	// completion_install.go.
+	"Registered kae %s completion via global mise hook: %s": "グローバル mise のフックで kae の %s 補完を登録しました: %s",
+	"Note: mise hooks are experimental — needs `mise activate`, a trusted\nconfig, and `mise settings experimental=true`. Open a new shell to load it.": "注: mise のフックは実験的な機能です。mise activate、信頼済みの設定ファイル、mise settings experimental=true が必要です。\n読み込むには新しいシェルを開いてください。",
+	"kae %s completion already registered in %s":                                             "kae の %s 補完は %s に登録済みです",
+	"Installed kae %s completion: %s":                                                        "kae の %s 補完をインストールしました: %s",
+	"kae %s completion already up to date: %s":                                               "kae の %s 補完は最新です: %s",
+	"Refreshed kae %s completion mise hook: %s":                                              "kae の %s 補完の mise フックを更新しました: %s",
+	"Refreshed kae %s completion: %s":                                                        "kae の %s 補完を更新しました: %s",
+	"No registered kae completion to refresh; run: kae completion <bash|zsh|fish> --install": "更新する kae の補完が登録されていません。kae completion <bash|zsh|fish> --install を実行してください",
+
+	// miseinit.go.
+	"Updated .mise.toml: profile %s (auth mode)":                                            ".mise.toml を更新しました: プロファイル %s（auth モード）",
+	"Next: mise trust   (mise refuses untrusted configs; its error until then is expected)": "次の手順: mise trust   （mise は信頼されていない設定ファイルを拒否します。それまでに出るエラーは想定どおりです）",
+
+	// uninstall.go, uninstall_managed.go and uninstall_ownership.go: the report and the
+	// manual actions it lists (JSON manual_actions stays English).
+	"Uninstall: integrations %s; executable %s; discovery %s": "アンインストール: 連携 %s、実行ファイル %s、検出 %s",
+	"Retained data:": "残すデータ:",
+	"Discovery covers known bound directories, supplied --dir paths and supported global completion locations; unregistered projects and custom shell code need manual inspection.":                                                 "検出の対象は、記録済みの固定したディレクトリ、--dir で指定したパス、対応しているグローバルの補完の場所です。記録のないプロジェクトや独自のシェルコードは手動で確認してください。",
+	"Exit existing tool processes and open a new shell after cleanup; current-shell exports, functions and completion caches are not changed.":                                                                                      "後片付けのあとは、実行中のツールのプロセスを終了し、新しいシェルを開いてください。現在のシェルの export、関数、補完キャッシュは変更しません。",
+	"Account snapshots, credentials, backups, preservation records, working stores, breadcrumbs and installation history are retained.":                                                                                             "アカウントのスナップショット、認証情報、バックアップ、保全記録、作業ストア、固定したディレクトリの記録、インストール履歴は残します。",
+	"Executable removed; inspect retained installation metadata to finalize removal history.":                                                                                                                                       "実行ファイルを削除しました。削除の履歴を確定するには、残っているインストール情報を確認してください。",
+	"Retain and inspect the installation receipt at %s. An unsupported schema requires a compatible installer; repair invalid metadata explicitly before retrying. Reinstalling with this version also refuses an invalid receipt.": "%s のインストール記録は残したまま確認してください。対応していない形式には互換性のあるインストーラーが必要です。不正な情報は明示的に修復してから再試行してください。このバージョンで再インストールしても、不正なインストール記録は拒否されます。",
+	"The retained receipt records an incomplete or removed installation. Reinstall the same direct destination with the supported installer to establish a new active receipt, then preview again.":                                 "残っているインストール記録は、未完了か削除済みのインストールを示しています。対応しているインストーラーで同じインストール先に再インストールして新しい有効なインストール記録を作り、そのあともう一度プレビューしてください。",
+	"The executable or its directory differs from the retained receipt. Inspect the current file, links and owner before choosing its installation manager; automatic removal is refused.":                                          "実行ファイルかそのディレクトリが、残っているインストール記録と異なります。インストールの管理方法を選ぶ前に、現在のファイル、リンク、所有者を確認してください。自動での削除は拒否します。",
+	"Installation ownership could not be inspected. Resolve access to the retained receipt and executable before retrying.":                                                                                                         "インストールの所有者を確認できませんでした。残っているインストール記録と実行ファイルにアクセスできるようにしてから再試行してください。",
+	"Resolve the outstanding completion migration before uninstalling; cleanup does not run completion refresh or recreate hooks.":                                                                                                  "アンインストールする前に、未完了の補完の移行を解決してください。後片付けでは補完の更新もフックの再作成も行いません。",
+	"Unrecorded executable: %s. A manual copy or plain go install has no removal receipt; reinstall this path through the supported direct installer before automatic removal.":                                                     "記録のない実行ファイルです: %s。手動でコピーしたものや go install だけで入れたものには、削除に使うインストール記録がありません。自動で削除するには、対応している直接インストーラーでこのパスに再インストールしてください。",
+	"This executable is mise-managed. Inspect the installed mise help and owning configuration before removing its request; kae will not unlink a managed binary or shim.":                                                          "この実行ファイルは mise が管理しています。そのツール指定を削除する前に、インストール済みの mise のヘルプと、ツール指定を持つ設定ファイルを確認してください。kae は管理下のバイナリや shim を削除しません。",
+	"After integration cleanup, to remove this configured request, run: mise unuse --path %s %s. This also prunes versions unused by tracked configs; use --no-prune to retain installations. Other projects may still need them.":  "連携の後片付けのあと、設定済みのこのツール指定を削除するには mise unuse --path %s %s を実行してください。これは追跡中の設定ファイルが使っていないバージョンも削除します。インストールを残すには --no-prune を使ってください。ほかのプロジェクトがまだ必要としている場合があります。",
+	"This executable is mise-managed but no matching loaded request was identified. Inspect aliases, project requests and mise config ls --tracked-configs before removing the installation.":                                       "この実行ファイルは mise が管理していますが、一致する読み込み済みのツール指定を特定できませんでした。インストールを削除する前に、エイリアス、プロジェクトのツール指定、mise config ls --tracked-configs を確認してください。",
 }

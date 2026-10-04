@@ -53,6 +53,10 @@ func Render(err error) string {
 			if inner, ok := args[0].(Msg); ok {
 				return strings.TrimSuffix(Render(inner), "。")
 			}
+		case kindList:
+			if items, ok := args[0].([]string); ok {
+				return strings.Join(items, listSeparators[Current()])
+			}
 		}
 	}
 	if ja, ok := japanese(format); ok {

@@ -159,6 +159,39 @@ var jaErrors = map[string]string{
 	"kae has no login command for %s, so it cannot log this directory in (see docs/ADAPTERS.md)":                                                      "kae には %s のログインコマンドがないため、このディレクトリでログインできません（docs/ADAPTERS.md を参照してください）",
 	"this directory binds %s; name the one to log in; run: kae relogin <tool>":                                                                        "このディレクトリは %s を固定しています。ログインするツールを指定して kae relogin <tool> を実行してください",
 
+	// The steps of binding a directory (dircred*.go, miseinit.go, modes.go,
+	// pin.go, pinindex.go, rebind.go, fragment.go), each wrapping its cause.
+	"create per-account credential store: %w":                             "アカウントごとの認証ストアを作成できません: %w",
+	"%w: kae cannot give this directory its own %s credential store (%s)": "%w: kae はこのディレクトリに専用の %s の認証ストアを用意できません（%s）",
+	"write %s credential for account %s: %w":                              "アカウント %[2]s の %[1]s の認証情報を書き込めません: %[3]w",
+	"remove superseded credential copy %s: %w":                            "置き換え済みの認証情報のコピー %s を削除できません: %w",
+	"write %s identity for account %s: %w":                                "アカウント %[2]s の %[1]s のログイン中アカウントの記録を書き込めません: %[3]w",
+	"resolve store dir %s: %w":                                            "ストアのディレクトリ %s を解決できません: %w",
+	"resolve identity target %s: %w":                                      "ログイン中アカウントの記録の書き込み先 %s を解決できません: %w",
+	"resolve identity target dir %s: %w":                                  "ログイン中アカウントの記録の書き込み先のディレクトリ %s を解決できません: %w",
+	"resolve %s artifacts for %s: %w":                                     "%[2]s 用の %[1]s の認証要素を解決できません: %[3]w",
+	"read snapshot credential: %w":                                        "スナップショットの認証情報を読み取れません: %w",
+	"list per-directory stores in %s: %w":                                 "%s にあるディレクトリごとのストアを一覧できません: %w",
+	"create per-directory store root: %w":                                 "ディレクトリごとのストアのルートを作成できません: %w",
+	"list per-directory stores: %w":                                       "ディレクトリごとのストアを一覧できません: %w",
+	"prepare %s-mode dir for %s: %w":                                      "%[2]s の %[1]s モードのディレクトリを準備できません: %[3]w",
+	"stat link item %s: %w":                                               "リンクする項目 %s の状態を取得できません: %w",
+	"refresh link %s: %w":                                                 "リンク %s を張り直せません: %w",
+	"link item %s: %w":                                                    "項目 %s をリンクできません: %w",
+	"create shared dir: %w":                                               "shared ディレクトリを作成できません: %w",
+	"read real %s home: %w":                                               "%s の実ホームを読み取れません: %w",
+	"read bind dir %s: %w":                                                "ストアのディレクトリ %s を読み取れません: %w",
+	"retract shared link %s: %w":                                          "共有リンク %s を取り除けません: %w",
+	"create tree store: %w":                                               "ツリーモードのストアを作成できません: %w",
+	"create isolated config dir: %w":                                      "独立モードの設定ディレクトリを作成できません: %w",
+	"swap shared credential for %s: %w":                                   "%s の共有の認証情報を差し替えられません: %w",
+	"prepare isolated config for %s/%s: %w":                               "%s/%s の独立モードの設定を準備できません: %w",
+	"prepare tree store for %s/%s: %w":                                    "%s/%s のツリーモードのストアを準備できません: %w",
+	"update %s: %w":                                                       "%s を更新できません: %w",
+	"resolve the current directory for --purge: %w":                       "--purge のために現在のディレクトリを解決できません: %w",
+	"create mise conf.d dir: %w":                                          "mise の conf.d ディレクトリを作成できません: %w",
+	"%s has no [env] block; cannot place companion bindings":              "%s に [env] ブロックがないため、周辺ツールの固定の内容を書き込めません",
+
 	// kae preservation.
 	"unknown preservation action %q": "不明な preservation の操作です: %q",
 	"preservation ID not found":      "保全記録の ID が見つかりません",
@@ -208,6 +241,7 @@ var jaErrors = map[string]string{
 	"kae cd moves the shell only through the kae shell function, which eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it, run: cd \"$(kae ls %s)\"": "kae cd がシェルを移動できるのは kae のシェル関数を通したときだけです。この関数は eval \"$(kae completion zsh)\"（bash も同様。fish は kae completion fish | source）か mise のフックが定義します。関数がない場合は cd \"$(kae ls %s)\" を実行してください",
 	"kae %s prints no report; for a place's path as JSON, run: kae ls <target> --current --json":                                                                                                                          "kae %s はレポートを出力しません。場所のパスを JSON で得るには kae ls <target> --current --json を実行してください",
 	"%s does not exist (kae ls marks it (missing))": "%s は存在しません（kae ls では (missing) と表示されます）",
+	"--at takes a place number from 1, got %q":      "--at には 1 以上の場所の番号を指定してください（指定値: %q）",
 	"%s %s: %v":       "%s %s: %v",
 	"%s %s exited %d": "%s %s が終了コード %d で終了しました",
 
@@ -228,6 +262,7 @@ var jaErrors = map[string]string{
 	"conflicting completion registrations; select a shell with completion --install":  "補完の登録が競合しています。completion --install でシェルを選んでください",
 	"completion changed during migration; resolve the migration record manually":      "移行中に補完が変更されました。移行記録を手動で解決してください",
 	"global mise config is invalid after removing completion; resolve it manually":    "補完を取り除いた後のグローバル mise の設定ファイルが不正です。手動で解決してください",
+	"write completion failed: %w; source restore failed: %v":                          "補完を書き込めません: %w。移行元のファイルも復元できませんでした: %v",
 
 	// Installation and kae uninstall.
 	"__install requires --yes --destination <absolute path> --source-kind <release|local_build>": "__install には --yes --destination <absolute path> --source-kind <release|local_build> が必要です",
@@ -236,6 +271,7 @@ var jaErrors = map[string]string{
 	"direct installation ownership could not be verified":                                        "直接インストールの所有者を確認できませんでした",
 	"uninstall requires --yes outside an interactive terminal; inspect with --dry-run first":     "対話できる端末の外でアンインストールするには --yes が必要です。先に --dry-run で確認してください",
 	"uninstall was not confirmed":                                                                "アンインストールは確認されませんでした",
+	"directory must be a nonempty single-line path":                                              "ディレクトリには空でない 1 行のパスを指定してください",
 
 	// Loading and validating the config (internal/config/config.go, writer.go).
 	"read config: %w":  "設定ファイルを読み取れません: %w",

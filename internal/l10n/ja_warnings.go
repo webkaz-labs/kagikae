@@ -68,6 +68,8 @@ var jaWarnings = map[string]string{
 
 	"could not harvest the newer %s credential from %s into snapshot %s/%s: %v":       "より新しい %s の認証情報（%s）をスナップショット %s/%s へ退避できませんでした: %v",
 	"harvested the %s credential for %s/%s but could not update its capture time: %v": "%[2]s/%[3]s の %[1]s の認証情報は退避しましたが、登録日時を更新できませんでした: %[4]v",
+
+	"harvested the newer %s credential from %s into snapshot %s/%s (it is the copy that can still refresh)": "より新しい %s の認証情報を %s からスナップショット %s/%s へ退避しました（まだリフレッシュできるのはこのコピーです）。",
 	// dircred_identity.go.
 	"no %s identity is recorded for that account":           "そのアカウントに %s のログイン中アカウントの記録が保存されていない",
 	"kae could not resolve where its identity cache is":     "kae がログイン中アカウントの記録の場所を解決できなかった",
@@ -101,6 +103,10 @@ var jaWarnings = map[string]string{
 	// fragment.go.
 	"could not tell git to ignore %s: %v":                                                   "%s を無視するよう git に伝えられませんでした: %v",
 	"the binding is in place; ignore %s yourself (machine-specific; must not be committed)": "固定は完了しています。%s は自分で無視してください（このマシン固有のもので、コミットしてはいけません）。",
+	// fragment.go: the causes the warning above embeds.
+	"git rev-parse returned %q":                                             "git rev-parse の出力が想定外です: %q",
+	"resolve git common dir %q: %w":                                         "git の共通ディレクトリ %q を解決できません: %w",
+	"git named %q as its common dir, but that is not an existing directory": "git が共通ディレクトリとして %q を示しましたが、存在するディレクトリではありません",
 	// freshness.go.
 	"could not read live %s state to refresh %s/%s: %v":             "スナップショット %[2]s/%[3]s を更新するための、現在の %[1]s の状態を読み取れませんでした: %[4]v",
 	"%s; snapshot %s/%s left unchanged":                             "%s。スナップショット %s/%s は変更していません。",
@@ -136,6 +142,7 @@ var jaWarnings = map[string]string{
 	// lsplace.go.
 	"the %s group is not listed: %v": "%s のグループは一覧に載せていません: %v",
 	// miseinit.go.
+	"preview only; to apply, run: %s --write":                            "プレビューのみです。適用するには %s --write を実行してください。",
 	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は本物のホームのままです（docs/ROADMAP.md）。",
 
 	"the real %s home (%s) lists nothing to share, so kae cannot tell whether %d shared link(s) in %s are still wanted; leaving them in place. If that home is right, remove the links by hand; if it is not, unset %s (or fix it), then run: kae pin": "本物の %[1]s のホーム（%[2]s）に共有するものがないため、%[4]s にある %[3]d 件の共有リンクがまだ必要か kae は判断できません。リンクはそのまま残します。そのホームが正しい場合は、リンクを手動で削除してください。正しくない場合は、環境変数 %[5]s の設定を外すか修正してから kae pin を実行してください。",

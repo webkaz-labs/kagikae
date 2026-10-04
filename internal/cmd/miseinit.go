@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -71,7 +72,8 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		if auto {
 			hint += " --auto"
 		}
-		fmt.Fprintln(os.Stderr, "\nkae: preview only; to apply, run: "+hint+" --write")
+		fmt.Fprintln(os.Stderr)
+		infof("preview only; to apply, run: %s --write", hint)
 		return constants.ExitOK
 	}
 	dir, err := os.Getwd()
@@ -86,8 +88,8 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	if err := writeMiseBlock(".mise.toml", block); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Updated .mise.toml: profile %s (auth mode)\n", profileName)
-	fmt.Println("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
+	reportf("Updated .mise.toml: profile %s (auth mode)", profileName)
+	reportf("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
 	return constants.ExitOK
 }
 
@@ -138,7 +140,7 @@ func (app *App) prepareIsolationDirs(mode string, entries []isolationEntry, prep
 		}
 		if _, err := prepare(entry.Tool, entry.Account); err != nil &&
 			!warnUnisolatableCredential(err, entry.Tool, entry.Account) {
-			return fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
+			return l10n.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
 		}
 	}
 	return nil
@@ -327,7 +329,7 @@ func modeUnboundReason(m bindMode, tool string) string {
 // renders it in the selected language.
 func modeUnboundMessage(m bindMode, tool string) message {
 	return msgf("%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)",
-		m.name, strings.Join(m.tools, ", "), tool)
+		m.name, l10n.List(m.tools), tool)
 }
 
 // optInStore is the kind of store prepareOptInStore materializes.
@@ -343,7 +345,7 @@ const (
 func linkSharedItem(src, dst string) error {
 	info, statErr := os.Lstat(dst)
 	if statErr != nil && !os.IsNotExist(statErr) {
-		return fmt.Errorf("stat link item %s: %w", dst, statErr)
+		return l10n.Errorf("stat link item %s: %w", dst, statErr)
 	}
 	if statErr == nil {
 		if info.Mode()&os.ModeSymlink == 0 {
@@ -353,11 +355,11 @@ func linkSharedItem(src, dst string) error {
 			return nil // already linked correctly
 		}
 		if err := os.Remove(dst); err != nil {
-			return fmt.Errorf("refresh link %s: %w", dst, err)
+			return l10n.Errorf("refresh link %s: %w", dst, err)
 		}
 	}
 	if err := os.Symlink(src, dst); err != nil {
-		return fmt.Errorf("link item %s: %w", dst, err)
+		return l10n.Errorf("link item %s: %w", dst, err)
 	}
 	return nil
 }
@@ -370,7 +372,7 @@ func linkSharedItem(src, dst string) error {
 func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
 	bondDir := app.Paths.SharedDir(pinID, tool)
 	if err := os.MkdirAll(bondDir, 0o700); err != nil {
-		return "", fmt.Errorf("create shared dir: %w", err)
+		return "", l10n.Errorf("create shared dir: %w", err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
@@ -387,7 +389,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	// Symlink every real-home entry except the denylist.
 	des, err := os.ReadDir(realHome)
 	if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("read real %s home: %w", tool, err)
+		return "", l10n.Errorf("read real %s home: %w", tool, err)
 	}
 	// The names this loop treats as shareable, which the reconcile below then keeps.
 	// Built here, from the loop's own denied check, so the intent set and the linking
@@ -476,7 +478,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 func unintendedLinks(dir string, intended map[string]bool) ([]string, error) {
 	des, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("read bind dir %s: %w", dir, err)
+		return nil, l10n.Errorf("read bind dir %s: %w", dir, err)
 	}
 	names := []string{}
 	for _, de := range des {
@@ -510,7 +512,7 @@ func retractLinks(dir string, names []string) error {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("retract shared link %s: %w", path, err)
+			return l10n.Errorf("retract shared link %s: %w", path, err)
 		}
 	}
 	return nil
@@ -540,9 +542,9 @@ func (app *App) prepareTree(ctx context.Context, be secret.Backend, tool, accoun
 func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir string, kind optInStore, staleLabel bool) (string, error) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		if kind == optInTree {
-			return "", fmt.Errorf("create tree store: %w", err)
+			return "", l10n.Errorf("create tree store: %w", err)
 		}
-		return "", fmt.Errorf("create isolated config dir: %w", err)
+		return "", l10n.Errorf("create isolated config dir: %w", err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {

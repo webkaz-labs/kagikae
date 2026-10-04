@@ -85,7 +85,7 @@ func TestCompletionInstallZshPrefersExistingFpathDir(t *testing.T) {
 	if dir != fpathDir || !onFpath {
 		t.Fatalf("zshCompletionDir = (%q, %v), want (%q, true)", dir, onFpath, fpathDir)
 	}
-	note := completionActivationNote("zsh", want, onFpath)
+	note := completionActivationNote("zsh", want, onFpath).Error()
 	if strings.Contains(note, "fpath=(") {
 		t.Fatal("an existing-fpath-dir install must not print the fpath-add note")
 	}

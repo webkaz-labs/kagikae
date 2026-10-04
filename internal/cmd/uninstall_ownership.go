@@ -146,7 +146,7 @@ func (app *App) inspectUninstallGlobal(p *uninstallPlan) {
 	journal := filepath.Join(app.Paths.StateDir, "mise-completion-migration.json")
 	if _, err := os.Lstat(journal); err == nil || !os.IsNotExist(err) {
 		p.unresolved(constants.UninstallGlobal, journal, constants.UninstallMigration)
-		p.report.Manual = append(p.report.Manual, "Resolve the outstanding completion migration before uninstalling; cleanup does not run completion refresh or recreate hooks.")
+		p.report.Manual = append(p.report.Manual, msgf("Resolve the outstanding completion migration before uninstalling; cleanup does not run completion refresh or recreate hooks."))
 		return
 	}
 	st, err := app.loadState()

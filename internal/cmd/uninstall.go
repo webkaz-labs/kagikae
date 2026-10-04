@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/installation"
 	"github.com/webkaz-labs/kagikae/internal/integration"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -35,7 +36,7 @@ type uninstallReport struct {
 	Binary        string          `json:"binary"`
 	Items         []uninstallItem `json:"items"`
 	Retained      []string        `json:"retained"`
-	Manual        []string        `json:"manual_actions"`
+	Manual        []message       `json:"manual_actions"`
 }
 
 type uninstallOperation struct {
@@ -57,7 +58,7 @@ type uninstallPlan struct {
 func registerUninstallFlags(fs *flag.FlagSet, dirs *[]string) {
 	fs.Func("dir", "additional project directory to inspect (repeatable)", func(value string) error {
 		if value == "" || strings.ContainsAny(value, "\x00\r\n") {
-			return fmt.Errorf("directory must be a nonempty single-line path")
+			return l10n.Errorf("directory must be a nonempty single-line path")
 		}
 		*dirs = append(*dirs, value)
 		return nil
@@ -90,7 +91,7 @@ func runUninstall(_ context.Context, app *App, opts commonOpts, dirs []string, e
 			return finish(opts, errf(constants.ExitUsage, "uninstall requires --yes outside an interactive terminal; inspect with --dry-run first"))
 		}
 		printUninstall(commonOpts{Format: formatText}, plan.report, constants.ExitOK)
-		fmt.Fprint(os.Stderr, "Apply this exact removal plan? Type uninstall to confirm: ")
+		promptf("Apply this exact removal plan? Type uninstall to confirm: ")
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 		if err != nil || strings.TrimSpace(line) != "uninstall" {
 			return finish(opts, errf(constants.ExitUnsafeRefused, "uninstall was not confirmed"))
@@ -156,7 +157,7 @@ func runUninstall(_ context.Context, app *App, opts commonOpts, dirs []string, e
 			exit = exitOf(err)
 			plan.report.Items[last].Reason = constants.UninstallWriteFailed
 			if removed {
-				plan.report.Manual = append(plan.report.Manual, "Executable removed; inspect retained installation metadata to finalize removal history.")
+				plan.report.Manual = append(plan.report.Manual, msgf("Executable removed; inspect retained installation metadata to finalize removal history."))
 			}
 		}
 	}
@@ -174,16 +175,17 @@ func printUninstall(opts commonOpts, report uninstallReport, exit int) int {
 		}
 		return exit
 	}
-	fmt.Printf("Uninstall: integrations %s; executable %s; discovery %s\n", report.Integrations, report.Binary, report.Discovery)
+	// The status words and the item lines are JSON tokens and paths, printed verbatim.
+	reportf("Uninstall: integrations %s; executable %s; discovery %s", report.Integrations, report.Binary, report.Discovery)
 	for _, item := range report.Items {
 		fmt.Printf("  %s %s: %s (%s)\n", item.Action, item.Path, item.Outcome, item.Reason)
 	}
-	fmt.Println("Retained data:")
+	reportf("Retained data:")
 	for _, path := range report.Retained {
 		fmt.Printf("  %s\n", path)
 	}
 	for _, note := range report.Manual {
-		fmt.Println(note)
+		reportMessage(note)
 	}
 	return exit
 }
@@ -194,10 +196,10 @@ func (app *App) planUninstall(opts commonOpts, dirs []string, executable string)
 		Discovery: constants.UninstallBounded, Integrations: constants.UninstallPending,
 		Binary: constants.UninstallPending, Items: []uninstallItem{},
 		Retained: []string{app.ConfigPath, app.Paths.DataDir, app.Paths.StateDir},
-		Manual: []string{
-			"Discovery covers known bound directories, supplied --dir paths and supported global completion locations; unregistered projects and custom shell code need manual inspection.",
-			"Exit existing tool processes and open a new shell after cleanup; current-shell exports, functions and completion caches are not changed.",
-			"Account snapshots, credentials, backups, preservation records, working stores, breadcrumbs and installation history are retained.",
+		Manual: []message{
+			msgf("Discovery covers known bound directories, supplied --dir paths and supported global completion locations; unregistered projects and custom shell code need manual inspection."),
+			msgf("Exit existing tool processes and open a new shell after cleanup; current-shell exports, functions and completion caches are not changed."),
+			msgf("Account snapshots, credentials, backups, preservation records, working stores, breadcrumbs and installation history are retained."),
 		},
 	}}
 	if app.ConfigErr != nil {
@@ -263,18 +265,18 @@ func (app *App) planUninstall(opts commonOpts, dirs []string, executable string)
 		switch {
 		case errors.Is(err, installation.ErrReceiptInvalid):
 			binary.Reason = constants.UninstallInvalidReceipt
-			p.report.Manual = append(p.report.Manual, "Retain and inspect the installation receipt at "+installation.ReceiptPath(app.Paths.InstallationsDir(), executable)+". An unsupported schema requires a compatible installer; repair invalid metadata explicitly before retrying. Reinstalling with this version also refuses an invalid receipt.")
+			p.report.Manual = append(p.report.Manual, msgf("Retain and inspect the installation receipt at %s. An unsupported schema requires a compatible installer; repair invalid metadata explicitly before retrying. Reinstalling with this version also refuses an invalid receipt.", installation.ReceiptPath(app.Paths.InstallationsDir(), executable)))
 		case errors.Is(err, installation.ErrReceiptIncomplete):
 			binary.Reason = constants.UninstallPendingReceipt
-			p.report.Manual = append(p.report.Manual, "The retained receipt records an incomplete or removed installation. Reinstall the same direct destination with the supported installer to establish a new active receipt, then preview again.")
+			p.report.Manual = append(p.report.Manual, msgf("The retained receipt records an incomplete or removed installation. Reinstall the same direct destination with the supported installer to establish a new active receipt, then preview again."))
 		case errors.Is(err, installation.ErrImageMismatch):
 			binary.Reason = constants.UninstallImageMismatch
-			p.report.Manual = append(p.report.Manual, "The executable or its directory differs from the retained receipt. Inspect the current file, links and owner before choosing its installation manager; automatic removal is refused.")
+			p.report.Manual = append(p.report.Manual, msgf("The executable or its directory differs from the retained receipt. Inspect the current file, links and owner before choosing its installation manager; automatic removal is refused."))
 		case os.IsNotExist(err):
 			p.report.Manual = append(p.report.Manual, app.managedUninstallGuidance(executable, p.dirs)...)
 		default:
 			binary.Reason = constants.UninstallUnreadable
-			p.report.Manual = append(p.report.Manual, "Installation ownership could not be inspected. Resolve access to the retained receipt and executable before retrying.")
+			p.report.Manual = append(p.report.Manual, msgf("Installation ownership could not be inspected. Resolve access to the retained receipt and executable before retrying."))
 		}
 	}
 	p.report.Items = append(p.report.Items, binary)

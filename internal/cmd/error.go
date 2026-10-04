@@ -52,6 +52,14 @@ func reportMessage(m error) {
 	fmt.Fprintln(os.Stdout, l10n.Render(m))
 }
 
+// stderrf writes a line on stderr with no `kae:` prefix, localized: a menu line
+// before a prompt, or guidance that follows a report (a shell step to run). Like
+// reportf it forwards its unchanged format and args to l10n.Sprintf, which keeps
+// it a `go vet` printf wrapper; Fprintln adds the newline.
+func stderrf(format string, args ...any) {
+	fmt.Fprintln(os.Stderr, l10n.Sprintf(format, args...))
+}
+
 // promptf writes an interactive prompt on stderr, localized, without a newline so
 // the answer is typed on the same line. The answers a prompt accepts do not
 // depend on the language (docs/CLI.md § Localization). It forwards its unchanged

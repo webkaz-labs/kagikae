@@ -2,12 +2,13 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 
 	"github.com/creachadair/tomledit"
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // Editor applies surgical, comment-preserving edits to a config.toml document.
@@ -26,7 +27,7 @@ type Editor struct {
 func NewEditor(data []byte) (*Editor, error) {
 	doc, err := tomledit.Parse(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("parse config for editing: %w", err)
+		return nil, l10n.Errorf("parse config for editing: %w", err)
 	}
 	return &Editor{doc: doc}, nil
 }
@@ -35,7 +36,7 @@ func NewEditor(data []byte) (*Editor, error) {
 func (e *Editor) Bytes() ([]byte, error) {
 	var buf bytes.Buffer
 	if err := tomledit.Format(&buf, e.doc); err != nil {
-		return nil, fmt.Errorf("format config: %w", err)
+		return nil, l10n.Errorf("format config: %w", err)
 	}
 	return buf.Bytes(), nil
 }

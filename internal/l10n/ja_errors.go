@@ -237,6 +237,44 @@ var jaErrors = map[string]string{
 	"uninstall requires --yes outside an interactive terminal; inspect with --dry-run first":     "対話できる端末の外でアンインストールするには --yes が必要です。先に --dry-run で確認してください",
 	"uninstall was not confirmed":                                                                "アンインストールは確認されませんでした",
 
+	// Loading and validating the config (internal/config/config.go, writer.go).
+	"read config: %w":  "設定ファイルを読み取れません: %w",
+	"parse config: %w": "設定ファイルを解析できません: %w",
+	"config key %q was renamed to %q in v0.8.0 (pre-1.0 hard break; rename it)":            "設定ファイルのキー %q は v0.8.0 で %q に名前が変わりました（1.0 より前の互換性のない変更です）。キーの名前を変えてください",
+	"config key %q was removed in v0.8.0; to bind directories instead, run: kae pin -s|-i": "設定ファイルのキー %q は v0.8.0 で削除されました。代わりにディレクトリを固定する場合は kae pin -s|-i を実行してください",
+	"config version %d is newer than supported %d":                                         "設定ファイルのバージョン %d は、対応しているバージョン %d より新しいです",
+	"security.preservation_max_bytes must be >= 1":                                         "security.preservation_max_bytes は 1 以上にしてください",
+	"security.backup_keep must be >= 1":                                                    "security.backup_keep は 1 以上にしてください",
+	"unknown tool %q in [tools]":                                                           "[tools] に不明なツール %q があります",
+	"tools.%s.shared_denylist_extra item %q is not a bare file name":                       "tools.%s.shared_denylist_extra の項目 %q は、ディレクトリを含まないファイル名ではありません",
+	"tools.%s.shared_denylist_extra: %q is already on the hard-coded denylist":             "tools.%s.shared_denylist_extra: %q は組み込みの除外リストにすでに含まれています",
+	"tools.%s.isolated_shared_items item %q is not a bare file name":                       "tools.%s.isolated_shared_items の項目 %q は、ディレクトリを含まないファイル名ではありません",
+	"tools.%s.isolated_shared_items must not share the %s %q; remove it — kae keeps that file " +
+		"private to the directory so it can be a different account than the real home": "tools.%s.isolated_shared_items で%s（%q）は共有できません。kae はこのファイルをディレクトリ専用に保ち、実ホームとは別のアカウントにできるようにしているため、この項目を取り除いてください",
+	"auth credential": "認証情報",
+	"identity cache":  "ログイン中アカウントの記録",
+	"tools.%s.driver is only valid for claude":                   "tools.%s.driver は claude にだけ指定できます",
+	"tools.claude.driver %q is invalid (only %q is supported)":   "tools.claude.driver の値 %q は不正です（対応しているのは %q だけです）",
+	"profile %q maps unknown tool %q":                            "プロファイル %q が不明なツール %q を割り当てています",
+	"profile %q maps tool %q to invalid account name %q":         "プロファイル %q がツール %q に不正なアカウント名 %q を割り当てています",
+	"profile %q maps unknown companion %q":                       "プロファイル %q が不明な周辺ツール %q を割り当てています",
+	"profile %q companion %q has invalid knob name %q":           "プロファイル %q の周辺ツール %q に不正な設定項目名 %q があります",
+	"profile %q companion %q knob %q value has a newline or NUL": "プロファイル %q の周辺ツール %q の設定項目 %q の値に改行か NUL が含まれています",
+	"default_profile %q is not defined under [profiles]":         "default_profile に指定した %q は [profiles] に定義されていません",
+	"parse config for editing: %w":                               "編集する設定ファイルを解析できません: %w",
+	"format config: %w":                                          "設定ファイルを整形できません: %w",
+
+	// Installation receipts and the running image (internal/installation).
+	"binary installed; receipt finalization failed; reinstall to repair: %w": "バイナリはインストールしましたが、インストール記録を確定できませんでした。再インストールして修復してください: %w",
+	"binary removed; receipt history could not be finalized":                 "バイナリは削除しましたが、インストール記録の履歴を確定できませんでした",
+	"inspect running image: %w":                                              "実行中のバイナリを調べられません: %w",
+	"running image mapping is unavailable":                                   "実行中のバイナリのメモリ上の対応付けを取得できません",
+
+	// Lock files (internal/lock).
+	"create lock dir: %w": "ロックのディレクトリを作成できません: %w",
+	"open lock file: %w":  "ロックファイルを開けません: %w",
+	"flock: %w":           "flock でロックを取得できません: %w",
+
 	// Sentinel errors: errors.Is targets, shown alone or as the head of a message
 	// that wraps them with %w.
 	"unsupported":                                                     "対応していません",

@@ -730,10 +730,10 @@ func (app *App) placePathCell(row placeRow) string {
 
 func printToolPlaces(app *App, tool string, rows []placeRow, color bool) {
 	if len(rows) == 0 {
-		fmt.Printf("%s places: (none — kae resolves places for %s only)\n", tool, strings.Join(placeTools(), " and "))
+		reportf("%s places: (none — kae resolves places for %s only)", tool, placeToolList())
 		return
 	}
-	fmt.Printf("%s places:\n", tool)
+	reportf("%s places:", tool)
 	table := [][]string{}
 	for _, row := range rows {
 		table = append(table, []string{
@@ -741,27 +741,27 @@ func printToolPlaces(app *App, tool string, rows []placeRow, color bool) {
 			orDash(row.Source), orDash(row.Mode), orDash(row.Account), orDash(strings.Join(row.Applies, ",")),
 		})
 	}
-	printTable([]string{"#", "Level", "Path", "In effect", "Source", "Mode", "Account", "Applies"}, table, color)
+	printTable([]string{"#", l10n.Sprintf("Level"), l10n.Sprintf("Path"), l10n.Sprintf("In effect"), l10n.Sprintf("Source"), l10n.Sprintf("Mode"), columnHeader(colAccount), l10n.Sprintf("Applies")}, table, color)
 }
 
 func printRepoPlaces(app *App, rows []placeRow, color bool) {
 	if len(rows) == 0 {
-		fmt.Println("Repository: (none — the current directory is not in a Git repository)")
+		reportf("Repository: (none — the current directory is not in a Git repository)")
 		return
 	}
-	fmt.Println("Repository:")
+	reportf("Repository:")
 	table := [][]string{}
 	for _, row := range rows {
 		table = append(table, []string{strconv.Itoa(row.Number), app.placePathCell(row)})
 	}
-	printTable([]string{"#", "Root"}, table, color)
+	printTable([]string{"#", l10n.Sprintf("Root")}, table, color)
 }
 
 func printKaePlaces(app *App, rows []placeRow, color bool) {
-	fmt.Println("kae directories:")
+	reportf("kae directories:")
 	table := [][]string{}
 	for _, row := range rows {
 		table = append(table, []string{strconv.Itoa(row.Number), row.Kind, app.placePathCell(row)})
 	}
-	printTable([]string{"#", "Kind", "Path"}, table, color)
+	printTable([]string{"#", l10n.Sprintf("Kind"), l10n.Sprintf("Path")}, table, color)
 }

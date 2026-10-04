@@ -9,6 +9,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -168,10 +169,10 @@ func (app *App) bindingConfigStores(pinID string, info fragmentInfo) map[string]
 
 func printPinsReport(app *App, report *pinsReport, color bool) {
 	if len(report.BoundDirectories) == 0 {
-		fmt.Println("Bound directories: (none); run: kae pin <profile>")
+		reportf("Bound directories: (none); run: kae pin <profile>")
 		return
 	}
-	fmt.Println("Bound directories:")
+	reportf("Bound directories:")
 	rows := [][]string{}
 	for i, dir := range report.BoundDirectories {
 		current := activeMark(dir.Current, color)
@@ -184,7 +185,7 @@ func printPinsReport(app *App, report *pinsReport, color bool) {
 			toolAccountList(dir.Accounts),
 		})
 	}
-	printTable([]string{"#", "Directory", "Current", "Profile", "Mode", "Accounts"}, rows, color)
+	printTable([]string{"#", l10n.Sprintf("Directory"), l10n.Sprintf("Current"), l10n.Sprintf("Profile"), l10n.Sprintf("Mode"), l10n.Sprintf("Accounts")}, rows, color)
 }
 
 func buildLs(ctx context.Context, app *App) (*lsReport, error) {
@@ -258,14 +259,14 @@ func printLsReport(app *App, report *lsReport, opts commonOpts) {
 // printProfileList is the Profiles block of the ls and status reports.
 func printProfileList(profiles []profileStatus) {
 	if len(profiles) == 0 {
-		fmt.Println("Profiles: (none defined); run: kae edit")
+		reportf("Profiles: (none defined); run: kae edit")
 		return
 	}
-	fmt.Println("Profiles:")
+	reportf("Profiles:")
 	for _, profile := range profiles {
 		marker := ""
 		if profile.Active {
-			marker = "  (active)"
+			marker = "  " + l10n.Sprintf("(active)")
 		}
 		fmt.Printf("  %-14s %s%s\n", profile.Name, toolAccountList(profile.Accounts), marker)
 	}
@@ -275,10 +276,10 @@ func printProfileList(profiles []profileStatus) {
 // group; addHint is the command the empty case suggests.
 func printAccountItems(app *App, items []accountItem, addHint string, opts commonOpts) {
 	if len(items) == 0 {
-		fmt.Printf("Accounts: (none); run: %s\n", addHint)
+		reportf("Accounts: (none); run: %s", addHint)
 		return
 	}
-	fmt.Println("Accounts:")
+	reportf("Accounts:")
 	now := app.Now()
 	color := colorEnabled(opts.NoColor)
 	rows := [][]string{}

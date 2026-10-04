@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,23 +195,27 @@ func warnStoreLink(path string, err error) bool {
 // Removals need no rule, and an entry left in the exclude file is harmless —
 // `kae unpin` leaves the fragment's own entry there for the same reason.
 func (app *App) reportStoreLinks(linked, removed []string, excludeFile string) {
+	// One constant format per case: the noun's number is part of the sentence, not
+	// an argument, so a language without plurals can word the cases alike.
 	if len(linked) > 0 {
-		noun := "store"
-		if len(linked) > 1 {
-			noun = "stores"
-		}
-		if excludeFile != "" {
-			fmt.Printf("Linked %s to this directory's %s (ignored via %s).\n",
-				strings.Join(linked, ", "), noun, app.displayPath(excludeFile))
-		} else {
-			fmt.Printf("Linked %s to this directory's %s.\n", strings.Join(linked, ", "), noun)
+		names := strings.Join(linked, ", ")
+		switch {
+		case len(linked) == 1 && excludeFile != "":
+			reportf("Linked %s to this directory's store (ignored via %s).", names, app.displayPath(excludeFile))
+		case len(linked) == 1:
+			reportf("Linked %s to this directory's store.", names)
+		case excludeFile != "":
+			reportf("Linked %s to this directory's stores (ignored via %s).", names, app.displayPath(excludeFile))
+		default:
+			reportf("Linked %s to this directory's stores.", names)
 		}
 	}
 	if len(removed) > 0 {
-		noun := "link"
-		if len(removed) > 1 {
-			noun = "links"
+		names := strings.Join(removed, ", ")
+		if len(removed) == 1 {
+			reportf("Removed the store link %s.", names)
+		} else {
+			reportf("Removed the store links %s.", names)
 		}
-		fmt.Printf("Removed the store %s %s.\n", noun, strings.Join(removed, ", "))
 	}
 }

@@ -224,7 +224,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// account no longer exists keeps its credential rather than having it deleted by a
 	// command the user ran to *bind* something (harvestBeforeDelete).
 	reportPruned(app.pruneDirCredentials(ctx, be, pinID, "", boundDirs(entries), prevBinding, false))
-	fmt.Printf("Bound this directory: profile %s (%s)\n", profileName, mode)
+	reportf("Bound this directory: profile %s (%s)", profileName, mode)
 	// The stores are named by a hash of this directory's path, so nothing in the
 	// directory points at them without these links. Converged over every linkable
 	// tool, not only the bound ones: a tool dropped from the profile, and
@@ -245,10 +245,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// it is outside the working tree; when there was no repository to tell, say
 	// nothing about ignoring rather than claiming it.
 	if excludeFile != "" {
-		fmt.Printf("Wrote %s (ignored via %s); your mise.toml is left unchanged.\n",
+		reportf("Wrote %s (ignored via %s); your mise.toml is left unchanged.",
 			fragmentRelPath, app.displayPath(excludeFile))
 	} else {
-		fmt.Printf("Wrote %s; your mise.toml is left unchanged.\n", fragmentRelPath)
+		reportf("Wrote %s; your mise.toml is left unchanged.", fragmentRelPath)
 	}
 	app.reportStoreLinks(linked, removed, excludeFile)
 	app.reportMiseHandoff(func() string {
@@ -261,7 +261,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 // applies it at the next prompt, or fallback supplies the lines to run now.
 func (app *App) reportMiseHandoff(fallback func() string) {
 	if app.miseActivated() {
-		fmt.Println("mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"")
+		reportf("mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"")
 		return
 	}
 	warnf("mise activation not detected; the binding takes effect once mise is active.")
@@ -384,11 +384,11 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	}
 	switch {
 	case removedFragment && removedBlock:
-		fmt.Printf("Removed %s and the legacy kagikae block from .mise.toml\n", fragmentRelPath)
+		reportf("Removed %s and the legacy kagikae block from .mise.toml", fragmentRelPath)
 	case removedFragment:
-		fmt.Printf("Removed %s\n", fragmentRelPath)
+		reportf("Removed %s", fragmentRelPath)
 	case removedBlock:
-		fmt.Println("Removed the legacy kagikae block from .mise.toml")
+		reportf("Removed the legacy kagikae block from .mise.toml")
 	default:
 		return finish(opts, errf(constants.ExitNotFound,
 			"this directory is not bound (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
@@ -466,8 +466,8 @@ func boundDirs(entries []isolationEntry) map[string]bool {
 // reportPruned prints what a credential sweep removed. It is part of the command's
 // result, so it goes to stdout; the sweep's own warnings go to stderr where they
 // are detected.
-func reportPruned(removals []string) {
+func reportPruned(removals []message) {
 	for _, line := range removals {
-		fmt.Println(line)
+		reportMessage(line)
 	}
 }

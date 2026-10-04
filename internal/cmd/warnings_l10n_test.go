@@ -85,8 +85,8 @@ func warningCases() []warningCase {
 				"固定し直すには cd ~/code/side-project && kae pin <profile> を実行してください。\n",
 		},
 		{
-			name: "a string that also reaches JSON stays English",
-			run:  func(t *testing.T) { warnText("claude: CLAUDE_CONFIG_DIR is relative") },
+			name: "a warning that also reaches JSON is a value and renders English when the catalog lacks it",
+			run:  func(t *testing.T) { warnMessage(msgf("claude: CLAUDE_CONFIG_DIR is relative")) },
 			en:   "kae: warning: claude: CLAUDE_CONFIG_DIR is relative\n",
 			ja:   "kae: warning: claude: CLAUDE_CONFIG_DIR is relative\n",
 		},

@@ -71,7 +71,7 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 			checks = append(checks, adapter.Check{
 				Tool: bound.Tool, Code: constants.CheckCredentialStale,
 				Status: constants.StatusWarn,
-				Message: fmt.Sprintf("the %s credential bound to %s is stale: %s; %s",
+				Message: msgf("the %s credential bound to %s is stale: %s; %s",
 					bound.Tool, bound.Dir, staleCredentialReason(info, bound.Tool),
 					pinLoginRemedy(bound.Tool, bound.Dir)),
 			})
@@ -79,7 +79,7 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 			checks = append(checks, adapter.Check{
 				Tool: bound.Tool, Code: constants.CheckCredentialExpiring,
 				Status: constants.StatusWarn,
-				Message: fmt.Sprintf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
+				Message: msgf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
 					bound.Tool, bound.Dir, roundDays(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
 					pinLoginRemedy(bound.Tool, bound.Dir)),
 			})
@@ -329,7 +329,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		checks = append(checks, adapter.Check{
 			Tool: store.Tool, Code: constants.CheckCredentialSuperseded,
 			Status: constants.StatusWarn,
-			Message: fmt.Sprintf(
+			Message: msgf(
 				"the %s credential bound to %s is older than another copy of %s/%s (%s); %s's refresh token rotates "+
 					"single-use, so if the two are copies of one login only the newer one can still refresh and the "+
 					"session in that directory cannot be renewed past %s; %s",
@@ -420,7 +420,7 @@ func pinUnsplitChecks(stores []boundDirStore) []adapter.Check {
 		}
 		checks = append(checks, adapter.Check{
 			Tool: bound.Tool, Code: constants.CheckCredentialUnsplit, Status: constants.StatusWarn,
-			Message: fmt.Sprintf(
+			Message: msgf(
 				"the directory bound to %s/%s (%s) keeps its own copy of that account's credential; "+
 					"another directory or `kae use -i` on the same account will invalidate it — "+
 					"to re-bind it, run: cd %s && kae pin",
@@ -528,8 +528,8 @@ func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend, stores
 // the sentence states: it mints a login in that directory (so the store and the label
 // agree with the binding) and captures it back. Found by review; a remedy that lands
 // where nothing changes is the same defect as one that names a path nothing reads.
-func pinIdentityDriftMessage(bound boundDirStore) string {
-	return fmt.Sprintf(
+func pinIdentityDriftMessage(bound boundDirStore) message {
+	return msgf(
 		"the %s identity cache in %s names an account other than %s/%s, which that directory binds: "+
 			"either something logged in there as another account — in which case that directory is running "+
 			"an account its binding does not name — or kae could not apply the identity when it bound the "+

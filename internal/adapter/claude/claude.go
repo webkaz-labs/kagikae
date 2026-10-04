@@ -34,6 +34,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // KeychainService is the base of Claude Code's macOS Keychain item service
@@ -116,10 +117,10 @@ const relativeSecureStorageDirWarning = EnvSecureStorageDir + " is relative: cla
 // CLAUDE_CONFIG_DIR or a relative CLAUDE_SECURESTORAGE_CONFIG_DIR: one warning
 // per variable that is set and relative. Both surfaces read it so neither can
 // drift.
-func relativeConfigDirWarnings(env adapter.Env) []string {
-	warnings := adapter.RelativeEnvWarning(env, "CLAUDE_CONFIG_DIR", relativeConfigDirWarning)
+func relativeConfigDirWarnings(env adapter.Env) []l10n.Msg {
+	warnings := adapter.RelativeEnvWarning(env, "CLAUDE_CONFIG_DIR", l10n.Msgf(relativeConfigDirWarning))
 	return append(warnings,
-		adapter.RelativeEnvWarning(env, EnvSecureStorageDir, relativeSecureStorageDirWarning)...)
+		adapter.RelativeEnvWarning(env, EnvSecureStorageDir, l10n.Msgf(relativeSecureStorageDirWarning))...)
 }
 
 // keychainAccountPattern is the validation Claude Code applies to the account
@@ -396,7 +397,7 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 }
 
 func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolClaude, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolClaude, Warnings: []l10n.Msg{}}
 	drv, err := driver(env)
 	if err != nil {
 		return info, err
@@ -507,7 +508,7 @@ func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		// surface it verbatim rather than assuming a platform problem.
 		return []adapter.Check{{
 			Tool: tool, Code: constants.CheckUnsupported,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		}}
 	}
 	checks := []adapter.Check{adapter.BinaryCheck(env, tool, "claude")}
@@ -516,22 +517,22 @@ func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	case err != nil:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		})
 	case info.AuthPresent:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: "live subscription credential found",
+			Status: constants.StatusOK, Message: l10n.Msgf("live subscription credential found"),
 		})
 	default:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusWarn, Message: "no live subscription credential (log in with claude first)",
+			Status: constants.StatusWarn, Message: l10n.Msgf("no live subscription credential (log in with claude first)"),
 		})
 	}
 	checks = append(checks, adapter.Check{
 		Tool: tool, Code: constants.CheckDriver,
-		Status: constants.StatusOK, Message: "driver: " + info.Driver,
+		Status: constants.StatusOK, Message: l10n.Msgf("driver: %s", info.Driver),
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
 	checks = append(checks, adapter.EnvConflictChecksFrom(tool, relativeConfigDirWarnings(env))...)

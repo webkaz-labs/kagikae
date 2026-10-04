@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
@@ -62,5 +63,35 @@ func TestJSONBytesDoNotDependOnTheLanguage(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// A check message is a value: doctor's text renders it in the selected language
+// and its --json keeps the English text of the same value.
+func TestDoctorCheckMessageLocalizesInTextOnly(t *testing.T) {
+	const english = "state records %s/%s as active but that snapshot no longer exists, so kae cannot say which %s account is live; " +
+		"to pick one, run: kae use %s <account> (kae ls shows the captured ones)"
+	restore := l10n.UseCatalogForTest(map[string]string{english: "状態は %[1]s/%[2]s を有効としていますが、そのスナップショットがありません。%[3]s %[4]s"})
+	defer restore()
+	app := testApp(t, nil)
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active["claude"] = "ghost"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	l10ntest.UseJapanese(t)
+
+	_, text := captureStdout(t, func() int { return runDoctor(ctx, app, commonOpts{Format: formatText}, "claude") })
+	if !strings.Contains(text, "状態は claude/ghost を有効としていますが") {
+		t.Errorf("the text report must render the check message in Japanese:\n%s", text)
+	}
+	_, out := captureStdout(t, func() int { return runDoctor(ctx, app, commonOpts{Format: formatJSON}, "claude") })
+	if !strings.Contains(out, "state records claude/ghost as active but that snapshot no longer exists") ||
+		strings.Contains(out, "状態は") {
+		t.Errorf("--json must carry the English text:\n%s", out)
 	}
 }

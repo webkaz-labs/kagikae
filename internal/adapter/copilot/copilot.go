@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -51,8 +52,8 @@ const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against
 
 // relativeHomeWarnings is the Detect/Doctor payload for a relative COPILOT_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
-func relativeHomeWarnings(env adapter.Env) []string {
-	return adapter.RelativeEnvWarning(env, EnvHome, relativeHomeWarning)
+func relativeHomeWarnings(env adapter.Env) []l10n.Msg {
+	return adapter.RelativeEnvWarning(env, EnvHome, l10n.Msgf(relativeHomeWarning))
 }
 
 type Copilot struct{}
@@ -106,7 +107,7 @@ func (c Copilot) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec,
 }
 
 func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolCopilot, Driver: constants.DriverCopilotConfigPointer, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolCopilot, Driver: constants.DriverCopilotConfigPointer, Warnings: []l10n.Msg{}}
 	if _, err := env.LookPath(binaryName); err == nil {
 		info.BinaryPresent = true
 	}
@@ -160,23 +161,23 @@ func (c Copilot) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	case err != nil:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusError, Message: err.Error(),
+			Status: constants.StatusError, Message: l10n.Of(err),
 		})
 	case info.AuthPresent:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: "active account recorded in config.json",
+			Status: constants.StatusOK, Message: l10n.Msgf("active account recorded in config.json"),
 		})
 	default:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
 			Status:  constants.StatusWarn,
-			Message: "no active account in config.json; log in with `copilot login` first",
+			Message: l10n.Msgf("no active account in config.json; log in with `copilot login` first"),
 		})
 	}
 	checks = append(checks, adapter.Check{
 		Tool: tool, Code: constants.CheckDriver,
-		Status: constants.StatusOK, Message: "driver: " + constants.DriverCopilotConfigPointer,
+		Status: constants.StatusOK, Message: l10n.Msgf("driver: %s", constants.DriverCopilotConfigPointer),
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
 	checks = append(checks, adapter.EnvConflictChecksFrom(tool, relativeHomeWarnings(env))...)

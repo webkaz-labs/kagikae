@@ -20,6 +20,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/jwt"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // KeychainService is the macOS Keychain item service Codex uses when the
@@ -94,8 +95,8 @@ const relativeHomeWarning = "CODEX_HOME is relative: codex canonicalizes it agai
 
 // relativeHomeWarnings is the Detect/Doctor payload for a relative CODEX_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
-func relativeHomeWarnings(env adapter.Env) []string {
-	return adapter.RelativeEnvWarning(env, "CODEX_HOME", relativeHomeWarning)
+func relativeHomeWarnings(env adapter.Env) []l10n.Msg {
+	return adapter.RelativeEnvWarning(env, "CODEX_HOME", l10n.Msgf(relativeHomeWarning))
 }
 
 type Codex struct{}
@@ -268,7 +269,7 @@ func (c Codex) Artifacts(ctx context.Context, env adapter.Env) ([]artifact.Spec,
 }
 
 func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
-	info := adapter.Info{Tool: constants.ToolCodex, Driver: constants.DriverCodexAuthJSON, Warnings: []string{}}
+	info := adapter.Info{Tool: constants.ToolCodex, Driver: constants.DriverCodexAuthJSON, Warnings: []l10n.Msg{}}
 	info.Warnings = append(info.Warnings, relativeHomeWarnings(env)...)
 	if _, err := env.LookPath("codex"); err == nil {
 		info.BinaryPresent = true
@@ -290,7 +291,7 @@ func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error
 		info.AuthPresent = v.Present
 		if !v.Present {
 			info.Warnings = append(info.Warnings,
-				"no Codex Auth keychain item for this codex home; log in with codex first")
+				l10n.Msgf("no Codex Auth keychain item for this codex home; log in with codex first"))
 		}
 		return info, nil
 	}
@@ -302,10 +303,10 @@ func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error
 		// keyring at all, so it must not claim the item is missing.
 		if env.GOOS == "darwin" {
 			info.Warnings = append(info.Warnings,
-				"no auth.json and no "+KeychainService+" keychain item for this codex home; log in with codex first")
+				l10n.Msgf("no auth.json and no %s keychain item for this codex home; log in with codex first", KeychainService))
 		} else {
 			info.Warnings = append(info.Warnings,
-				"no auth.json found; either codex is not logged in or a keyring kae cannot read on this platform holds the credential")
+				l10n.Msgf("no auth.json found; either codex is not logged in or a keyring kae cannot read on this platform holds the credential"))
 		}
 	}
 	return info, nil
@@ -432,7 +433,7 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	// own cause, so surface it verbatim rather than assuming one of them.
 	return append([]adapter.Check{{
 		Tool: tool, Code: constants.CheckUnsupported,
-		Status: constants.StatusError, Message: err.Error(),
+		Status: constants.StatusError, Message: l10n.Of(err),
 	}}, relative...)
 }
 
@@ -444,13 +445,16 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 // re-derives the store from scratch, which under `auto` on macOS means a second
 // config.toml parse and a second `security` probe inside one `kae doctor`.
 func storeChecks(ctx context.Context, env adapter.Env, tool, store string, sp artifact.Spec) []adapter.Check {
-	where := "auth.json"
-	if sp.Kind == constants.KindKeychain {
-		where = KeychainService + " keychain item for this codex home"
+	// Each wording is a whole format of its own, so a translation can order the
+	// store and the place as its language needs.
+	keychainItem := sp.Kind == constants.KindKeychain
+	storeMessage := l10n.Msgf("credential store: %s (auth.json)", store)
+	if keychainItem {
+		storeMessage = l10n.Msgf("credential store: %s (%s keychain item for this codex home)", store, KeychainService)
 	}
 	checks := []adapter.Check{{
 		Tool: tool, Code: constants.CheckCredentialStore,
-		Status: constants.StatusOK, Message: "credential store: " + store + " (" + where + ")",
+		Status: constants.StatusOK, Message: storeMessage,
 	}}
 	// A read error is reported as absent, exactly as Detect's swallowed error was.
 	present := false
@@ -461,15 +465,26 @@ func storeChecks(ctx context.Context, env adapter.Env, tool, store string, sp ar
 	} else if _, err := os.Stat(sp.Target); err == nil {
 		present = true
 	}
-	if present {
+	switch {
+	case present && keychainItem:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusOK, Message: where + " found",
+			Status: constants.StatusOK, Message: l10n.Msgf("%s keychain item for this codex home found", KeychainService),
 		})
-	} else {
+	case present:
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusWarn, Message: "no " + where + "; log in with codex first",
+			Status: constants.StatusOK, Message: l10n.Msgf("auth.json found"),
+		})
+	case keychainItem:
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckAuthPresent,
+			Status: constants.StatusWarn, Message: l10n.Msgf("no %s keychain item for this codex home; log in with codex first", KeychainService),
+		})
+	default:
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckAuthPresent,
+			Status: constants.StatusWarn, Message: l10n.Msgf("no auth.json; log in with codex first"),
 		})
 	}
 	return append(checks, contradictedStoreChecks(ctx, env, tool, store, sp)...)
@@ -500,8 +515,9 @@ func contradictedStoreChecks(ctx context.Context, env adapter.Env, tool, store s
 	}
 	return []adapter.Check{{
 		Tool: tool, Code: constants.CheckCredentialStore, Status: constants.StatusWarn,
-		Message: "a " + KeychainService + " keychain item exists for this codex home, but kae resolved the " +
-			store + " store (auth.json) — so codex may be reading a credential kae does not switch; " +
+		Message: l10n.Msgf("a %s keychain item exists for this codex home, but kae resolved the "+
+			"%s store (auth.json) — so codex may be reading a credential kae does not switch; "+
 			"check cli_auth_credentials_store in config.toml and re-verify the store rows in docs/VALIDATION.md",
+			KeychainService, store),
 	}}
 }

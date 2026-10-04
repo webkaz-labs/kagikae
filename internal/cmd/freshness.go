@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -113,20 +112,20 @@ const reloginLeadTime = 7 * 24 * time.Hour
 // add a case rather than change this signature. Only a credential that cannot log
 // in at all makes the switch unusable, and that is the one the caller's roll-up
 // line counts; a switch to an account with five days left works today.
-func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg, state string, err error) {
+func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg message, state string, err error) {
 	info, err := app.accountFreshness(ctx, be, acc)
 	if err != nil {
-		return "", "", err
+		return message{}, "", err
 	}
 	now := app.Now()
 	cred := credentialStateAt(info, now)
 	switch cred.State {
 	case constants.CredentialStale:
-		return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), cred.State, nil
+		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name)), cred.State, nil
 	case constants.CredentialExpiring:
-		return "snapshot credential " + expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name), cred.State, nil
+		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)), cred.State, nil
 	}
-	return "", cred.State, nil
+	return message{}, cred.State, nil
 }
 
 // credentialState is one account's snapshot freshness as the inventory commands
@@ -457,15 +456,15 @@ const (
 	declinedByRun
 )
 
-// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
-// there are none. Two messages carry them — captureSnapshot's auth_missing error and the
+// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or the
+// zero message (which renders "") when there are none. Two messages carry them — captureSnapshot's auth_missing error and the
 // logged-out-during-a-run warning — and they are the same sentence-shape, so a change to the
 // separator or the wrapping has one place to happen.
-func warningsDetail(warnings []string) string {
+func warningsDetail(warnings []message) message {
 	if len(warnings) == 0 {
-		return ""
+		return message{}
 	}
-	return " (" + strings.Join(warnings, "; ") + ")"
+	return msgf(" (%s)", joinMessages(warnings))
 }
 
 // warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the
@@ -484,7 +483,7 @@ func warnLoggedOutUnchanged(tool, accountName string) {
 
 // warnLoggedOutDuringRunUnchanged is the same for a login that vanished while `kae run -s`
 // ran; detail is the adapter's own warnings from warningsDetail, or "".
-func warnLoggedOutDuringRunUnchanged(tool, accountName, detail string) {
+func warnLoggedOutDuringRunUnchanged(tool, accountName string, detail message) {
 	warnf("%s logged out during the run%s; snapshot %s/%s left unchanged",
 		tool, detail, tool, accountName)
 }

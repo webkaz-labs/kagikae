@@ -42,6 +42,11 @@ func Render(err error) string {
 		return err.Error()
 	}
 	format, args := m.MessageFormat()
+	if format == ofFormat && len(args) == 1 {
+		if cause, ok := args[0].(error); ok {
+			return Render(cause)
+		}
+	}
 	if ja, ok := japanese(format); ok {
 		return renderJapanese(ja, args)
 	}

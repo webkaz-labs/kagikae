@@ -87,7 +87,7 @@ func TestUpstreamVersionCheckThresholds(t *testing.T) {
 			t.Errorf("%s: unexpected check shape: %+v", tc.name, check)
 		}
 		for _, want := range []string{verified, "VALIDATION.md"} {
-			if !strings.Contains(check.Message, want) {
+			if !strings.Contains(check.Message.Error(), want) {
 				t.Errorf("%s: message should name %q: %q", tc.name, want, check.Message)
 			}
 		}
@@ -322,7 +322,7 @@ func TestAssumptionAgeChecks(t *testing.T) {
 		t.Fatalf("unexpected check shape: %+v", checks[0])
 	}
 	for _, want := range []string{mustAdapter(t, constants.ToolClaude).VerifiedOn(), "VALIDATION.md", "181 days ago"} {
-		if !strings.Contains(checks[0].Message, want) {
+		if !strings.Contains(checks[0].Message.Error(), want) {
 			t.Errorf("message must contain %q: %q", want, checks[0].Message)
 		}
 	}

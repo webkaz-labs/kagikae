@@ -8,17 +8,18 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 type switchResult struct {
-	Tool     string   `json:"tool"`
-	Account  string   `json:"account"`
-	Driver   string   `json:"driver"`
-	Applied  bool     `json:"applied"`
-	Actions  []action `json:"actions"`
-	Warnings []string `json:"warnings"`
+	Tool     string     `json:"tool"`
+	Account  string     `json:"account"`
+	Driver   string     `json:"driver"`
+	Applied  bool       `json:"applied"`
+	Actions  []action   `json:"actions"`
+	Warnings []l10n.Msg `json:"warnings"`
 }
 
 type switchReport struct {
@@ -169,7 +170,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 			Warnings: plan.Warnings,
 		}
 		if beErr == nil {
-			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && w != "" {
+			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && !w.Empty() {
 				res.Warnings = append(res.Warnings, w)
 				if state == constants.CredentialStale {
 					// Only a credential that cannot log in at all belongs in the roll-up
@@ -284,7 +285,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 func warnBeforeApply(results []switchResult, staleTools []string) {
 	for _, res := range results {
 		for _, w := range res.Warnings {
-			warnText(res.Tool + ": " + w)
+			warnMessage(msgf("%s: %s", res.Tool, w))
 		}
 	}
 	// A profile switch fans out over several tools, so close with one roll-up line

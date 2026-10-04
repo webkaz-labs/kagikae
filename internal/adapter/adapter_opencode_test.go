@@ -59,7 +59,7 @@ func TestOpencodeDetect(t *testing.T) {
 	if err != nil || info.AuthPresent {
 		t.Fatalf("expected no auth without an openai entry: %+v %v", info, err)
 	}
-	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "openai") {
+	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0].Error(), "openai") {
 		t.Fatalf("expected missing-openai warning: %+v", info.Warnings)
 	}
 

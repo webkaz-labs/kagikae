@@ -12,6 +12,7 @@ import (
 	"golang.org/x/text/width"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // noColorRequested is --no-color or a non-empty NO_COLOR.
@@ -264,7 +265,7 @@ func (app *App) displayPath(path string) string {
 }
 
 // printResultWarnings lists an apply result's warnings as indented report lines.
-func printResultWarnings(warnings []string) {
+func printResultWarnings(warnings []l10n.Msg) {
 	for _, warning := range warnings {
 		fmt.Printf("  warning: %s\n", warning)
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
@@ -69,15 +70,15 @@ type Info struct {
 	Driver        string
 	BinaryPresent bool
 	AuthPresent   bool
-	Warnings      []string
+	Warnings      []l10n.Msg
 }
 
 // Check is one doctor finding.
 type Check struct {
-	Tool    string `json:"tool"`
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
+	Tool    string   `json:"tool"`
+	Code    string   `json:"code"`
+	Status  string   `json:"status"`
+	Message l10n.Msg `json:"message"`
 }
 
 // Adapter is implemented once per tool.
@@ -182,12 +183,12 @@ func BinaryCheck(env Env, tool, binary string) Check {
 	if _, err := env.LookPath(binary); err != nil {
 		return Check{
 			Tool: tool, Code: constants.CheckBinaryPresent, Status: constants.StatusWarn,
-			Message: binary + " not found in PATH",
+			Message: l10n.Msgf("%s not found in PATH", binary),
 		}
 	}
 	return Check{
 		Tool: tool, Code: constants.CheckBinaryPresent, Status: constants.StatusOK,
-		Message: binary + " found in PATH",
+		Message: l10n.Msgf("%s found in PATH", binary),
 	}
 }
 
@@ -204,21 +205,21 @@ func FileModeCheck(env Env, tool, path string) (Check, bool) {
 	}
 	return Check{
 		Tool: tool, Code: constants.CheckFileMode, Status: constants.StatusWarn,
-		Message: path + " is group/world readable; expected 0600",
+		Message: l10n.Msgf("%s is group/world readable; expected 0600", path),
 	}, true
 }
 
 // EnvConflictWarning is the message for one environment variable that overrides
 // the subscription login kae switches. Detect reports it in Info.Warnings and
 // Doctor in a Check, so the wording lives here instead of once per surface.
-func EnvConflictWarning(name string) string {
-	return name + " is set and overrides the switched login"
+func EnvConflictWarning(name string) l10n.Msg {
+	return l10n.Msgf("%s is set and overrides the switched login", name)
 }
 
 // EnvConflictWarnings returns one EnvConflictWarning per set variable, for an
 // adapter's Detect.
-func EnvConflictWarnings(env Env, vars []string) []string {
-	warnings := []string{}
+func EnvConflictWarnings(env Env, vars []string) []l10n.Msg {
+	warnings := []l10n.Msg{}
 	for _, name := range vars {
 		if env.Getenv(name) != "" {
 			warnings = append(warnings, EnvConflictWarning(name))
@@ -246,9 +247,9 @@ func IsRelativeEnv(env Env, name string) bool {
 // moves its keyring account too) — but the predicate and the one-or-none shape
 // are the same everywhere, and both of a tool's surfaces must read the same one
 // or they drift.
-func RelativeEnvWarning(env Env, name, message string) []string {
+func RelativeEnvWarning(env Env, name string, message l10n.Msg) []l10n.Msg {
 	if IsRelativeEnv(env, name) {
-		return []string{message}
+		return []l10n.Msg{message}
 	}
 	return nil
 }
@@ -258,7 +259,7 @@ func RelativeEnvWarning(env Env, name, message string) []string {
 // whose warning is not a per-variable "overrides the login" message (a relative
 // path variable, a store the tool may bypass) reach it directly with their own
 // text; EnvConflictChecks is the same thing for a plain variable list.
-func EnvConflictChecksFrom(tool string, warnings []string) []Check {
+func EnvConflictChecksFrom(tool string, warnings []l10n.Msg) []Check {
 	checks := make([]Check, 0, len(warnings))
 	for _, warning := range warnings {
 		checks = append(checks, Check{

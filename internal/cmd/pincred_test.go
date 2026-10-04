@@ -160,7 +160,7 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 	}
 	// The healthy account snapshot must not be dragged in with it.
 	for _, c := range report.Checks {
-		if c.Code == constants.CheckCredentialStale && strings.Contains(c.Message, "snapshot \"main\"") {
+		if c.Code == constants.CheckCredentialStale && strings.Contains(c.Message.Error(), "snapshot \"main\"") {
 			t.Errorf("the account snapshot is healthy and must not be reported: %q", c.Message)
 		}
 	}
@@ -298,7 +298,7 @@ func TestFilteredDoctorSkipsBoundDirectoryCredentials(t *testing.T) {
 		deadClaudeCred)
 
 	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, false).Checks {
-		if strings.Contains(c.Message, "bound to ") {
+		if strings.Contains(c.Message.Error(), "bound to ") {
 			t.Fatalf("a filtered run must not include the bound-directory sweep: %q", c.Message)
 		}
 	}
@@ -547,7 +547,7 @@ func TestDoctorReportsEveryDriftedBoundDirectory(t *testing.T) {
 	named := map[string]bool{}
 	for _, c := range checks {
 		for _, dir := range []string{first, second} {
-			if strings.Contains(c.Message, dir) {
+			if strings.Contains(c.Message.Error(), dir) {
 				named[dir] = true
 			}
 		}
@@ -577,7 +577,7 @@ func TestIsolatedBoundDirectoryIdentityDriftIsReported(t *testing.T) {
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
 	checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores())
-	if len(checks) != 1 || !strings.Contains(checks[0].Message, dir) {
+	if len(checks) != 1 || !strings.Contains(checks[0].Message.Error(), dir) {
 		t.Fatalf("an isolated bound directory's drift must be reported too, got %+v", checks)
 	}
 }
@@ -631,11 +631,11 @@ func TestBoundDirectoryIdentityNamesTheAccountTheFragmentBinds(t *testing.T) {
 		t.Fatalf("expected one finding for the side-bound directory, got %+v", checks)
 	}
 	for _, want := range []string{"claude/side", dir} {
-		if !strings.Contains(checks[0].Message, want) {
+		if !strings.Contains(checks[0].Message.Error(), want) {
 			t.Errorf("message must name %q: %q", want, checks[0].Message)
 		}
 	}
-	if strings.Contains(checks[0].Message, "claude/main") {
+	if strings.Contains(checks[0].Message.Error(), "claude/main") {
 		t.Errorf("the binding is to side; main must not appear: %q", checks[0].Message)
 	}
 }
@@ -830,7 +830,7 @@ func TestFilteredDoctorSkipsBoundDirectoryIdentity(t *testing.T) {
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
 	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, false).Checks {
-		if strings.Contains(c.Message, dir) {
+		if strings.Contains(c.Message.Error(), dir) {
 			t.Fatalf("a filtered run must not include bound-directory findings: %q", c.Message)
 		}
 	}

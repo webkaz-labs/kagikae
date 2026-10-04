@@ -94,7 +94,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 		return runStatus(context.Background(), app, commonOpts{Format: formatJSON})
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	var report statusReport
+	var report statusReportWire
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("invalid status JSON: %v: %s", err, out)
 	}
@@ -371,7 +371,7 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "soon") })
 
 	_, out := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatJSON}) })
-	var report statusReport
+	var report statusReportWire
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("invalid status JSON: %v: %s", err, out)
 	}

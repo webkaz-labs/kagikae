@@ -94,7 +94,7 @@ func TestBoundDirectoryConsumerPolicies(t *testing.T) {
 				if shape == "incomplete-index" {
 					wantCode, marker = constants.CheckPinIndexIncomplete, "bound-directory index could not be read completely"
 				}
-				if checks[0].Code != wantCode || checks[0].Status != constants.StatusWarn || !strings.Contains(checks[0].Message, marker) {
+				if checks[0].Code != wantCode || checks[0].Status != constants.StatusWarn || !strings.Contains(checks[0].Message.Error(), marker) {
 					t.Fatalf("diagnostic must distinguish missing paths from unreadable fragments: %+v", checks[0])
 				}
 			}
@@ -319,7 +319,7 @@ func TestDoctorPinIndexIncompleteOutput(t *testing.T) {
 			}
 		}
 		if format == formatJSON {
-			var report doctorReport
+			var report doctorReportWire
 			if err := json.Unmarshal([]byte(out), &report); err != nil {
 				t.Fatal(err)
 			}
@@ -514,11 +514,11 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 		if c.Code != constants.CheckPinStale || c.Status != constants.StatusWarn {
 			t.Fatalf("unexpected check %+v", c)
 		}
-		if strings.Contains(c.Message, gone) {
-			absent = c.Message
+		if strings.Contains(c.Message.Error(), gone) {
+			absent = c.Message.Error()
 		}
-		if strings.Contains(c.Message, cwd) {
-			dangling = c.Message
+		if strings.Contains(c.Message.Error(), cwd) {
+			dangling = c.Message.Error()
 		}
 	}
 	if !strings.Contains(dangling, "claude/main") || !strings.Contains(dangling, "kae pin claude") {
@@ -536,7 +536,7 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 	// tracks the binding rather than merely the existence of a pin.
 	seedAccountMeta(t, app, constants.ToolClaude, "main")
 	for _, c := range app.pinChecks("") {
-		if strings.Contains(c.Message, cwd) {
+		if strings.Contains(c.Message.Error(), cwd) {
 			t.Fatalf("a captured account must not warn: %q", c.Message)
 		}
 	}
@@ -578,10 +578,10 @@ func TestPinCheckDoesNotCallALiveDirectoryAbsent(t *testing.T) {
 	if len(checks) != 1 {
 		t.Fatalf("pinChecks() = %+v, want one unreadable-fragment check", checks)
 	}
-	if strings.Contains(checks[0].Message, "recorded path no longer exists") {
+	if strings.Contains(checks[0].Message.Error(), "recorded path no longer exists") {
 		t.Fatalf("a live directory must never be reported as absent: %q", checks[0].Message)
 	}
-	if !strings.Contains(checks[0].Message, cwd) || !strings.Contains(checks[0].Message, "could not be read") {
+	if !strings.Contains(checks[0].Message.Error(), cwd) || !strings.Contains(checks[0].Message.Error(), "could not be read") {
 		t.Fatalf("the check must name the directory and say the fragment was unreadable: %q", checks[0].Message)
 	}
 }

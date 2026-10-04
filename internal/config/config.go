@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -105,7 +106,7 @@ func Default() *Config {
 
 // Load reads the config file. A missing file yields defaults without error.
 // The returned warnings cover unknown keys and soft issues.
-func Load(path string) (*Config, []string, error) {
+func Load(path string) (*Config, []l10n.Msg, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return Default(), nil, nil
@@ -118,7 +119,7 @@ func Load(path string) (*Config, []string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse config: %w", err)
 	}
-	var warnings []string
+	var warnings []l10n.Msg
 	for _, key := range meta.Undecoded() {
 		if len(key) > 0 {
 			if repl, removed := renamedToolKeys[key[len(key)-1]]; removed {
@@ -132,7 +133,7 @@ func Load(path string) (*Config, []string, error) {
 				)
 			}
 		}
-		warnings = append(warnings, fmt.Sprintf("unknown config key %q ignored", key.String()))
+		warnings = append(warnings, l10n.Msgf("unknown config key %q ignored", key.String()))
 	}
 	warnings = append(warnings, stripRemovedTools(cfg)...)
 	if err := cfg.validate(); err != nil {
@@ -269,19 +270,19 @@ func (c *Config) ToolEnabled(tool string) bool {
 // stripRemovedTools drops config references to tools kae no longer
 // supports with a warning instead of a hard validation error, so configs
 // written before a removal keep working (docs/DATA-MODEL.md § Config Schema).
-func stripRemovedTools(c *Config) []string {
-	var warnings []string
+func stripRemovedTools(c *Config) []l10n.Msg {
+	var warnings []l10n.Msg
 	for tool, successor := range constants.RemovedTools {
 		if _, ok := c.Tools[tool]; ok {
 			delete(c.Tools, tool)
 			warnings = append(warnings,
-				fmt.Sprintf("[tools.%s] ignored: %s was removed; use %s instead", tool, tool, successor))
+				l10n.Msgf("[tools.%s] ignored: %s was removed; use %s instead", tool, tool, successor))
 		}
 		for name, profile := range c.Profiles {
 			if _, ok := profile.Accounts[tool]; ok {
 				delete(profile.Accounts, tool)
 				warnings = append(warnings,
-					fmt.Sprintf("profiles.%s.accounts.%s ignored: %s was removed; use %s instead", name, tool, tool, successor))
+					l10n.Msgf("profiles.%s.accounts.%s ignored: %s was removed; use %s instead", name, tool, tool, successor))
 			}
 		}
 	}

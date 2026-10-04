@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -136,12 +137,12 @@ type toolPlan struct {
 	// are handed the separately loaded active account instead, and Meta feeds only the
 	// switch-time freshness warning.
 	Meta     account.Account
-	Warnings []string
+	Warnings []l10n.Msg
 }
 
 // planTool resolves adapter, driver, and artifact specs for one tool.
 func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPlan, error) {
-	plan := toolPlan{Tool: tool, Account: accountName, Warnings: []string{}}
+	plan := toolPlan{Tool: tool, Account: accountName, Warnings: []l10n.Msg{}}
 	ad, err := adapter.ForTool(tool)
 	if err != nil {
 		return plan, err

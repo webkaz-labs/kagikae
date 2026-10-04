@@ -70,7 +70,7 @@ func TestTokenDriftWrongAccount(t *testing.T) {
 		if len(checks) != 1 || checks[0].Code != constants.CheckCompanionTokenDrift {
 			t.Fatalf("expected one token-drift check, got %v", checks)
 		}
-		if !strings.Contains(checks[0].Message, "main") || !strings.Contains(checks[0].Message, "someone-else") {
+		if !strings.Contains(checks[0].Message.Error(), "main") || !strings.Contains(checks[0].Message.Error(), "someone-else") {
 			t.Errorf("message should name expected and live login: %q", checks[0].Message)
 		}
 	})
@@ -82,7 +82,7 @@ func TestTokenDriftProbeFailure(t *testing.T) {
 		return "", "Bad credentials", 1
 	}, func() {
 		checks := app.companionTokenDriftChecks(context.Background(), true)
-		if len(checks) != 1 || !strings.Contains(checks[0].Message, "could not verify") {
+		if len(checks) != 1 || !strings.Contains(checks[0].Message.Error(), "could not verify") {
 			t.Fatalf("probe failure should warn 'could not verify', got %v", checks)
 		}
 	})
@@ -97,7 +97,7 @@ func TestTokenDriftPinInactive(t *testing.T) {
 		return "main\n", "", 0
 	}, func() {
 		checks := app.companionTokenDriftChecks(context.Background(), true)
-		if len(checks) != 1 || !strings.Contains(checks[0].Message, "not active") {
+		if len(checks) != 1 || !strings.Contains(checks[0].Message.Error(), "not active") {
 			t.Fatalf("empty token env should warn 'pin not active', got %v", checks)
 		}
 	})
@@ -177,7 +177,7 @@ func TestTokenDriftNeverPrintsTheToken(t *testing.T) {
 					t.Fatal("expected a drift check to inspect")
 				}
 				for _, c := range checks {
-					if strings.Contains(c.Message, token) {
+					if strings.Contains(c.Message.Error(), token) {
 						t.Errorf("the bound token reached a doctor message: %q", c.Message)
 					}
 				}

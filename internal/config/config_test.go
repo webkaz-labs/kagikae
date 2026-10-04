@@ -93,7 +93,7 @@ func TestLoadUnknownKeyWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "bogus_key") {
+	if len(warnings) != 1 || !strings.Contains(warnings[0].Error(), "bogus_key") {
 		t.Fatalf("expected unknown-key warning, got %v", warnings)
 	}
 }

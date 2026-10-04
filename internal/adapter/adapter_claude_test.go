@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 func TestClaudeArtifactsLinux(t *testing.T) {
@@ -326,7 +327,7 @@ func TestClaudeWarnsOnHostManagedProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	warned := strings.Join(info.Warnings, "\n")
+	warned := strings.Join(l10ntest.English(info.Warnings), "\n")
 	if len(info.Warnings) != 2 ||
 		!strings.Contains(warned, "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST") ||
 		!strings.Contains(warned, "CLAUDE_CODE_HOST_CREDS_FILE") {
@@ -387,7 +388,7 @@ func TestClaudeDetectLinux(t *testing.T) {
 	if !info.AuthPresent || info.Driver != constants.DriverClaudeFilePatch {
 		t.Fatalf("unexpected info: %+v", info)
 	}
-	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "ANTHROPIC_API_KEY") {
+	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0].Error(), "ANTHROPIC_API_KEY") {
 		t.Fatalf("expected env conflict warning: %+v", info.Warnings)
 	}
 }

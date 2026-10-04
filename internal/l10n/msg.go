@@ -23,6 +23,26 @@ func Msgf(format string, args ...any) Msg {
 	return Msg{format: format, args: args, english: fmt.Sprintf(format, args...)}
 }
 
+// ofFormat is the format of a Msg that only carries an error (Of); it has no
+// catalog entry, Render renders the error itself.
+const ofFormat = "%v"
+
+// Of carries an error as a Msg: the field type of a check message or a warning
+// that is sometimes a kae message and sometimes the text of an external cause (an
+// OS, upstream or standard-library error), which a human sink quotes verbatim.
+// An error that is already a Msg is returned unchanged; another Message renders
+// localized through Render and any other error renders its own Error(). Error()
+// and JSON are the English text in every case. A nil error is the zero Msg.
+func Of(err error) Msg {
+	if err == nil {
+		return Msg{}
+	}
+	if m, ok := err.(Msg); ok {
+		return m
+	}
+	return Msg{format: ofFormat, args: []any{err}, english: err.Error()}
+}
+
 // Error renders the English text, which is what generated files and errors.Is/As
 // see.
 func (m Msg) Error() string { return m.english }

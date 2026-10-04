@@ -74,3 +74,25 @@ func TestMsgIsAMessageAndNotComparableByEquality(t *testing.T) {
 		t.Fatal("a Msg must be a Message")
 	}
 }
+
+func TestOfCarriesAnErrorAsAMessage(t *testing.T) {
+	restore := UseCatalogForTest(map[string]string{"inner %s": "内側 %s"})
+	defer restore()
+	Set(Japanese)
+	defer Set(English)
+
+	external := errors.New("open x: permission denied")
+	if m := Of(external); m.Error() != "open x: permission denied" || Render(m) != "open x: permission denied" {
+		t.Errorf("an external error is quoted verbatim: %q / %q", m.Error(), Render(m))
+	}
+	kae := Msgf("inner %s", "a")
+	if m := Of(kae); m.Error() != "inner a" || Render(m) != "内側 a" {
+		t.Errorf("a kae message keeps English for Error and localizes for a person: %q / %q", m.Error(), Render(m))
+	}
+	if m := Of(nil); !m.Empty() {
+		t.Error("Of(nil) is the zero Msg")
+	}
+	if text, err := Of(external).MarshalText(); err != nil || string(text) != "open x: permission denied" {
+		t.Errorf("MarshalText = %q, %v", text, err)
+	}
+}

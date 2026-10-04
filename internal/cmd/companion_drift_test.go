@@ -66,7 +66,7 @@ func TestDoctorGitDriftDetected(t *testing.T) {
 	}
 	// The matching name knob must not also drift.
 	for _, c := range report.Checks {
-		if c.Code == constants.CheckCompanionDrift && strings.Contains(c.Message, "user.name") {
+		if c.Code == constants.CheckCompanionDrift && strings.Contains(c.Message.Error(), "user.name") {
 			t.Errorf("matching knob must not drift: %q", c.Message)
 		}
 	}
@@ -232,7 +232,7 @@ func TestCompanionDriftNeverPrintsAStoredSecret(t *testing.T) {
 			t.Fatal("expected a git drift check to inspect")
 		}
 		for _, c := range checks {
-			if strings.Contains(c.Message, token) {
+			if strings.Contains(c.Message.Error(), token) {
 				t.Errorf("a stored companion secret reached a doctor message: %q", c.Message)
 			}
 		}

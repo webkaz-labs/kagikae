@@ -20,6 +20,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 var (
@@ -76,7 +77,7 @@ func wantEnvConflictWarningOn(t *testing.T, goos string, adp adapter.Adapter, va
 	}
 	found := false
 	for _, warning := range info.Warnings {
-		if strings.Contains(warning, want) {
+		if strings.Contains(warning.Error(), want) {
 			found = true
 		}
 	}
@@ -86,7 +87,7 @@ func wantEnvConflictWarningOn(t *testing.T, goos string, adp adapter.Adapter, va
 	found = false
 	for _, check := range adp.Doctor(context.Background(), env) {
 		if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
-			strings.Contains(check.Message, want) {
+			strings.Contains(check.Message.Error(), want) {
 			found = true
 		}
 	}
@@ -454,7 +455,7 @@ func warningsOf(t *testing.T, goos string, adp adapter.Adapter, vars map[string]
 	if err != nil {
 		t.Fatalf("detect %s: %v", adp.ID(), err)
 	}
-	return strings.Join(info.Warnings, "\n")
+	return strings.Join(l10ntest.English(info.Warnings), "\n")
 }
 
 // verifiedRow matches one row of the "Verified Upstream Versions" table in

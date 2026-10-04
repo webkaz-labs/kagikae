@@ -67,14 +67,6 @@ func warnMessage(m error) {
 	fmt.Fprintln(os.Stderr, "kae: warning: "+l10n.Render(m))
 }
 
-// warnText writes a `kae: warning:` line from a string kae composed and that
-// also reaches JSON or a `kae doctor` check (an adapter's Detect warning, a config
-// warning), so it stays English until those reports convert (docs/ROADMAP.md,
-// localization stage 3).
-func warnText(text string) {
-	fmt.Fprintln(os.Stderr, "kae: warning: "+text)
-}
-
 // message is kae text carried as a value (l10n.Msg). It is an alias so the call
 // sites in this package keep their spelling.
 type message = l10n.Msg
@@ -83,6 +75,16 @@ type message = l10n.Msg
 // which keeps it a `go vet` printf wrapper.
 func msgf(format string, args ...any) message {
 	return l10n.Msgf(format, args...)
+}
+
+// joinMessages joins messages with "; ", on the values, so each one still renders in
+// the selected language. It has at least one element.
+func joinMessages(ms []message) message {
+	joined := ms[0]
+	for _, m := range ms[1:] {
+		joined = msgf("%s; %s", joined, m)
+	}
+	return joined
 }
 
 // unsupportedShellFormat is the usage error for a shell kae has no completion for.

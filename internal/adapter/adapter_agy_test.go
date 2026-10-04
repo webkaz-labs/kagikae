@@ -38,7 +38,7 @@ func TestAgyDarwinKeychainDriver(t *testing.T) {
 			t.Fatalf("logged-out keychain detect: %+v %v", info, err)
 		}
 		for _, warning := range info.Warnings {
-			if strings.Contains(warning, "cannot switch") {
+			if strings.Contains(warning.Error(), "cannot switch") {
 				t.Fatalf("macOS keychain driver must not warn that kae cannot switch agy: %+v", info.Warnings)
 			}
 		}
@@ -113,7 +113,7 @@ func TestAgyFileSnapshotOffDarwin(t *testing.T) {
 	info, _ = agyAdapter.Detect(context.Background(), env)
 	keyringWarned := false
 	for _, warning := range info.Warnings {
-		if strings.Contains(warning, "keyring") {
+		if strings.Contains(warning.Error(), "keyring") {
 			keyringWarned = true
 		}
 	}

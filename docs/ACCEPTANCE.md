@@ -36,6 +36,28 @@ fails: its fingerprint test refuses the installed claude (2.1.284, recorded
 Authentication behaviour other than claude's naming is therefore carried by the
 v0.22.1 evidence and not re-measured here.
 
+### v0.23.0 publication result
+
+On 2026-10-05 (JST), main CI succeeded at tag source `ceda21f55b07cc94d709257b1d96fe6593df6e5c`,
+and the release workflow succeeded for tag `v0.23.0`, including the job that signed
+the published archives.
+
+`go run ./scripts/releaseverify v0.23.0` returned `status: success` with
+`KAE_RELEASE_VERIFY_FRESH=1`: archive contents, checksums, signer/source, Packslip
+resources, native version `kae v0.23.0`, the verified-assets installer and the mise
+consumer passed. Signature checks stayed enabled. This is not a pass under the
+default age policy. The command used Packslip 1.1.1 and mise 2026.9.3, each fetched
+into a temporary directory after its GitHub attestation verified; the verifier fixes
+both versions, and the machine's own mise is 2026.10.2. The first runs failed on
+GitHub's unauthenticated API rate limit at the consumer's release lookup, and the run
+after the limit reset passed. No live login was part of this check.
+
+The direct local installation used the published v0.23.0 archive and checksum
+through `scripts/install.sh --version v0.23.0`, after `gh attestation verify` passed
+for the darwin/arm64 archive. PATH resolved `~/.local/bin/kae`, which reported
+`kae v0.23.0`. `config.toml` and `state.json` compared byte-identical before and
+after. No credential migration was performed.
+
 ## v0.22.1 candidate
 
 Assessed on 2026-09-29 (JST). Application commits since published v0.22.0 are

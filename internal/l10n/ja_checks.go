@@ -44,7 +44,7 @@ var jaChecks = map[string]string{
 
 	// dircred_checks.go.
 	"the %s credential bound to %s is stale: %s; %s":                             "ディレクトリ %[2]s に固定した %[1]s の認証情報は失効しています: %[3]s。%[4]s。",
-	"the %s credential bound to %s needs an interactive re-login in %s (%s); %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、あと %[3]sで対話的の再ログインが必要になります（%[4]s）。%[5]s。",
+	"the %s credential bound to %s needs an interactive re-login in %s (%s); %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、あと %[3]sで対話的な再ログインが必要になります（%[4]s）。%[5]s。",
 	"the %s credential bound to %s is older than another copy of %s/%s (%s); %s's refresh token rotates single-use, so if the two are copies of one login only the newer one can still refresh and the session in that directory cannot be renewed past %s; %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、%[3]s/%[4]s の別のコピー（%[5]s）より古くなっています。%[6]s のリフレッシュトークンは 1 回使うと入れ替わるため、2 つが同じログインのコピーであれば、更新できるのは新しいほうだけです。そのディレクトリのセッションは %[7]s を過ぎると更新できません。%[8]s。",
 	"the store bound to %s": "%s に固定したストア",
 	"re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s":                                                                                                       "新しいスナップショットからそのディレクトリを固定し直してください。ログインは不要です。cd %s && kae pin %s %s を実行してください",

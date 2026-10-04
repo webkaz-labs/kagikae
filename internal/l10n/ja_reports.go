@@ -107,7 +107,7 @@ var jaReports = map[string]string{
 	"platform: %s, secret backend: %s":                                            "プラットフォーム: %s、シークレットストア: %s",
 	"no blocking problems found":                                                  "先に進めない問題は見つかりませんでした",
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
-	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合は y を入力してください（例: gh api user） [y/N]: ",
+	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
 
 	// S4 adapter.

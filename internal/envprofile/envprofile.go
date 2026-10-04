@@ -7,7 +7,6 @@ package envprofile
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -45,12 +45,12 @@ func metaFile(dir string) string { return filepath.Join(dir, "env.toml") }
 // Save writes the profile metadata (vars sorted for determinism).
 func Save(dir string, profile Profile) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create env profile dir: %w", err)
+		return l10n.Errorf("create env profile dir: %w", err)
 	}
 	sort.Strings(profile.Vars)
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(profile); err != nil {
-		return fmt.Errorf("encode env profile: %w", err)
+		return l10n.Errorf("encode env profile: %w", err)
 	}
 	return patch.WriteFileAtomic(metaFile(dir), buf.Bytes(), 0o600)
 }
@@ -66,7 +66,7 @@ func Load(dir string) (Profile, bool, error) {
 		return profile, false, err
 	}
 	if _, err := toml.Decode(string(data), &profile); err != nil {
-		return profile, false, fmt.Errorf("parse %s: %w", metaFile(dir), err)
+		return profile, false, l10n.Errorf("parse %s: %w", metaFile(dir), err)
 	}
 	return profile, true, nil
 }
@@ -108,7 +108,7 @@ func List(root string) ([]Profile, error) {
 func Delete(ctx context.Context, be secret.Backend, dir string, profile Profile) error {
 	for _, varName := range profile.Vars {
 		if err := be.Delete(ctx, SecretRef(profile.Tool, profile.Account, varName)); err != nil {
-			return fmt.Errorf("delete env value %s: %w", varName, err)
+			return l10n.Errorf("delete env value %s: %w", varName, err)
 		}
 	}
 	if err := os.Remove(metaFile(dir)); err != nil && !os.IsNotExist(err) {
@@ -125,10 +125,10 @@ func EnvStrings(ctx context.Context, be secret.Backend, profile Profile) ([]stri
 	for _, varName := range vars {
 		value, found, err := be.Get(ctx, SecretRef(profile.Tool, profile.Account, varName))
 		if err != nil {
-			return nil, fmt.Errorf("read env value %s: %w", varName, err)
+			return nil, l10n.Errorf("read env value %s: %w", varName, err)
 		}
 		if !found {
-			return nil, fmt.Errorf("env value %s is missing from the secret store; run: kae env set", varName)
+			return nil, l10n.Errorf("env value %s is missing from the secret store; run: kae env set", varName)
 		}
 		pairs = append(pairs, varName+"="+string(value))
 	}

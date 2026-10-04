@@ -2,9 +2,9 @@ package secret
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -26,7 +26,7 @@ func (libsecretBackend) Get(ctx context.Context, key string) ([]byte, bool, erro
 		if strings.TrimSpace(stderr) == "" {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("secret-tool lookup failed (exit %d): %s", code, runner.Snippet(stderr))
+		return nil, false, l10n.Errorf("secret-tool lookup failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	value, err := decodePayload(BackendLibsecret, key, stdout)
 	if err != nil {
@@ -42,7 +42,7 @@ func (libsecretBackend) Set(ctx context.Context, key string, value []byte) error
 	_, stderr, code := runner.RunInput(ctx, encodePayload(value), "secret-tool",
 		"store", "--label", Service+"/"+key, "service", Service, "key", key)
 	if code != 0 {
-		return fmt.Errorf("secret-tool store failed (exit %d): %s", code, runner.Snippet(stderr))
+		return l10n.Errorf("secret-tool store failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (libsecretBackend) Delete(ctx context.Context, key string) error {
 	_, stderr, code := runner.Run(ctx, "secret-tool",
 		"clear", "service", Service, "key", key)
 	if code != 0 && strings.TrimSpace(stderr) != "" {
-		return fmt.Errorf("secret-tool clear failed (exit %d): %s", code, runner.Snippet(stderr))
+		return l10n.Errorf("secret-tool clear failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func (libsecretBackend) Keys(ctx context.Context) ([]string, error) {
 		if strings.TrimSpace(stderr) == "" {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("secret-tool search failed (exit %d): %s", code, runner.Snippet(stderr))
+		return nil, l10n.Errorf("secret-tool search failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	var keys []string
 	for line := range strings.SplitSeq(stdout, "\n") {

@@ -8,6 +8,7 @@ package l10ntest
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/l10n"
@@ -37,6 +38,32 @@ func UseJapanese(t *testing.T) {
 	t.Setenv(l10n.EnvVar, "ja")
 	l10n.Set(l10n.Japanese)
 	t.Cleanup(func() { l10n.Set(l10n.English) })
+}
+
+// ErrorText fails t unless err's Error() is english and its human rendering in
+// the selected language is localized. With external set, err ends in an external
+// cause (an OS, parser or upstream error): english and localized are then the kae
+// text before it, and the cause must follow both verbatim and be non-empty.
+func ErrorText(t *testing.T, name string, err error, english, localized string, external bool) {
+	t.Helper()
+	if err == nil {
+		t.Errorf("%s: no error", name)
+		return
+	}
+	if external {
+		cause, ok := strings.CutPrefix(err.Error(), english)
+		if !ok || cause == "" {
+			t.Errorf("%s: Error() = %q, want %q followed by an external cause", name, err.Error(), english)
+			return
+		}
+		english, localized = english+cause, localized+cause
+	}
+	if got := err.Error(); got != english {
+		t.Errorf("%s: Error() = %q, want %q", name, got, english)
+	}
+	if got := l10n.Render(err); got != localized {
+		t.Errorf("%s: rendered %q, want %q", name, got, localized)
+	}
 }
 
 // English returns the English text of each message, which is what JSON carries,

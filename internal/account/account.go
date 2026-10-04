@@ -5,7 +5,6 @@ package account
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -69,11 +69,11 @@ func metaFile(dir string) string { return filepath.Join(dir, "account.toml") }
 // Save writes account.toml under dir (created 0700).
 func Save(dir string, acc Account) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create account dir: %w", err)
+		return l10n.Errorf("create account dir: %w", err)
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(acc); err != nil {
-		return fmt.Errorf("encode account metadata: %w", err)
+		return l10n.Errorf("encode account metadata: %w", err)
 	}
 	return patch.WriteFileAtomic(metaFile(dir), buf.Bytes(), 0o600)
 }
@@ -89,7 +89,7 @@ func Load(dir string) (Account, bool, error) {
 		return acc, false, err
 	}
 	if _, err := toml.Decode(string(data), &acc); err != nil {
-		return acc, false, fmt.Errorf("parse %s: %w", metaFile(dir), err)
+		return acc, false, l10n.Errorf("parse %s: %w", metaFile(dir), err)
 	}
 	return acc, true, nil
 }

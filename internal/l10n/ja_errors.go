@@ -274,6 +274,85 @@ var jaErrors = map[string]string{
 	"create lock dir: %w": "ロックのディレクトリを作成できません: %w",
 	"open lock file: %w":  "ロックファイルを開けません: %w",
 	"flock: %w":           "flock でロックを取得できません: %w",
+	// Stores below internal/cmd: a failed step names itself before its cause
+	// (`<verb> <object>: %w`); an external cause stays verbatim. Shared by
+	// internal/account and internal/envprofile.
+	"parse %s: %w": "%s を解析できません: %w",
+
+	// internal/account.
+	"create account dir: %w":      "アカウントのディレクトリを作成できません: %w",
+	"encode account metadata: %w": "アカウントのメタデータをエンコードできません: %w",
+
+	// internal/backup.
+	"create backups dir: %w":       "バックアップのディレクトリを作成できません: %w",
+	"parse backup %s: %w":          "バックアップ %s を解析できません: %w",
+	"delete backup payload %s: %w": "バックアップの保存データ %s を削除できません: %w",
+
+	// internal/envprofile.
+	"create env profile dir: %w": "環境変数プロファイルのディレクトリを作成できません: %w",
+	"encode env profile: %w":     "環境変数プロファイルをエンコードできません: %w",
+	"delete env value %s: %w":    "環境変数 %s の値を削除できません: %w",
+	"read env value %s: %w":      "環境変数 %s の値を読み取れません: %w",
+	"env value %s is missing from the secret store; run: kae env set": "環境変数 %s の値がシークレットストアにありません。kae env set を実行してください",
+
+	// internal/state.
+	"read state: %w":       "状態ファイルを読み取れません: %w",
+	"parse state: %w":      "状態ファイルを解析できません: %w",
+	"create state dir: %w": "状態ファイルのディレクトリを作成できません: %w",
+
+	// internal/keychain: the `security` command and its exit code stay verbatim,
+	// and so does its stderr snippet.
+	"security find-generic-password %q failed (exit %d)":              "security find-generic-password %q が失敗しました（終了コード %d）",
+	"security find-generic-password %q (account %q) failed (exit %d)": "security find-generic-password %q（アカウント %q）が失敗しました（終了コード %d）",
+	"security add-generic-password %q failed (exit %d): %s":           "security add-generic-password %q が失敗しました（終了コード %d）: %s",
+	"security delete-generic-password %q failed (exit %d): %s":        "security delete-generic-password %q が失敗しました（終了コード %d）: %s",
+
+	// internal/secret.
+	"%w: keychain backend requires macOS":                                                                         "%w: キーチェーンは macOS でしか使えません",
+	"%w: secret-tool not found in PATH (install libsecret tools)":                                                 "%w: PATH に secret-tool が見つかりません（libsecret のツールをインストールしてください）",
+	"%w: no OS credential store found; install libsecret tools or opt in with security.secret_backend = \"file\"": "%w: OS の認証ストアが見つかりません。libsecret のツールをインストールするか、security.secret_backend = \"file\" を設定してファイルへの保存を選んでください",
+	"unknown secret_backend %q":                                                                                   "secret_backend の値 %q は不明です",
+	"%s entry %s is not kagikae-encoded: %w":                                                                      "%s のエントリー %s は kagikae の形式でエンコードされていません: %w",
+	"invalid secret key %q":                                                                                       "シークレットのキー %q が不正です",
+	"create secret dir: %w":                                                                                       "シークレットのディレクトリを作成できません: %w",
+	"security find-generic-password failed (exit %d)":                                                             "security find-generic-password が失敗しました（終了コード %d）",
+	"security add-generic-password failed (exit %d): %s":                                                          "security add-generic-password が失敗しました（終了コード %d）: %s",
+	"security delete-generic-password failed (exit %d)":                                                           "security delete-generic-password が失敗しました（終了コード %d）",
+	"secret-tool lookup failed (exit %d): %s":                                                                     "secret-tool lookup が失敗しました（終了コード %d）: %s",
+	"secret-tool store failed (exit %d): %s":                                                                      "secret-tool store が失敗しました（終了コード %d）: %s",
+	"secret-tool clear failed (exit %d): %s":                                                                      "secret-tool clear が失敗しました（終了コード %d）: %s",
+	"secret-tool search failed (exit %d): %s":                                                                     "secret-tool search が失敗しました（終了コード %d）: %s",
+
+	// internal/patch: atomic writes, and diagnostics of a malformed JSON or
+	// JSONC document a tool wrote, which reach a person inside the artifact and
+	// adapter errors that wrap them.
+	"create temp file: %w":                   "一時ファイルを作成できません: %w",
+	"chmod temp file: %w":                    "一時ファイルの権限を変更できません: %w",
+	"write temp file: %w":                    "一時ファイルに書き込めません: %w",
+	"sync temp file: %w":                     "一時ファイルをディスクに同期できません: %w",
+	"close temp file: %w":                    "一時ファイルを閉じられません: %w",
+	"rename temp file: %w":                   "一時ファイルの名前を変更できません: %w",
+	"not a directory: %s":                    "ディレクトリではありません: %s",
+	"parse json: %w":                         "JSON を解析できません: %w",
+	"parse jsonc: %w":                        "JSONC を解析できません: %w",
+	"unexpected value after top-level value": "最上位の値の後に余分な値があります",
+	"object member name is not a string":     "オブジェクトのメンバー名が文字列ではありません",
+	"duplicate object member %q":             "オブジェクトのメンバー %q が重複しています",
+	"object closed by %q":                    "オブジェクトが %q で閉じられています",
+	"array closed by %q":                     "配列が %q で閉じられています",
+	"unexpected delimiter %q":                "予期しない区切り文字 %q があります",
+	"invalid json pointer %q":                "JSON ポインター %q が不正です",
+	"invalid json pointer escape in %q":      "JSON ポインター %q のエスケープが不正です",
+	"pointer value: %w":                      "ポインターに設定する値を解析できません: %w",
+	"document root is not a json object":     "ドキュメントの最上位が JSON オブジェクトではありません",
+	"pointer %s parent does not exist":       "ポインター %s の親が存在しません",
+	"pointer %s traverses a non-object":      "ポインター %s がオブジェクトでない値をたどっています",
+	"patch json pointer %s: %w":              "JSON ポインター %s を書き換えられません: %w",
+
+	// internal/picker.
+	"picker: %w":                      "ピッカー: %w",
+	"picker: unexpected final model":  "ピッカー: 終了時のモデルが想定外です",
+	"picker: exited without a choice": "ピッカー: 選択しないまま終了しました",
 
 	// Sentinel errors: errors.Is targets, shown alone or as the head of a message
 	// that wraps them with %w.

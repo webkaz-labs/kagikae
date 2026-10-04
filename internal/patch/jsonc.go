@@ -2,9 +2,10 @@ package patch
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/tailscale/hujson"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // JSONC reads and writes documents that are standard JSON plus // and /* */
@@ -45,7 +46,7 @@ func SetPointerJSONC(doc []byte, pointer string, value json.RawMessage) ([]byte,
 		return nil, err
 	}
 	if _, err := decodeDoc(value); err != nil {
-		return nil, fmt.Errorf("pointer value: %w", err)
+		return nil, l10n.Errorf("pointer value: %w", err)
 	}
 	operations, _, err := planPointerRewrite(root, tokens, pointer, value, false, false)
 	if err != nil {
@@ -80,7 +81,7 @@ func DeletePointerJSONC(doc []byte, pointer string) ([]byte, error) {
 func parseJSONC(doc []byte) (*hujson.Value, any, error) {
 	parsed, err := hujson.Parse(doc)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse jsonc: %w", err)
+		return nil, nil, l10n.Errorf("parse jsonc: %w", err)
 	}
 	// Standardize only the clone: decodeDoc then supplies strict semantic
 	// validation (including duplicate-member rejection), while parsed retains
@@ -89,7 +90,7 @@ func parseJSONC(doc []byte) (*hujson.Value, any, error) {
 	standard.Standardize()
 	root, err := decodeDoc(standard.Pack())
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse jsonc: %w", err)
+		return nil, nil, l10n.Errorf("parse jsonc: %w", err)
 	}
 	return &parsed, root, nil
 }
@@ -105,7 +106,7 @@ func patchAndPack(parsed *hujson.Value, operations []pointerOperation, pointer s
 	}
 	before, after := parsed.BeforeExtra, parsed.AfterExtra
 	if err := parsed.Patch(ops); err != nil {
-		return nil, fmt.Errorf("patch json pointer %s: %w", pointer, err)
+		return nil, l10n.Errorf("patch json pointer %s: %w", pointer, err)
 	}
 	parsed.BeforeExtra, parsed.AfterExtra = before, after
 	return parsed.Pack(), nil

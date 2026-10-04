@@ -17,8 +17,6 @@ package picker
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -29,6 +27,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/mattn/go-runewidth"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // cells measures display width with the East Asian ambiguous rule of the
@@ -446,15 +446,15 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, items []Item, opts Op
 	}
 	final, err := tea.NewProgram(New(items, opts), programOpts...).Run()
 	if err != nil {
-		return "", false, fmt.Errorf("picker: %w", err)
+		return "", false, l10n.Errorf("picker: %w", err)
 	}
 	model, ok := final.(Model)
 	if !ok {
-		return "", false, errors.New("picker: unexpected final model")
+		return "", false, l10n.Errorf("picker: unexpected final model")
 	}
 	value, cancelled, done := model.Result()
 	if !done {
-		return "", false, errors.New("picker: exited without a choice")
+		return "", false, l10n.Errorf("picker: exited without a choice")
 	}
 	return value, cancelled, nil
 }

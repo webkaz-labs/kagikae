@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -104,7 +105,7 @@ func metaPath(dir, id string) string { return filepath.Join(dir, id+".json") }
 // Save writes backup metadata atomically.
 func Save(dir string, meta Meta) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create backups dir: %w", err)
+		return l10n.Errorf("create backups dir: %w", err)
 	}
 	data, err := patch.EncodeJSON(meta)
 	if err != nil {
@@ -121,7 +122,7 @@ func Get(dir, id string) (Meta, error) {
 		return meta, err
 	}
 	if err := json.Unmarshal(data, &meta); err != nil {
-		return meta, fmt.Errorf("parse backup %s: %w", id, err)
+		return meta, l10n.Errorf("parse backup %s: %w", id, err)
 	}
 	return meta, nil
 }
@@ -164,7 +165,7 @@ func Delete(ctx context.Context, be secret.Backend, dir string, meta Meta) error
 	for _, rec := range meta.Artifacts {
 		if rec.Present {
 			if err := be.Delete(ctx, rec.SecretRef); err != nil {
-				return fmt.Errorf("delete backup payload %s: %w", rec.SecretRef, err)
+				return l10n.Errorf("delete backup payload %s: %w", rec.SecretRef, err)
 			}
 		}
 	}

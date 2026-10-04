@@ -2,10 +2,10 @@ package secret
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -26,7 +26,7 @@ func (keychainBackend) Get(ctx context.Context, key string) ([]byte, bool, error
 		if strings.Contains(stderr, keychain.NotFoundMarker) {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("security find-generic-password failed (exit %d)", code)
+		return nil, false, l10n.Errorf("security find-generic-password failed (exit %d)", code)
 	}
 	value, err := decodePayload(BackendKeychain, key, stdout)
 	if err != nil {
@@ -42,7 +42,7 @@ func (keychainBackend) Set(ctx context.Context, key string, value []byte) error 
 	_, stderr, code := runner.Run(ctx, "security",
 		"add-generic-password", "-U", "-s", Service, "-a", key, "-w", encodePayload(value))
 	if code != 0 {
-		return fmt.Errorf("security add-generic-password failed (exit %d): %s", code, runner.Snippet(stderr))
+		return l10n.Errorf("security add-generic-password failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (keychainBackend) Delete(ctx context.Context, key string) error {
 	_, stderr, code := runner.Run(ctx, "security",
 		"delete-generic-password", "-s", Service, "-a", key)
 	if code != 0 && !strings.Contains(stderr, keychain.NotFoundMarker) {
-		return fmt.Errorf("security delete-generic-password failed (exit %d)", code)
+		return l10n.Errorf("security delete-generic-password failed (exit %d)", code)
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -136,7 +135,7 @@ func recordedMatch(active map[string]string, targets []runTarget) bool {
 
 func printBareUseReport(report *bareUseReport) {
 	if !report.Changed {
-		fmt.Printf("Profile %s already active (no changes)\n", *report.Profile)
+		reportf("Profile %s already active (no changes)", *report.Profile)
 		return
 	}
 	printSwitchReport(&switchReport{

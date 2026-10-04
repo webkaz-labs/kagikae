@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -36,12 +35,12 @@ func runUseAuto(ctx context.Context, app *App, opts commonOpts, profile string, 
 			printBareUseReport(report)
 		} else {
 			for _, p := range report.Preserved {
-				fmt.Printf("Preserved global isolated %s -> %s (unchanged)\n", p.Tool, p.Account)
+				reportf("Preserved global isolated %s -> %s (unchanged)", p.Tool, p.Account)
 			}
 			if len(report.Results) != 0 {
 				printSwitchReport(&switchReport{DryRun: opts.DryRun, BackupID: report.BackupID, Results: report.Results})
 			} else {
-				fmt.Println("No shared changes")
+				reportf("No shared changes")
 			}
 		}
 	}

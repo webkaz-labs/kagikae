@@ -285,7 +285,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 func warnBeforeApply(results []switchResult, staleTools []string) {
 	for _, res := range results {
 		for _, w := range res.Warnings {
-			warnMessage(msgf("%s: %s", res.Tool, w))
+			warnf("%s: %s", res.Tool, w)
 		}
 	}
 	// A profile switch fans out over several tools, so close with one roll-up line
@@ -309,18 +309,19 @@ func toolNames(results []switchResult) []string {
 func printSwitchReport(report *switchReport) {
 	if report.DryRun {
 		if report.Profile != nil {
-			fmt.Printf("Would switch profile to %s\n", *report.Profile)
+			reportf("Would switch profile to %s", *report.Profile)
 		}
 		for _, result := range report.Results {
-			fmt.Printf("\n%s -> %s (driver: %s)\n", result.Tool, result.Account, result.Driver)
+			fmt.Println()
+			reportf("%s -> %s (driver: %s)", result.Tool, result.Account, result.Driver)
 			for _, act := range result.Actions {
 				if act.Pointer != "" {
-					fmt.Printf("  patch %s %s\n", act.Target, act.Pointer)
+					reportf("  patch %s %s", act.Target, act.Pointer)
 				} else {
-					fmt.Printf("  replace %s\n", act.Target)
+					reportf("  replace %s", act.Target)
 				}
 			}
-			fmt.Println("  preserve all other keys, settings, skills, hooks, history")
+			reportf("  preserve all other keys, settings, skills, hooks, history")
 			printResultWarnings(result.Warnings)
 		}
 		return
@@ -329,13 +330,13 @@ func printSwitchReport(report *switchReport) {
 	// before the apply and independent of --quiet. The dry-run branch above still
 	// prints them, since nothing is applied there and no stderr line is emitted.
 	for _, result := range report.Results {
-		fmt.Printf("Switched %s -> %s\n", result.Tool, result.Account)
+		reportf("Switched %s -> %s", result.Tool, result.Account)
 	}
 	if report.Profile != nil {
-		fmt.Printf("Active profile: %s\n", *report.Profile)
+		reportf("Active profile: %s", *report.Profile)
 	}
 	if report.BackupID != "" {
-		fmt.Printf("Backup: %s; to undo, run: kae rollback\n", report.BackupID)
+		reportf("Backup: %s; to undo, run: kae rollback", report.BackupID)
 	}
 }
 
@@ -408,9 +409,10 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 			return encodeJSON(report)
 		}
 		for _, r := range report.Results {
-			fmt.Printf("Would globally isolate %s -> %s\n  home: %s\n", r.Tool, r.Account, r.Home)
+			reportf("Would globally isolate %s -> %s", r.Tool, r.Account)
+			reportf("  home: %s", r.Home)
 		}
-		fmt.Printf("Would write %s\n", report.Fragment)
+		reportf("Would write %s", report.Fragment)
 		return constants.ExitOK
 	}
 	lifecycleLocks, err := app.acquireIsolationLifecycleWriters(runTargetTools(supported))
@@ -446,9 +448,9 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		return encodeJSON(report)
 	}
 	for _, r := range report.Results {
-		fmt.Printf("Globally isolated %s -> %s (private home; real ~/.%s left unchanged)\n", r.Tool, r.Account, r.Tool)
+		reportf("Globally isolated %s -> %s (private home; real ~/.%s left unchanged)", r.Tool, r.Account, r.Tool)
 	}
-	fmt.Printf("Wrote %s (regenerated from kae state).\n", report.Fragment)
+	reportf("Wrote %s (regenerated from kae state).", report.Fragment)
 	app.reportMiseHandoff(func() string { return app.globalExportFallback(st.Synced) })
 	return constants.ExitOK
 }

@@ -217,7 +217,7 @@ func TestEnglishPinHoldsForTheProcess(t *testing.T) {
 	}
 }
 
-// stageOneCase is one failure from localization stage 1 (docs/ROADMAP.md): the
+// stageOneCase is one failure (docs/CLI.md § Localization): the
 // `kae:` line a failing command ends on, a usage error, a did-you-mean suffix or a
 // common error, with its English and Japanese renderings.
 type stageOneCase struct {

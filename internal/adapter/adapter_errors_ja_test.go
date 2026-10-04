@@ -150,7 +150,7 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 			raise: artifactsIn(codexAdapter, "linux", nil, map[string]string{codexConfig: "cli_auth_credentials_store = \"ephemeral\"\n"}),
 			en: `unsupported: codex cli_auth_credentials_store = "ephemeral" keeps the credential in memory for one process,` +
 				` so there is nothing to capture or switch`,
-			ja:          `対応していません: codex の cli_auth_credentials_store = "ephemeral" は認証情報を 1 つのプロセスのメモリーにだけ保持するため、登録や切替の対象がありません`,
+			ja:          `対応していません: codex の cli_auth_credentials_store = "ephemeral" は認証情報を 1 つのプロセスのメモリにだけ保持するため、登録や切替の対象がありません`,
 			unsupported: true,
 		},
 		{

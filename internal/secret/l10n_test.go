@@ -68,7 +68,7 @@ func TestSecretErrorsRenderInJapanese(t *testing.T) {
 				_, _, err := corrupt.Get(ctx, "claude")
 				return err
 			}, "file entry claude is not kagikae-encoded: illegal base64 data at input byte 3",
-			"file のエントリー claude は kagikae の形式でエンコードされていません: illegal base64 data at input byte 3",
+			"file の項目 claude は kagikae の形式でエンコードされていません: illegal base64 data at input byte 3",
 		},
 		{
 			"create secret dir", func() error {

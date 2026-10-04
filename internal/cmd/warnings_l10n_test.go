@@ -97,7 +97,7 @@ func warningCases() []warningCase {
 				warnMessage(modeUnboundMessage(m, "codex"))
 			},
 			en: "kae: warning: tree mode binds claude only, so codex keeps the real home (docs/ROADMAP.md)\n",
-			ja: "kae: warning: tree モードが固定するのは claude だけのため、codex は本物のホームのままです（docs/ROADMAP.md）。\n",
+			ja: "kae: warning: tree モードが固定するのは claude だけのため、codex は実ホームのままです（docs/ROADMAP.md）。\n",
 		},
 	}
 }

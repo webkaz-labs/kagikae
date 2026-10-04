@@ -205,7 +205,7 @@ func TestRunLoginLinesRenderInBothLanguages(t *testing.T) {
 			en: "kae: complete the claude login flow; kae is running it against this directory's own store " +
 				"(CLAUDE_CONFIG_DIR=~/code/side-project/.kae), so it refreshes claude/side and not the real home\n",
 			ja: "kae: claude のログイン手順を完了してください。kae はこのディレクトリ専用のストア（CLAUDE_CONFIG_DIR=~/code/side-project/.kae）に対して実行するため、" +
-				"更新されるのは本物のホームではなく claude/side です。\n",
+				"更新されるのは実ホームではなく claude/side です。\n",
 		},
 	}
 	for _, tc := range stderrLines {

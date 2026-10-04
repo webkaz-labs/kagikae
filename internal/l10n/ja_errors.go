@@ -430,7 +430,7 @@ var jaErrors = map[string]string{
 	"%w: secret-tool not found in PATH (install libsecret tools)":                                                 "%w: PATH に secret-tool が見つかりません（libsecret のツールをインストールしてください）",
 	"%w: no OS credential store found; install libsecret tools or opt in with security.secret_backend = \"file\"": "%w: OS の認証ストアが見つかりません。libsecret のツールをインストールするか、security.secret_backend = \"file\" を設定してファイルへの保存を選んでください",
 	"unknown secret_backend %q":                                                                                   "secret_backend の値 %q は不明です",
-	"%s entry %s is not kagikae-encoded: %w":                                                                      "%s のエントリー %s は kagikae の形式でエンコードされていません: %w",
+	"%s entry %s is not kagikae-encoded: %w":                                                                      "%s の項目 %s は kagikae の形式でエンコードされていません: %w",
 	"invalid secret key %q":                                                                                       "シークレットのキー %q が不正です",
 	"create secret dir: %w":                                                                                       "シークレットのディレクトリを作成できません: %w",
 	"security find-generic-password failed (exit %d)":                                                             "security find-generic-password が失敗しました（終了コード %d）",
@@ -494,7 +494,7 @@ var jaErrors = map[string]string{
 	// codex.go.
 	"%w: codex [features] secret_auth_storage keeps the credential in an encrypted secrets file, not the %q keychain item":               "%w: codex の [features] secret_auth_storage は、認証情報をキーチェーン項目 %q ではなく暗号化されたシークレットのファイルに保存します",
 	"%w: codex cli_auth_credentials_store = %q keeps the credential in the OS keyring, which kae can only read on macOS (this is %s)":    "%w: codex の cli_auth_credentials_store = %q は認証情報を OS のキーリングに保存しますが、kae がキーリングを読み取れるのは macOS だけです（この環境は %s です）",
-	"%w: codex cli_auth_credentials_store = %q keeps the credential in memory for one process, so there is nothing to capture or switch": "%w: codex の cli_auth_credentials_store = %q は認証情報を 1 つのプロセスのメモリーにだけ保持するため、登録や切替の対象がありません",
+	"%w: codex cli_auth_credentials_store = %q keeps the credential in memory for one process, so there is nothing to capture or switch": "%w: codex の cli_auth_credentials_store = %q は認証情報を 1 つのプロセスのメモリにだけ保持するため、登録や切替の対象がありません",
 	"%w: codex cli_auth_credentials_store = %q is not one of %q, %q, %q, %q":                                                             "%w: codex の cli_auth_credentials_store = %q は %q、%q、%q、%q のいずれでもありません",
 	"no %s keychain item for this codex home":     "この codex ホームに対応する %s のキーチェーン項目がありません",
 	"no id_token email claim or account_id in %s": "%s に id_token の email クレームも account_id もありません",

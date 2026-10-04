@@ -154,7 +154,7 @@ var jaWarnings = map[string]string{
 	"the %s group is not listed: %v": "%s のグループは一覧に載せていません: %v",
 	// miseinit.go.
 	"preview only; to apply, run: %s --write":                            "プレビューのみです。適用するには %s --write を実行してください。",
-	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は本物のホームのままです（docs/ROADMAP.md）。",
+	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は実ホームのままです（docs/ROADMAP.md）。",
 
 	"the real %s home (%s) lists nothing to share, so kae cannot tell whether %d shared link(s) in %s are still wanted; leaving them in place. If that home is right, remove the links by hand; if it is not, unset %s (or fix it), then run: kae pin": "本物の %[1]s のホーム（%[2]s）に共有するものがないため、%[4]s にある %[3]d 件の共有リンクがまだ必要か kae は判断できません。リンクはそのまま残します。そのホームが正しい場合は、リンクを手動で削除してください。正しくない場合は、環境変数 %[5]s の設定を外すか修正してから kae pin を実行してください。",
 
@@ -205,7 +205,7 @@ var jaWarnings = map[string]string{
 	"this may be the only surviving credential copy; deleting the explicitly selected ID": "これが残っている唯一の認証情報のコピーかもしれません。明示的に選ばれた ID を削除します。",
 	// relogin.go.
 	"preserved the existing credential as %s; its account ownership is unknown; run: kae preservation list":                              "既存の認証情報を %s として保全しました。どのアカウントのものかは不明です。kae preservation list を実行してください。",
-	"complete the %s login flow; kae is running it against this directory's own store (%s), so it refreshes %s/%s and not the real home": "%s のログイン手順を完了してください。kae はこのディレクトリ専用のストア（%s）に対して実行するため、更新されるのは本物のホームではなく %s/%s です。",
+	"complete the %s login flow; kae is running it against this directory's own store (%s), so it refreshes %s/%s and not the real home": "%s のログイン手順を完了してください。kae はこのディレクトリ専用のストア（%s）に対して実行するため、更新されるのは実ホームではなく %s/%s です。",
 	"%s exited with %d; kae is checking what is in the store now":                                                                        "%s が終了コード %d で終了しました。kae はいまストアにあるものを確認します。",
 	"kae could not read this directory's %s credential, so it cannot tell whether the login flow changed anything":                       "kae はこのディレクトリの %s の認証情報を読み取れなかったため、ログイン手順で何かが変わったか判断できません。",
 
@@ -240,7 +240,7 @@ var jaWarnings = map[string]string{
 	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
 	// run.go.
-	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、本物のホームのままです（%s で独立させられるのは claude と codex だけです）。",
+	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、実ホームのままです（%s で独立させられるのは claude と codex だけです）。",
 
 	"%s refreshed its credential during the run and %s/%s was already the active account, so restoring backup %s would put back a copy %s can no longer refresh; leaving the live %s credential as the child left it": "実行中に %[1]s が認証情報をリフレッシュし、%[2]s/%[3]s はすでに有効なアカウントでした。バックアップ %[4]s を復元すると、%[5]s がもうリフレッシュできないコピーを戻してしまうため、現在の %[6]s の認証情報は子プロセスが残したままにします。",
 

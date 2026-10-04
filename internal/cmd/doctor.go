@@ -105,7 +105,7 @@ func stdinIsTTY() bool {
 // check needs. Default (blank/anything but yes) is no, matching the opt-in
 // intent. Mirrors promptCompletionChoice's stderr-prompt / stdin-read pattern.
 func promptTokenDriftCheck() bool {
-	fmt.Fprint(os.Stderr, "Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
+	promptf("Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "y", "yes":
@@ -529,7 +529,8 @@ func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, tool
 
 func printDoctorReport(report *doctorReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
-	fmt.Printf("platform: %s, secret backend: %s\n\n", report.Platform, report.SecretBackend)
+	reportf("platform: %s, secret backend: %s", report.Platform, report.SecretBackend)
+	fmt.Println()
 	for _, check := range report.Checks {
 		label := paint(check.Status, fmt.Sprintf("[%s]", check.Status), color)
 		if check.Tool != "" {
@@ -539,8 +540,10 @@ func printDoctorReport(report *doctorReport, opts commonOpts) {
 		}
 	}
 	if report.OK {
-		fmt.Println("\nno blocking problems found")
+		fmt.Println()
+		reportf("no blocking problems found")
 	} else {
-		fmt.Println("\nerrors found; fix them before switching")
+		fmt.Println()
+		reportf("errors found; fix them before switching")
 	}
 }

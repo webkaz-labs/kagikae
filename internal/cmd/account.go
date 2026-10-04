@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"sort"
 
@@ -298,16 +297,16 @@ const (
 )
 
 func printAccountRm(r *accountRmReport) {
-	verb := "Removed"
 	if r.DryRun {
-		verb = "Would remove"
+		reportf("Would remove %s/%s (%d secret item(s))", r.Tool, r.Account, r.SecretsRemoved)
+	} else {
+		reportf("Removed %s/%s (%d secret item(s))", r.Tool, r.Account, r.SecretsRemoved)
 	}
-	fmt.Printf("%s %s/%s (%d secret item(s))\n", verb, r.Tool, r.Account, r.SecretsRemoved)
 	if len(r.ProfilesUpdated) > 0 {
-		fmt.Printf("  dropped the %s reference from profile(s): %v\n", r.Tool, r.ProfilesUpdated)
+		reportf("  dropped the %s reference from profile(s): %v", r.Tool, r.ProfilesUpdated)
 	}
 	if r.ActiveCleared {
-		fmt.Printf("  cleared the active %s account in state\n", r.Tool)
+		reportf("  cleared the active %s account in state", r.Tool)
 	}
 }
 
@@ -614,16 +613,16 @@ func accountRenameGloballyIsolatedError(tool, oldName, newName string) error {
 }
 
 func printAccountRename(r *accountRenameReport) {
-	verb := "Renamed"
 	if r.DryRun {
-		verb = "Would rename"
+		reportf("Would rename %s/%s to %s/%s (%d secret item(s))", r.Tool, r.Old, r.Tool, r.New, r.SecretsMoved)
+	} else {
+		reportf("Renamed %s/%s to %s/%s (%d secret item(s))", r.Tool, r.Old, r.Tool, r.New, r.SecretsMoved)
 	}
-	fmt.Printf("%s %s/%s to %s/%s (%d secret item(s))\n", verb, r.Tool, r.Old, r.Tool, r.New, r.SecretsMoved)
 	if len(r.ProfilesUpdated) > 0 {
-		fmt.Printf("  rewrote the %s reference in profile(s): %v\n", r.Tool, r.ProfilesUpdated)
+		reportf("  rewrote the %s reference in profile(s): %v", r.Tool, r.ProfilesUpdated)
 	}
 	if r.ActiveUpdated {
-		fmt.Printf("  updated the active %s account in state\n", r.Tool)
+		reportf("  updated the active %s account in state", r.Tool)
 	}
 }
 
@@ -708,11 +707,11 @@ func buildAccountSetIdentity(app *App, opts commonOpts, tool, accountName, value
 }
 
 func printAccountSetIdentity(r *accountSetIdentityReport) {
-	verb := "Set"
 	if r.DryRun {
-		verb = "Would set"
+		reportf("Would set the %s/%s identity to %s", r.Tool, r.Account, r.Identity)
+		return
 	}
-	fmt.Printf("%s the %s/%s identity to %s\n", verb, r.Tool, r.Account, r.Identity)
+	reportf("Set the %s/%s identity to %s", r.Tool, r.Account, r.Identity)
 }
 
 // profilesReferencing returns the config profiles whose accounts map points at

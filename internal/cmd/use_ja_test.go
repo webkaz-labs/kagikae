@@ -196,7 +196,7 @@ func TestEnvReportsAreLocalized(t *testing.T) {
 		l10ntest.UseJapanese(t)
 		check(t, steps(t), []string{
 			"環境変数プロファイルがありません。kae env set <tool> <account> KEY=VALUE を実行してください\n",
-			"環境変数プロファイル claude/main に環境変数 2 件を保存しました: ANTHROPIC_BASE_URL, TEAM\n",
+			"環境変数プロファイル claude/main に環境変数 2 件を保存しました: ANTHROPIC_BASE_URL、TEAM\n",
 			"変数",
 			"環境変数プロファイル claude/main から環境変数 1 件を削除しました\n",
 			"環境変数プロファイル claude/main を削除しました\n",

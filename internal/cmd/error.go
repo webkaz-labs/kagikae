@@ -87,6 +87,26 @@ func joinMessages(ms []message) message {
 	return joined
 }
 
+// joinList joins names (tools, knobs, variables) on the value: ", " in English
+// and "、" in a Japanese line (docs/L10N-JA.md), so the separator follows the
+// message the list is inserted into. An empty list renders "".
+func joinList(items []string) message {
+	if len(items) == 0 {
+		return message{}
+	}
+	joined := l10n.Of(verbatim(items[0]))
+	for _, item := range items[1:] {
+		joined = msgf("%s, %s", joined, item)
+	}
+	return joined
+}
+
+// verbatim is a name carried as an error so l10n.Of can hold it: it renders as
+// itself in every language.
+type verbatim string
+
+func (v verbatim) Error() string { return string(v) }
+
 // unsupportedShellFormat is the usage error for a shell kae has no completion for.
 const unsupportedShellFormat = "unsupported shell %q (supported: bash, zsh, fish)"
 

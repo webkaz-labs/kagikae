@@ -144,7 +144,7 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 		return finish(opts, err)
 	}
 	reportf("Stored %d variable(s) in env profile %s/%s: %s",
-		len(names), tool, accountName, strings.Join(names, ", "))
+		len(names), tool, accountName, joinList(names))
 	return constants.ExitOK
 }
 

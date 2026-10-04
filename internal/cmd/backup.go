@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -68,14 +69,14 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 	}
 	report.print()
 	if len(report.Backups) == 0 && report.Complete {
-		fmt.Println("no backups yet (backups are created automatically before each switch)")
+		reportf("no backups yet (backups are created automatically before each switch)")
 		return report.exitCode()
 	}
 	rows := [][]string{}
 	for _, item := range report.Backups {
 		rows = append(rows, []string{item.ID, item.CreatedAt, item.Reason, fmt.Sprint(item.Tools)})
 	}
-	printTable([]string{"ID", "Created", "Reason", "Tools"}, rows, colorEnabled(opts.NoColor))
+	printTable([]string{l10n.Sprintf("ID"), l10n.Sprintf("Created"), l10n.Sprintf("Reason"), l10n.Sprintf("Tools")}, rows, colorEnabled(opts.NoColor))
 	return report.exitCode()
 }
 
@@ -116,15 +117,19 @@ func runRollback(ctx context.Context, app *App, opts commonOpts, toID string) in
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	verb := "Rolled back to"
-	if report.DryRun {
-		verb = "Would roll back to"
-	}
-	fmt.Printf("%s backup %s\n", verb, report.BackupID)
-	for _, item := range report.Restored {
-		fmt.Printf("  %s: %d artifact(s)\n", item.Tool, item.Artifacts)
-	}
+	printRollback(report)
 	return constants.ExitOK
+}
+
+func printRollback(report *rollbackReport) {
+	if report.DryRun {
+		reportf("Would roll back to backup %s", report.BackupID)
+	} else {
+		reportf("Rolled back to backup %s", report.BackupID)
+	}
+	for _, item := range report.Restored {
+		reportf("  %s: %d artifact(s)", item.Tool, item.Artifacts)
+	}
 }
 
 func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) (*rollbackReport, error) {

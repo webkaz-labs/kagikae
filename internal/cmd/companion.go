@@ -67,7 +67,7 @@ func (app *App) resolveCompanionTarget(profileName, id string) (companion.Spec, 
 	spec, ok := companion.For(id)
 	if !ok {
 		return companion.Spec{}, errf(constants.ExitUsage,
-			"unknown companion %q (known: %s)", id, strings.Join(constants.Companions, ", "))
+			"unknown companion %q (known: %s)", id, joinList(constants.Companions))
 	}
 	return spec, nil
 }
@@ -124,9 +124,9 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 	}); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Bound companion %s for profile %s: %s\n", id, profileName, strings.Join(names, ", "))
+	reportf("Bound companion %s for profile %s: %s", id, profileName, joinList(names))
 	if app.miseActivated() {
-		fmt.Println("To refresh its fragment, in a bound directory run: kae pin")
+		reportf("To refresh its fragment, in a bound directory run: kae pin")
 	}
 	return constants.ExitOK
 }
@@ -251,9 +251,9 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 		return finish(opts, err)
 	}
 	if removeWhole {
-		fmt.Printf("Removed companion %s from profile %s\n", id, profileName)
+		reportf("Removed companion %s from profile %s", id, profileName)
 	} else {
-		fmt.Printf("Removed %d knob(s) from companion %s in profile %s: %s\n", len(drop), id, profileName, strings.Join(drop, ", "))
+		reportf("Removed %d knob(s) from companion %s in profile %s: %s", len(drop), id, profileName, joinList(drop))
 	}
 	return constants.ExitOK
 }
@@ -309,7 +309,7 @@ func runCompanionList(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Bindings) == 0 {
-		fmt.Println("no companion bindings; run: kae companion add <profile> <id> KEY=VALUE")
+		reportf("no companion bindings; run: kae companion add <profile> <id> KEY=VALUE")
 		return constants.ExitOK
 	}
 	rows := [][]string{}
@@ -324,7 +324,7 @@ func runCompanionList(_ context.Context, app *App, opts commonOpts) int {
 		}
 		rows = append(rows, []string{b.Profile, b.Companion, strings.Join(parts, ", ")})
 	}
-	printTable([]string{"Profile", "Companion", "Knobs"}, rows, colorEnabled(opts.NoColor))
+	printTable([]string{l10n.Sprintf("Profile"), l10n.Sprintf("Companion"), l10n.Sprintf("Knobs")}, rows, colorEnabled(opts.NoColor))
 	return constants.ExitOK
 }
 

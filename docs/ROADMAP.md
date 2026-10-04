@@ -50,65 +50,14 @@ lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
 for claude, with its R3 real-machine check recorded through § Place navigation and the
 tree mode; its codex slice stays gated on R1 and R2 there.
 
-In progress: **localized human output (Japanese)**, requested by the operator on
-2026-09-30. Stages 0 to 5 are implemented; stage 5 awaits the operator's review of
-its Japanese strings.
+Localized human output (Japanese), requested by the operator on 2026-09-30, is
+implemented and accepted. [CLI.md](CLI.md) § Localization is the contract and
+[VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested; the
+catalog test fails on every finding outside its two permanent allowlists. A change
+that adds or rewords a message updates its Japanese string, the smoke assertions and
+the documents that quote it in the same commit.
 
-- **Contract.** [CLI.md](CLI.md) § Localization is the contract and
-  [VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested. Both are
-  written ahead of the code and land on main together with stage 1's implementation,
-  not before it.
-- **Shipping.** The code ships stage by stage, so until the last stage some human
-  output is still English only, and the release notes of each release name which
-  stages it ships. Each stage is its own commit and review, and its Japanese strings
-  go to the operator for review before the stage is accepted.
-- **Same-commit updates.** Every stage that changes or translates a message updates,
-  in the same commit, the smoke assertions and the documents that quote it, the
-  Japanese guide's quotations included.
-- **Done when** the operator accepts stage 5's Japanese strings.
-
-0. Stage 0 ships no Japanese: the glossary and style rules are in
-   [L10N-JA.md](L10N-JA.md), and the English wording of near-duplicate messages is
-   unified (how a remedy is phrased, `not captured`, `pinned` against `bound`), with
-   the messages that repeat hoisted into shared helpers.
-1. The mechanism (language selection, the catalog and its test), including the
-   English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
-   setting `KAE_LANG=en`; `usageError` takes the sink form VALIDATION states. With
-   it, the `kae:` line a failing command ends on, usage
-   errors, did-you-mean suggestions and the common errors. The common errors are
-   the `errf`, `usageError` and lock-busy messages of `internal/cmd`, the
-   `account`, `add`, `use`, `pin`, `preservation`, `ls`, `completion` and
-   `uninstall` errors among them, except those that still embed composed English,
-   which stage 4 takes.
-2. The `kae: warning:` lines and the bare `kae:` companion lines that follow one,
-   through `warnf` and `notef` sinks that take a constant format. A warning that
-   embeds a composed English sentence (a refusal's reason, a remedy) takes it as a
-   message value. `unboundReason` feeds a generated `# warning:`
-   comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
-   The strings that also reach JSON fields or `kae doctor` checks (an adapter's
-   `Detect` warnings, config warnings) stay English inside a localized warning until
-   stage 3 converts them with those reports.
-3. The `use`, `pin`, `ls`, `status` and `doctor` reports, in this order:
-   a shared base first (the stdout report sink, a value type for `Check.Message` and
-   the `Warnings` fields that renders English in JSON, and `printAccountTable`
-   choosing its columns by identifier before the headers are translated, with `--full`
-   tested under Japanese), then the `use`, `pin`/`ls`, `status`/`doctor` and adapter
-   slices. `listIssueGuidance` belongs to `kae backup list` and `kae preservation
-   list`, not `kae ls`: stage 4 takes it.
-4. The remaining human output, including the messages that still take an already
-   composed English sentence as an argument (the `why` of the snapshot-unchanged
-   warnings); the catalog test cannot see them, so each
-   becomes a message value or a set of constant formats before its stage ships.
-   Stage 2 takes the ones inside `kae: warning:` lines. `candidates.go`'s `errf(..., "%v", err)` passes its error through `l10n.Of`, so a message value in it renders localized. The `fmt.Errorf` and
-   `errors.New` errors in `internal/cmd` or below that no earlier stage made values
-   become values here (`l10n.Errorf`, sentinel errors first, so a message that
-   wraps one renders it localized); until then they reach the `kae:` line in
-   English. An error kae never shows goes on a permanent allowlist instead
-   (VALIDATION § Output language in tests).
-5. `--help` and usage text: `kae help`, the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. A `flag.Value` whose `Set` fails (`kae ls --at`, `kae uninstall --dir`) returns a message value that kae keeps before the `flag` package flattens it, and kae renders the `invalid value` line per kind as CLI.md § Localization states. With it the catalog test fails on every finding outside its two permanent allowlists (VALIDATION § Output language in tests).
-
-§ Agent orchestration and remote authentication — deferred exploration follows the
-localization work and still requires investigation and an explicit implementation decision.
+§ Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 

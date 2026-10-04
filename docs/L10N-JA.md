@@ -78,6 +78,20 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | config file | 設定ファイル | 確定 | |
 | env var | 環境変数 | 確定 | `KAE_LANG` 等の名前は訳さない |
 | child process | 子プロセス | 確定 | |
+| refresh token | リフレッシュトークン | 決定 | 動詞の refresh は「リフレッシュ」。スナップショットを取り直す recapture は「更新」 |
+| adopt / declined to adopt | 取り込む / 取り込みを見送る | 決定 | |
+| pre-split | 分割前 | 決定 | |
+| capture time / Captured（見出し） | 登録日時 | 決定 | |
+| Identity（見出し） | 識別子 | 決定 | 本文の login identity は「ログイン識別子」 |
+| Active / In effect（見出し） | 有効 | 決定 | |
+| Notes / Current / Source / Applies / Level / Kind / Root（見出し） | 備考 / 現在 / 取得元 / 適用先 / レベル / 種別 / ルート | 決定 | |
+| present / absent | あり / なし | 決定 | 人向けのセル語。JSON は bool |
+| re-login now / N day(s) left | 今すぐ再ログイン / 残り N 日 | 決定 | |
+| keychain item / keyring | キーチェーン項目 / キーリング | 決定 | |
+| codex home | codex ホーム | 決定 | |
+| file driver | ファイルドライバー | 決定 | |
+| env profile | 環境変数プロファイル | 決定 | |
+| secret backend | シークレットストア | 決定 | secret store と同一視する |
 | cancel | キャンセル | 確定 | |
 
 ### 型と記号

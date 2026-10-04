@@ -493,7 +493,13 @@ func warningsDetail(warnings []message) message {
 	if len(warnings) == 0 {
 		return message{}
 	}
-	return msgf(" (%s)", joinMessages(warnings))
+	// Adapter warnings are whole sentences when a check shows one alone, so each
+	// gives up its closing stop here (Japanese only) rather than double it.
+	unstopped := make([]message, len(warnings))
+	for i, w := range warnings {
+		unstopped[i] = l10n.Unstopped(w)
+	}
+	return msgf(" (%s)", joinMessages(unstopped))
 }
 
 // warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the

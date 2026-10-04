@@ -108,7 +108,7 @@ func useReportCases() []useReportCase {
 			en: "kae: warning: claude: snapshot credential is stale: it expired 2026-09-01T00:00:00Z and has no refresh token; " +
 				"confirm account main and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore claude main (captures the new login and restores the previous live state)\n",
 			ja: "kae: warning: claude: スナップショットの認証情報が失効しています: 認証情報は 2026-09-01T00:00:00Z に期限切れになり、リフレッシュトークンもありません。" +
-				"固定したディレクトリの外で、アカウント main と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore claude main を実行してください（新しいログインを登録し、それまでの現在の状態を復元します）。\n",
+				"固定したディレクトリの外で、アカウント main と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore claude main を実行してください（新しいログインを登録し、直前の状態に戻します）。\n",
 		},
 		{
 			name: "lead time cells",

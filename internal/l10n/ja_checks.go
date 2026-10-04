@@ -18,7 +18,7 @@ var jaChecks = map[string]string{
 	"under an hour": "1 時間未満",
 	" (%s)":         "（%s）",
 	"%s: %s":        "%s: %s",
-	"confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)": "固定したディレクトリの外で、アカウント %s と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore %s %s を実行してください（新しいログインを登録し、それまでの現在の状態を復元します）",
+	"confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)": "固定したディレクトリの外で、アカウント %s と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore %s %s を実行してください（新しいログインを登録し、直前の状態に戻します）",
 	"kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s":                                                                                                                   "kae は %s のログインを起動できません。固定したディレクトリの外で、意図したグローバルの認証ストアを使って、%s でアカウント %s として再度ログインしてください。%s",
 
 	// S2 pin-ls.
@@ -44,7 +44,7 @@ var jaChecks = map[string]string{
 
 	// dircred_checks.go.
 	"the %s credential bound to %s is stale: %s; %s":                             "ディレクトリ %[2]s に固定した %[1]s の認証情報は失効しています: %[3]s。%[4]s。",
-	"the %s credential bound to %s needs an interactive re-login in %s (%s); %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、あと %[3]s で対話式の再ログインが必要になります（%[4]s）。%[5]s。",
+	"the %s credential bound to %s needs an interactive re-login in %s (%s); %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、あと %[3]sで対話的の再ログインが必要になります（%[4]s）。%[5]s。",
 	"the %s credential bound to %s is older than another copy of %s/%s (%s); %s's refresh token rotates single-use, so if the two are copies of one login only the newer one can still refresh and the session in that directory cannot be renewed past %s; %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、%[3]s/%[4]s の別のコピー（%[5]s）より古くなっています。%[6]s のリフレッシュトークンは 1 回使うと入れ替わるため、2 つが同じログインのコピーであれば、更新できるのは新しいほうだけです。そのディレクトリのセッションは %[7]s を過ぎると更新できません。%[8]s。",
 	"the store bound to %s": "%s に固定したストア",
 	"re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s":                                                                                                       "新しいスナップショットからそのディレクトリを固定し直してください。ログインは不要です。cd %s && kae pin %s %s を実行してください",

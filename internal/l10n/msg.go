@@ -45,6 +45,21 @@ func Of(err error) Msg {
 	return Msg{format: ofFormat, args: []any{err}, english: err.Error()}
 }
 
+// unstoppedFormat is the format of a Msg that only drops its argument's closing
+// full stop when rendered (Unstopped); it has no catalog entry.
+const unstoppedFormat = "%s"
+
+// Unstopped carries m so that a human sink renders it without a closing Japanese
+// full stop ("。"), for a message that is a sentence when shown alone but is joined
+// to others or wrapped in parentheses, where its own stop would double up ("。。",
+// "。）"). Error() and JSON stay m's English text: English messages carry no stop.
+func Unstopped(m Msg) Msg {
+	if m.Empty() {
+		return m
+	}
+	return Msg{format: unstoppedFormat, args: []any{m}, english: m.english}
+}
+
 // Error renders the English text, which is what generated files and errors.Is/As
 // see.
 func (m Msg) Error() string { return m.english }

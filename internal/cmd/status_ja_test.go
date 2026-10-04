@@ -198,7 +198,7 @@ func TestJapaneseStatusReportLines(t *testing.T) {
 	l10ntest.UseJapanese(t)
 
 	_, out := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText, NoColor: true}) })
-	for _, want := range []string{"グローバルで有効なプロファイル: （なし）", "残り 2 日", "あり", "なし"} {
+	for _, want := range []string{"グローバルで有効なプロファイル: なし", "残り 2 日", "あり", "なし"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the status text lacks %q:\n%s", want, out)
 		}
@@ -233,7 +233,7 @@ func TestJapaneseStatusPrintsBoundDirectoryHomesAndWarningCount(t *testing.T) {
 	})
 	for _, want := range []string{
 		"このディレクトリ: プロファイル main（固定、shared）",
-		"グローバルの独立環境のホーム（kae use -i と kae run -i が共有します）:",
+		"グローバル独立環境のホーム（kae use -i と kae run -i が共有します）:",
 		"グローバルで有効なプロファイル: main",
 		"警告 1 件",
 		"設定ファイルの不明なキー \"x\" は無視しました。",
@@ -257,7 +257,7 @@ func TestJapaneseAccountsEmptyHint(t *testing.T) {
 		return runAccounts(context.Background(), app, commonOpts{Format: formatText})
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	if want := "登録済みのアカウントがありません。kae add <tool> <account> を実行してください。\n"; out != want {
+	if want := "登録済みのアカウントがありません。kae add <tool> <account> を実行してください\n"; out != want {
 		t.Errorf("accounts = %q, want %q", out, want)
 	}
 }
@@ -292,7 +292,7 @@ func TestJapaneseDoctorReport(t *testing.T) {
 			t.Errorf("the doctor text keeps the English %q:\n%s", leaked, out)
 		}
 	}
-	if !strings.Contains(out, "先に進めない問題は見つかりませんでした。") && !strings.Contains(out, "エラーが見つかりました。切り替える前に修正してください。") {
+	if !strings.Contains(out, "先に進めない問題は見つかりませんでした") && !strings.Contains(out, "エラーが見つかりました。切り替える前に修正してください") {
 		t.Errorf("the doctor summary is not Japanese:\n%s", out)
 	}
 }

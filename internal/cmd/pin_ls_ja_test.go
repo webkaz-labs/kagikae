@@ -109,7 +109,7 @@ func TestPrunedAndHandoffReportsInJapanese(t *testing.T) {
 		app.reportMiseHandoff(func() string { return "export X=1\n" })
 		return 0
 	})
-	if want := "mise が次のプロンプトで反映します。今すぐ bash か zsh に反映する場合は、eval \"$(mise env)\" を実行してください。\n"; out != want {
+	if want := "mise が次のプロンプトで反映します。今すぐ bash か zsh に反映する場合は、eval \"$(mise env)\" を実行してください\n"; out != want {
 		t.Errorf("handoff = %q, want %q", out, want)
 	}
 }

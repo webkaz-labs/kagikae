@@ -33,13 +33,13 @@ var jaReports = map[string]string{
 	"%d day(s) left":     "残り %d 日",
 	"%d hour(s) left":    "残り %d 時間",
 	"under an hour left": "残り 1 時間未満",
-	"refreshed %s/%s snapshot from the live store before switching away": "別のアカウントに切り替える前に、現在の認証ストアから %s/%s のスナップショットを更新しました。",
+	"refreshed %s/%s snapshot from the live store before switching away": "別のアカウントに切り替える前に、現在の認証ストアから %s/%s のスナップショットを更新しました",
 
 	// S2 pin-ls.
 	"Bound this directory: profile %s (%s)":                                                         "このディレクトリを固定しました: プロファイル %s（%s）",
 	"Wrote %s (ignored via %s); your mise.toml is left unchanged.":                                  "%s を書き込みました（%s で Git の対象外にしています）。mise.toml は変更していません。",
 	"Wrote %s; your mise.toml is left unchanged.":                                                   "%s を書き込みました。mise.toml は変更していません。",
-	"mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"": "mise が次のプロンプトで反映します。今すぐ bash か zsh に反映する場合は、eval \"$(mise env)\" を実行してください。",
+	"mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"": "mise が次のプロンプトで反映します。今すぐ bash か zsh に反映する場合は、eval \"$(mise env)\" を実行してください",
 	"Removed %s and the legacy kagikae block from .mise.toml":                                       "%s と、.mise.toml の古い kagikae ブロックを削除しました",
 	"Removed %s": "%s を削除しました",
 	"Removed the legacy kagikae block from .mise.toml":                                        ".mise.toml の古い kagikae ブロックを削除しました",
@@ -100,14 +100,14 @@ var jaReports = map[string]string{
 
 	// status.go, doctor.go and edit.go report lines and the doctor prompt.
 	"This directory: profile %s (bound, %s)":                                      "このディレクトリ: プロファイル %s（固定、%s）",
-	"Global isolated homes (kae use -i / run -i share these):":                    "グローバルの独立環境のホーム（kae use -i と kae run -i が共有します）:",
+	"Global isolated homes (kae use -i / run -i share these):":                    "グローバル独立環境のホーム（kae use -i と kae run -i が共有します）:",
 	"Global active profile: %s":                                                   "グローバルで有効なプロファイル: %s",
-	"Global active profile: (none)":                                               "グローバルで有効なプロファイル: （なし）",
-	"no captured accounts; run: kae add <tool> <account>":                         "登録済みのアカウントがありません。kae add <tool> <account> を実行してください。",
+	"Global active profile: (none)":                                               "グローバルで有効なプロファイル: なし",
+	"no captured accounts; run: kae add <tool> <account>":                         "登録済みのアカウントがありません。kae add <tool> <account> を実行してください",
 	"platform: %s, secret backend: %s":                                            "プラットフォーム: %s、シークレットストア: %s",
-	"no blocking problems found":                                                  "先に進めない問題は見つかりませんでした。",
-	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください。",
-	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを確認するため、ネットワークに接続します（例: gh api user）。確認する場合は y を入力してください [y/N]: ",
+	"no blocking problems found":                                                  "先に進めない問題は見つかりませんでした",
+	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
+	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合は y を入力してください（例: gh api user） [y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
 
 	// S4 adapter.

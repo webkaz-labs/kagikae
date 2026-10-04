@@ -95,7 +95,7 @@ func registerMiseInitFlags(fs *flag.FlagSet, profile, mode *string, auto, write 
 	// --mode is still parsed so an old `--mode bond|pin|home|overlay` invocation
 	// gets a clear rejection rather than "flag not defined".
 	fs.StringVar(mode, "mode", constants.ModeAuth, "rendered integration (auth only; bind directories with kae pin)")
-	fs.BoolVar(auto, "auto", false, "add a [hooks.enter] running `kae use --auto --quiet`")
+	fs.BoolVar(auto, "auto", false, "add a [hooks.enter] running kae use --auto --quiet")
 	fs.BoolVar(write, "write", false, "write/update .mise.toml in the current directory")
 }
 

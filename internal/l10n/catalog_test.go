@@ -93,7 +93,7 @@ const (
 	kindSink  = "sink"  // a sink's format is not a constant in the catalog
 	kindPrint = "print" // a fmt print call writes a literal outside the catalog
 	kindFlag  = "flag"  // a flag description is not in the catalog
-	kindError = "error" // fmt.Errorf / errors.New in internal/cmd or below, not yet a value
+	kindError = "error" // fmt.Errorf / errors.New in internal/cmd or below instead of a message value
 )
 
 type finding struct {

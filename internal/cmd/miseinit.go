@@ -19,6 +19,8 @@ const (
 	miseBlockEnd   = "# <<< kagikae <<<"
 )
 
+const miseInitSynopsis = "mise init [--profile NAME] [--auto] [--write]"
+
 // CmdMise generates project-local mise integration — the auth-mode tasks and
 // the opt-in enter hook:
 //
@@ -31,7 +33,7 @@ const (
 // with `kae pin -s|-i|-t`, which owns its own mise fragment.
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
-		return usageLine("mise init [--profile NAME] [--auto] [--write]")
+		return usageLine(miseInitSynopsis)
 	}
 	flags, positionals := splitArgs(args[1:], "--profile", "P", "--mode")
 	var profileName, mode string
@@ -43,7 +45,7 @@ func CmdMise(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageLine("mise init [--profile NAME] [--auto] [--write]")
+		return usageLine(miseInitSynopsis)
 	}
 	app := newApp(opts.ConfigPath)
 	return runMiseInit(ctx, app, opts, profileName, mode, auto, write)

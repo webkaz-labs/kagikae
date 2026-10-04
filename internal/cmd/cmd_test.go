@@ -39,8 +39,8 @@ func TestBuildVersionReport(t *testing.T) {
 	}
 }
 
-// helpGolden is `kae help` in English as printed before the help moved into the
-// catalog: the English rendering of the sections is byte for byte that text.
+// helpGolden is `kae help` in English: the English rendering of printHelp's
+// sections must equal it byte for byte.
 func helpGolden(t *testing.T) string {
 	t.Helper()
 	golden, err := os.ReadFile(filepath.Join("testdata", "help.en.golden"))

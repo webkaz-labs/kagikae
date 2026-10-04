@@ -234,8 +234,9 @@ func parseToolVersion(version string) (int, int, int) {
 
 // printHelp writes `kae help` on stdout. Each section is one constant format the
 // catalog translates (docs/CLI.md § Localization); the synopsis column and the
-// flag names stay verbatim in every language. In English the sections join into
-// the text testdata/help.en.golden holds.
+// flag names stay verbatim in every language. Each section's format ends in a
+// newline, which reportf's own then turns into the blank line before the next. In
+// English the sections join into the text testdata/help.en.golden holds.
 func printHelp() {
 	reportf(helpIntro)
 	reportf(helpUsage)

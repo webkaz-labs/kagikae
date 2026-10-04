@@ -103,7 +103,10 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    becomes a message value or a set of constant formats before its stage ships.
    Stage 2 takes the ones inside `kae: warning:` lines. `candidates.go`'s `errf(..., "%v", err)` hands an error to a sink that renders it verbatim: pass it through `l10n.Of` when it becomes a value. The `fmt.Errorf` and
    `errors.New` errors in `internal/cmd` or below that no earlier stage made values
-   become values here; until then they reach the `kae:` line in English.
+   become values here (`l10n.Errorf`, sentinel errors first, so a message that
+   wraps one renders it localized); until then they reach the `kae:` line in
+   English. An error kae never shows goes on a permanent allowlist instead
+   (VALIDATION § Output language in tests).
 5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.
 
 § Agent orchestration and remote authentication — deferred exploration follows the

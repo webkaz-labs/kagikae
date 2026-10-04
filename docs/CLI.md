@@ -2658,7 +2658,10 @@ English rather than translated in part.
 **Where messages are composed.** kae's own messages are localized wherever they are
 composed, those built in packages below the command layer included. A message that
 reaches a JSON field or a generated file renders English there (VALIDATION
-§ Output language in tests).
+§ Output language in tests). An error kae never shows a person is not a message
+and stays English: one a command replaces with its own message without printing it
+(the preservation store's errors, which may carry credential material), and a
+programmer error that panics at start-up.
 
 **The `flag` package.** The usage block it prints (`Usage of`, `(default ...)`) is
 rendered by kae in the selected language, and the flag descriptions are kae's own

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -85,17 +86,22 @@ func use(a *App, s string) {
 // scanFixture type-checks methodSinkFixture as package fx with the given sinks.
 func scanFixture(t *testing.T, sinks map[string]int) *scan {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "fx.go"), []byte(methodSinkFixture), 0o600); err != nil {
+	s := newScan(t.TempDir(), sinks)
+	checkFixture(t, s, methodSinkFixture)
+	return s
+}
+
+// checkFixture writes src as package fx in s.root and checks it with s.
+func checkFixture(t *testing.T, s *scan, src string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(s.root, "fx.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	fset := token.NewFileSet()
-	s := newScan(dir, sinks)
-	pkg := listedPackage{ImportPath: "fx", Dir: dir, GoFiles: []string{"fx.go"}}
+	pkg := listedPackage{ImportPath: "fx", Dir: s.root, GoFiles: []string{"fx.go"}}
 	if err := s.checkPackage(fset, importer.ForCompiler(fset, "source", nil), pkg); err != nil {
 		t.Fatal(err)
 	}
-	return s
 }
 
 func findingSummary(s *scan) []string {
@@ -126,5 +132,89 @@ func TestMethodSinksAreJudgedAtTheirCallersAndSkippedInTheirBodies(t *testing.T)
 	want = []string{"App.wrap error", "use error"}
 	if got := findingSummary(s); !slices.Equal(got, want) {
 		t.Fatalf("unregistered findings = %q, want %q", got, want)
+	}
+}
+
+// flagSetFixture calls flag.NewFlagSet from the allowed maker and from elsewhere.
+const flagSetFixture = `package fx
+
+import "flag"
+
+func newFlagSet(name string) *flag.FlagSet { return flag.NewFlagSet(name, flag.ContinueOnError) }
+
+func elsewhere() *flag.FlagSet { return flag.NewFlagSet("x", flag.ContinueOnError) }
+`
+
+func TestOnlyTheFlagSetMakerCallsNewFlagSet(t *testing.T) {
+	s := newScan(t.TempDir(), map[string]int{})
+	s.flagSetMaker = "fx.newFlagSet"
+	checkFixture(t, s, flagSetFixture)
+	if len(s.strayFlagSets) != 1 || !strings.HasSuffix(s.strayFlagSets[0], "fx.go:7:41") {
+		t.Fatalf("stray flag sets = %q, want the one in elsewhere", s.strayFlagSets)
+	}
+}
+
+// backquoteFixture registers a description with a backquote in English, one whose
+// Japanese holds one, and a clean one.
+const backquoteFixture = `package fx
+
+import "flag"
+
+func register(fs *flag.FlagSet) {
+	fs.Bool("a", false, "run ` + "`kae use`" + `")
+	fs.Bool("b", false, "japanese quotes")
+	fs.Bool("c", false, "plain")
+}
+`
+
+func TestBackquotedFlagDescriptionsAreFoundInEitherLanguage(t *testing.T) {
+	restore := UseCatalogForTest(map[string]string{
+		"run `kae use`":   "kae use を実行",
+		"japanese quotes": "`kae use` を実行",
+		"plain":           "そのまま",
+	})
+	t.Cleanup(restore)
+	s := newScan(t.TempDir(), map[string]int{})
+	checkFixture(t, s, backquoteFixture)
+	if len(s.backquotedFlags) != 2 ||
+		!strings.Contains(s.backquotedFlags[0], "\"run `kae use`\"") ||
+		!strings.Contains(s.backquotedFlags[1], `"japanese quotes"`) {
+		t.Fatalf("backquoted flags = %q, want a and b", s.backquotedFlags)
+	}
+}
+
+// concatenatedPrintFixture prints literals whole, inside a concatenation, inside
+// a parenthesised constant operand of one, and as the argument of another call.
+const concatenatedPrintFixture = `package fx
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+func help(items []string) {
+	fmt.Println("Usage:\n  run it\n\nTools: " + strings.Join(items, ", "))
+	fmt.Fprintln(os.Stdout, strings.Join(items, ", ")+(" and "+"more"))
+	fmt.Println(strings.Join(items, ", ") + ", " + "\n")
+	fmt.Println(strings.ToUpper("quiet words"))
+	fmt.Print("whole " + "constant")
+}
+`
+
+func TestPrintedConcatenationsAreReadForProse(t *testing.T) {
+	s := newScan(t.TempDir(), map[string]int{})
+	checkFixture(t, s, concatenatedPrintFixture)
+	var got []string
+	for _, f := range s.findings {
+		got = append(got, f.kind+" "+f.what)
+	}
+	want := []string{
+		`print fmt.Println writes "Usage:\n  run it\n\nTools: "`,
+		`print fmt.Fprintln writes " and more"`,
+		`print fmt.Print writes "whole constant"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("findings = %q, want %q", got, want)
 	}
 }

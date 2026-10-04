@@ -72,7 +72,7 @@ func CmdUninstall(ctx context.Context, args []string) int {
 		registerUninstallFlags(fs, &dirs)
 	})
 	if !ok || len(pos) != 0 {
-		return usageError("usage: kae uninstall [--dry-run] [--yes] [--json] [--dir <path> ...]")
+		return usageLine("uninstall [--dry-run] [--yes] [--json] [--dir <path> ...]")
 	}
 	executable, err := os.Executable()
 	if err != nil {

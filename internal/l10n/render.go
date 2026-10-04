@@ -27,7 +27,8 @@ func Sprintf(format string, args ...any) string {
 }
 
 // Render renders err for a person. A Message renders in the process's language;
-// any other error is an external or not yet migrated one and renders verbatim.
+// any other error is an external one, or one kae never shows (docs/VALIDATION.md
+// § Output language in tests), and renders verbatim.
 // A nil error renders `<nil>`, and so does a nil pointer in an error, without
 // calling its Error(): fmt calls Error() first and prints `<nil>` only when that
 // panics, so the two agree whenever a nil receiver's Error() panics.

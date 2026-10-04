@@ -24,7 +24,7 @@ import (
 const cdPathCommand = "__cd"
 
 func placeUsage(verb string) string {
-	return "usage: kae " + verb + " [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N | --pick]"
+	return verb + " [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N | --pick]"
 }
 
 func CmdOpen(ctx context.Context, args []string) int {

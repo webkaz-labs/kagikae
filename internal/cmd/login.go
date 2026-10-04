@@ -70,7 +70,7 @@ func CmdAdd(ctx context.Context, args []string) int {
 	}
 	opts.IdentityOverride = identityFlag
 	if len(positionals) < 1 || len(positionals) > 2 {
-		return usageError("usage: %s add [--no-login] <tool> [<account>] [--restore]", toolName)
+		return usageLine("add [--no-login] <tool> [<account>] [--restore]")
 	}
 	if noLogin && restore {
 		return usageError("--restore needs the login flow; it cannot be combined with --no-login")

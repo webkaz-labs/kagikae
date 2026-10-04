@@ -570,8 +570,7 @@ claude = "side"
 Manage them with `kae profile save|set|unset|rm|default` or `kae edit`. Full
 schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 
-kae prints its human output in Japanese or English according to the locale; while the
-migration is in progress some output is still English.
+kae prints its human output in Japanese or English according to the locale.
 `KAE_LANG=en` gets English back whatever the locale, for example for a bug report;
 `KAE_LANG=ja` forces Japanese. `--json` output, completion and generated files are
 always English. The selection rules are in [docs/CLI.md](docs/CLI.md#localization).

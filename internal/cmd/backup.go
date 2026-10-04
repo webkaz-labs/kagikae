@@ -27,9 +27,11 @@ type backupListReport struct {
 	Backups       []backupItem `json:"backups"`
 }
 
+const backupListSynopsis = "backup list [--json]"
+
 func CmdBackup(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "list" {
-		return usageError("usage: %s backup list [--json]", toolName)
+		return usageLine(backupListSynopsis)
 	}
 	flags, positionals := splitArgs(args[1:])
 	opts, ok := parseCommon("backup list", flags, false, nil)
@@ -37,7 +39,7 @@ func CmdBackup(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s backup list [--json]", toolName)
+		return usageLine(backupListSynopsis)
 	}
 	app := newApp(opts.ConfigPath)
 	return runBackupList(ctx, app, opts)
@@ -103,7 +105,7 @@ func CmdRollback(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s rollback [--to <backup-id>] [--dry-run] [--json]", toolName)
+		return usageLine("rollback [--to <backup-id>] [--dry-run] [--json]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runRollback(ctx, app, opts, toID)

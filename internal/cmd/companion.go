@@ -29,7 +29,7 @@ import (
 // docs/ADAPTERS-COMPANION.md.
 func CmdCompanion(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageError("usage: %s companion <add|rm|list> ...", toolName)
+		return usageLine("companion <add|rm|list> ...")
 	}
 	sub, rest := args[0], args[1:]
 	flags, positionals := splitArgs(rest)
@@ -45,7 +45,7 @@ func CmdCompanion(ctx context.Context, args []string) int {
 		return runCompanionRm(ctx, app, opts, positionals)
 	case "list":
 		if len(positionals) != 0 {
-			return usageError("usage: %s companion list [--json]", toolName)
+			return usageLine("companion list [--json]")
 		}
 		return runCompanionList(ctx, app, opts)
 	default:
@@ -180,7 +180,7 @@ func parseCompanionKnobs(spec companion.Spec, args []string, stdin io.Reader) (i
 
 func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals []string) int {
 	if len(positionals) < 2 {
-		return usageError("usage: %s companion rm <profile> <id> [KEY...]", toolName)
+		return usageLine("companion rm <profile> <id> [KEY...]")
 	}
 	profileName, id := positionals[0], positionals[1]
 	spec, err := app.resolveCompanionTarget(profileName, id)
@@ -340,8 +340,7 @@ func CmdCompanionToken(ctx context.Context, args []string) int {
 
 func companionToken(ctx context.Context, app *App, args []string) int {
 	if len(args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: kae __companion-token <profile> <id> <knob>")
-		return constants.ExitUsage
+		return usageLine("__companion-token <profile> <id> <knob>")
 	}
 	be, err := app.secretBackend()
 	if err != nil {

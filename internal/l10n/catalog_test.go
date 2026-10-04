@@ -12,7 +12,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,19 +30,18 @@ import (
 // The catalog test of docs/VALIDATION.md § Output language in tests. It reads the
 // source of every package in the kae binary, type-checked so a format argument is
 // judged by its constant value ("a" + "b" counts) rather than by its spelling, and
-// fails on the conditions that section lists. What is not migrated yet is on the
-// second allowlist (allowlist_test.go), which can only shrink: its counts must
-// equal what the source holds, so a migrated call fails the test until its entry
-// is lowered, and a new unmigrated call fails it until the message is put in the
-// catalog.
+// fails on the conditions that section lists. Every finding fails it but those on
+// the two permanent allowlists (allowlist_test.go): the machine lines and the
+// errors kae never shows a person.
 //
 // What it does not see: a literal printed through anything but fmt's print
 // functions (io.WriteString, a Bubble Tea view), English composed with
 // fmt.Sprintf and printed later, a constant English argument handed to a sink
-// (it cannot tell prose from a token), and files outside this platform's build
-// (their allowlist entries are skipped, not checked; a literal format they pass
-// to a sink still counts as used, so a key used only on another shipped platform
-// is not an orphan). The package list comes from `go list -deps` of the kae binary.
+// (it cannot tell prose from a token), a literal inside the arguments of another
+// call a printed expression makes, and files outside this platform's build (a
+// literal format they pass to a sink still counts as used, so a key used only on
+// another shipped platform is not an orphan). The package list comes from
+// `go list -deps` of the kae binary.
 
 const (
 	modulePath = "github.com/webkaz-labs/kagikae"
@@ -90,12 +88,12 @@ var printFuncs = map[string]int{ // name -> index of the first printed argument
 	"Fprint": 1, "Fprintf": 1, "Fprintln": 1,
 }
 
-// Finding kinds, the columns of the second allowlist.
+// Finding kinds.
 const (
 	kindSink  = "sink"  // a sink's format is not a constant in the catalog
 	kindPrint = "print" // a fmt print call writes a literal outside the catalog
 	kindFlag  = "flag"  // a flag description is not in the catalog
-	kindError = "error" // fmt.Errorf / errors.New in internal/cmd or below, not yet a value
+	kindError = "error" // fmt.Errorf / errors.New in internal/cmd or below instead of a message value
 )
 
 type finding struct {
@@ -115,10 +113,24 @@ type scan struct {
 	used map[string]bool
 	// files is every file in the build, relative to the module root.
 	files map[string]bool
+	// flagSetMaker is the one function allowed to call flag.NewFlagSet, as
+	// "pkg.Func"; strayFlagSets are the positions of every other call.
+	flagSetMaker  string
+	strayFlagSets []string
+	// backquotedFlags are the flag registrations whose description holds a
+	// backquote in English or in the catalog's Japanese: the flag package would
+	// print the quoted word as the value's name (docs/L10N-JA.md § 訳さないもの).
+	backquotedFlags []string
+	pkg             string // the package being checked
 }
 
+// flagSetMaker is the function every flag.FlagSet comes from: it silences the
+// flag package's own printing so kae renders parse failures and usage
+// (docs/CLI.md § Localization, "The `flag` package").
+const flagSetMaker = cmdPkg + ".newFlagSet"
+
 func newScan(root string, sinks map[string]int) *scan {
-	return &scan{root: root, sinks: sinks, used: map[string]bool{}, files: map[string]bool{}}
+	return &scan{root: root, sinks: sinks, used: map[string]bool{}, files: map[string]bool{}, flagSetMaker: flagSetMaker}
 }
 
 // scanOnce type-checks the kae binary's packages once per test process.
@@ -314,6 +326,7 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, p listedPac
 	// Errors count everywhere but in l10n, whose own fmt.Errorf renders a
 	// message rather than composing one.
 	countErrors := p.ImportPath != l10nPkg
+	s.pkg = p.ImportPath
 	for _, f := range files {
 		rel, err := filepath.Rel(s.root, fset.File(f.Pos()).Name())
 		if err != nil {
@@ -427,10 +440,17 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 		return
 	}
 	if pkg == "flag" {
+		if name == "NewFlagSet" && s.pkg+"."+fn != s.flagSetMaker {
+			s.strayFlagSets = append(s.strayFlagSets, fset.Position(call.Pos()).String())
+		}
 		if index, ok := flagUsageArg[name]; ok && index < len(call.Args) {
 			usage, isConst := constString(info, call.Args[index])
 			if isConst {
 				s.used[usage] = true
+				ja, _ := lookup(usage)
+				if strings.Contains(usage+ja, "`") {
+					s.backquotedFlags = append(s.backquotedFlags, fmt.Sprintf("%s: %q", fset.Position(call.Pos()), usage))
+				}
 			}
 			if !isConst || !inCatalog(usage) {
 				add(kindFlag, fmt.Sprintf("flag.%s: description %q is not in the catalog", name, usage))
@@ -441,7 +461,7 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 	if pkg == "fmt" {
 		if first, ok := printFuncs[name]; ok {
 			for _, arg := range call.Args[min(first, len(call.Args)):] {
-				if text, isConst := constString(info, arg); isConst && hasProse(text) {
+				if text, found := proseLiteral(info, arg); found {
 					add(kindPrint, fmt.Sprintf("fmt.%s writes %q", name, text))
 					break
 				}
@@ -452,6 +472,28 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 	if countErrors && ((pkg == "fmt" && name == "Errorf") || (pkg == "errors" && name == "New")) {
 		add(kindError, pkg+"."+name+" builds an English string, not a message value")
 	}
+}
+
+// proseLiteral returns the first constant part of a printed argument that holds
+// prose: the argument itself when it is a constant, else a constant operand of
+// the concatenation it is built by ("…" + strings.Join(…)). A call's own
+// arguments are not looked into: a sink's are judged as a sink's, and another
+// function's result is not a literal.
+func proseLiteral(info *types.Info, expr ast.Expr) (string, bool) {
+	if text, isConst := constString(info, expr); isConst {
+		return text, hasProse(text)
+	}
+	switch e := ast.Unparen(expr).(type) {
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		if text, found := proseLiteral(info, e.X); found {
+			return text, true
+		}
+		return proseLiteral(info, e.Y)
+	}
+	return "", false
 }
 
 func inCatalog(format string) bool {
@@ -591,6 +633,18 @@ func TestCatalogValuesKeepVerbsAndAvoidAmbiguousCharacters(t *testing.T) {
 	}
 }
 
+func TestFlagSetsComeFromNewFlagSet(t *testing.T) {
+	for _, pos := range scanSource(t).strayFlagSets {
+		t.Errorf("%s: flag.NewFlagSet outside %s; call newFlagSet so kae renders the parse failures", pos, flagSetMaker)
+	}
+}
+
+func TestFlagDescriptionsHaveNoBackquotes(t *testing.T) {
+	for _, flag := range scanSource(t).backquotedFlags {
+		t.Errorf("%s: a flag description holds a backquote in English or Japanese; the usage block would print the quoted word as the value's name", flag)
+	}
+}
+
 func TestCatalogHasNoOrphanKeys(t *testing.T) {
 	s := scanSource(t)
 	for key := range catalog {
@@ -600,28 +654,10 @@ func TestCatalogHasNoOrphanKeys(t *testing.T) {
 	}
 }
 
-// pendingCounts is one row of the second allowlist.
-type pendingCounts struct{ sink, print, flag, error int }
-
-func (c pendingCounts) String() string {
-	var parts []string
-	for _, p := range []struct {
-		name string
-		n    int
-	}{{"sink", c.sink}, {"print", c.print}, {"flag", c.flag}, {"error", c.error}} {
-		if p.n != 0 {
-			parts = append(parts, fmt.Sprintf("%s: %d", p.name, p.n))
-		}
-	}
-	return "{" + strings.Join(parts, ", ") + "}"
-}
-
 func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	s := scanSource(t)
-	got := map[string]pendingCounts{}
 	machineHit := map[string]bool{}
 	notLocalizedHit := map[string]bool{}
-	var listed []finding
 	for _, f := range s.findings {
 		if f.kind == kindPrint && machineOutput[f.file+":"+f.fn] {
 			machineHit[f.file+":"+f.fn] = true
@@ -633,19 +669,7 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 				continue
 			}
 		}
-		c := got[f.file]
-		switch f.kind {
-		case kindSink:
-			c.sink++
-		case kindPrint:
-			c.print++
-		case kindFlag:
-			c.flag++
-		case kindError:
-			c.error++
-		}
-		got[f.file] = c
-		listed = append(listed, f)
+		t.Errorf("%s [%s] %s: %s", f.pos, f.kind, f.fn, f.what)
 	}
 	for key := range machineOutput {
 		if !machineHit[key] {
@@ -658,43 +682,6 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 			t.Errorf("not-localized allowlist entry %q matches no fmt.Errorf or errors.New: remove it", key)
 		}
 	}
-	files := map[string]bool{}
-	for file := range got {
-		files[file] = true
-	}
-	for file := range unmigrated {
-		files[file] = true
-	}
-	var mismatched []string
-	for file := range files {
-		want, have := unmigrated[file], got[file]
-		if want == have {
-			continue
-		}
-		if !s.files[file] {
-			if _, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(file))); err == nil {
-				continue // in the source, but not in this platform's build
-			}
-		}
-		mismatched = append(mismatched, file)
-		if have == (pendingCounts{}) {
-			t.Errorf("%s: nothing is left to migrate; remove its allowlist entry %v", file, want)
-		} else {
-			t.Errorf("%s: the source holds %v unmigrated, the allowlist says %v. A migrated call lowers the entry; "+
-				"a new message goes in the catalog rather than raising it", file, have, want)
-		}
-	}
-	if len(mismatched) > 0 {
-		slices.Sort(mismatched)
-		var b strings.Builder
-		for _, f := range listed {
-			if slices.Contains(mismatched, f.file) {
-				fmt.Fprintf(&b, "  %s [%s] %s: %s\n", f.pos, f.kind, f.fn, f.what)
-			}
-		}
-		t.Logf("findings in the mismatched files:\n%s", b.String())
-		t.Logf("the allowlist the source holds now:\n%s", formatAllowlist(got))
-	}
 }
 
 // notLocalizedKey returns the notLocalized entry an error finding falls under:
@@ -706,12 +693,4 @@ func notLocalizedKey(f finding) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func formatAllowlist(got map[string]pendingCounts) string {
-	var b strings.Builder
-	for _, k := range slices.Sorted(maps.Keys(got)) {
-		fmt.Fprintf(&b, "\t%q: %s,\n", k, got[k])
-	}
-	return b.String()
 }

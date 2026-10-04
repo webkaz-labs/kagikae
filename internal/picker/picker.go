@@ -79,11 +79,16 @@ type Options struct {
 	NoColor bool
 }
 
-// noMatch is what an empty result says.
-const noMatch = "no matching place"
-
-// hint is the footer line.
-const hint = "up/down move   enter choose   esc clear or cancel"
+// The picker's text is human output: each is a catalog key, rendered through
+// l10n.Sprintf when drawn (docs/CLI.md § Localization).
+const (
+	// noMatch is what an empty result says.
+	noMatch = "no matching place"
+	// hint is the footer line.
+	hint = "up/down move   enter choose   esc clear or cancel"
+	// placeholder fills the empty filter line.
+	placeholder = "type to filter"
+)
 
 // Model is the picker's state. It is a Bubble Tea model, exported so a caller
 // can test what it draws; use Run to show one.
@@ -110,7 +115,8 @@ type Model struct {
 func New(items []Item, opts Options) Model {
 	in := textinput.New()
 	in.Prompt = "> "
-	in.Placeholder = "type to filter"
+	// No Placeholder: the field slices it by runes against a display width, which
+	// breaks a wide (Japanese) one, so View draws it instead.
 	in.SetVirtualCursor(false)
 	in.SetStyles(textinput.Styles{}) // plain: styling is the picker's, and only with color
 	// Ctrl-V would run a clipboard program outside internal/runner; a terminal's
@@ -350,9 +356,9 @@ func (m Model) View() tea.View {
 	if m.done {
 		return tea.NewView("")
 	}
-	lines := []string{strings.TrimRight(m.input.View(), " ")}
+	lines := []string{m.filterLine()}
 	if len(m.vis) == 0 {
-		lines = append(lines, "  "+m.dim(noMatch))
+		lines = append(lines, "  "+m.dim(l10n.Sprintf(noMatch)))
 	} else {
 		end := min(m.offset+m.bodyHeight(), len(m.vis))
 		for _, i := range m.vis[m.offset:end] {
@@ -360,11 +366,20 @@ func (m Model) View() tea.View {
 		}
 	}
 	if m.showHint() {
-		lines = append(lines, m.dim(cells.Truncate(hint, m.width, "")))
+		lines = append(lines, m.dim(cells.Truncate(l10n.Sprintf(hint), m.width, "")))
 	}
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.Cursor = m.input.Cursor()
 	return v
+}
+
+// filterLine is the prompt and the filter, or the placeholder while the filter
+// is empty, cut to the field's width plus the cursor cell as the field cuts its own.
+func (m Model) filterLine() string {
+	if m.input.Value() != "" {
+		return strings.TrimRight(m.input.View(), " ")
+	}
+	return strings.TrimRight(m.input.Prompt+cells.Truncate(l10n.Sprintf(placeholder), m.input.Width()+1, ""), " ")
 }
 
 func (m Model) line(i int) string {

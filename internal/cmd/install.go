@@ -10,15 +10,20 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/installation"
 )
 
+// registerInstallFlags registers the flags of the hidden `kae __install`.
+func registerInstallFlags(fs *flag.FlagSet, destination, sourceKind, expectedVersion *string) {
+	fs.StringVar(destination, "destination", "", "absolute direct executable destination")
+	fs.StringVar(sourceKind, "source-kind", "", "release or local_build")
+	fs.StringVar(expectedVersion, "expected-version", "", "required release version")
+}
+
 // CmdInstall is the staged binary's hidden installer seam. Release transport and
 // checksums are verified by the invoking installer before this binary is run.
 func CmdInstall(args []string) int {
 	flags, positionals := splitArgs(args, "--destination", "--source-kind", "--expected-version")
 	var destination, sourceKind, expectedVersion string
 	opts, ok := parseCommon("__install", flags, false, func(fs *flag.FlagSet) {
-		fs.StringVar(&destination, "destination", "", "absolute direct executable destination")
-		fs.StringVar(&sourceKind, "source-kind", "", "release or local_build")
-		fs.StringVar(&expectedVersion, "expected-version", "", "required release version")
+		registerInstallFlags(fs, &destination, &sourceKind, &expectedVersion)
 	})
 	if !ok || len(positionals) != 0 || !opts.Yes || !filepath.IsAbs(destination) {
 		return usageError("__install requires --yes --destination <absolute path> --source-kind <release|local_build>")

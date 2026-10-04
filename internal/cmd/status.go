@@ -82,7 +82,7 @@ func CmdStatus(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s status [-f|--full] [--json]", toolName)
+		return usageLine("status [-f|--full] [--json]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runStatus(ctx, app, opts)
@@ -420,7 +420,7 @@ func CmdAccounts(ctx context.Context, args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s accounts [-f|--full] [--json]", toolName)
+		return usageLine("accounts [-f|--full] [--json]")
 	}
 	app := newApp(opts.ConfigPath)
 	return runAccounts(ctx, app, opts)

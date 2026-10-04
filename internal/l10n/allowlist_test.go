@@ -21,43 +21,10 @@ var machineOutput = map[string]bool{
 // they are not messages and stay English (docs/CLI.md § Localization, "Where
 // messages are composed"). Keyed "file" or "file:function", with the reason;
 // an entry that matches no `fmt.Errorf` or `errors.New` call fails the test.
-// Their calls do not count in unmigrated.
 var notLocalized = map[string]string{
 	"internal/preservation/store.go": "every error reaches a person only through cmd's preservationError, " +
 		"which maps the sentinels to its own messages and never prints the rest: a backend error may carry " +
 		"credential material, so translating one would imply it may be shown; drop this entry if cmd ever shows a store error other than through preservationError",
 	"internal/companion/companion.go:Spec.validate": "called only by Register, which panics at init on a " +
 		"programmer error in the companion registry",
-}
-
-// unmigrated is the second allowlist: per file, the human sinks, flag
-// registrations and errors in internal/cmd or below whose text is not in the
-// catalog yet. The test requires each count to equal the source, so the list only
-// shrinks: migrating a call fails the test until its count is lowered, and a new
-// unmigrated call fails it until its message is in the catalog. Done when empty
-// (docs/ROADMAP.md, localization stage 5).
-var unmigrated = map[string]pendingCounts{
-	"internal/cmd/account.go":      {sink: 4},
-	"internal/cmd/app.go":          {flag: 12},
-	"internal/cmd/backup.go":       {sink: 3},
-	"internal/cmd/cmd.go":          {sink: 1},
-	"internal/cmd/companion.go":    {sink: 4, print: 1},
-	"internal/cmd/completion.go":   {sink: 2},
-	"internal/cmd/doctor.go":       {sink: 1},
-	"internal/cmd/edit.go":         {sink: 1},
-	"internal/cmd/env.go":          {sink: 4},
-	"internal/cmd/flagspec.go":     {flag: 30},
-	"internal/cmd/init.go":         {sink: 1},
-	"internal/cmd/install.go":      {flag: 3},
-	"internal/cmd/login.go":        {sink: 1},
-	"internal/cmd/lsplace.go":      {sink: 2},
-	"internal/cmd/miseinit.go":     {sink: 2},
-	"internal/cmd/pin.go":          {sink: 2},
-	"internal/cmd/preservation.go": {sink: 2},
-	"internal/cmd/profile.go":      {sink: 6},
-	"internal/cmd/relogin.go":      {sink: 1},
-	"internal/cmd/run.go":          {sink: 1},
-	"internal/cmd/status.go":       {sink: 2},
-	"internal/cmd/switch.go":       {sink: 1},
-	"internal/cmd/uninstall.go":    {sink: 1, flag: 1},
 }

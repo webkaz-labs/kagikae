@@ -3,10 +3,12 @@ package cmd
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 func TestRootUnknownCommand(t *testing.T) {
@@ -37,15 +39,65 @@ func TestBuildVersionReport(t *testing.T) {
 	}
 }
 
+// helpGolden is `kae help` in English: the English rendering of printHelp's
+// sections must equal it byte for byte.
+func helpGolden(t *testing.T) string {
+	t.Helper()
+	golden, err := os.ReadFile(filepath.Join("testdata", "help.en.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(golden)
+}
+
 func TestRootHelpAliases(t *testing.T) {
+	golden := helpGolden(t)
 	for _, alias := range []string{"help", "--help", "-h"} {
 		got, output := captureStdout(t, func() int { return Root([]string{alias}) })
 		if got != constants.ExitOK {
 			t.Fatalf("expected ok exit for %s, got %d", alias, got)
 		}
-		if !strings.Contains(output, "kae use <tool> <account>") || !strings.Contains(output, "kae add <tool> [<account>]") {
-			t.Fatalf("unexpected help output for %s: %q", alias, output)
+		if output != golden {
+			t.Fatalf("help output for %s differs from testdata/help.en.golden:\n%s", alias, output)
 		}
+	}
+}
+
+func TestRootHelpInJapaneseKeepsSynopsesAndJSONModeStaysEnglish(t *testing.T) {
+	l10ntest.UseJapanese(t)
+	golden := helpGolden(t)
+	for _, alias := range []string{"help", "--help", "-h"} {
+		got, output := captureStdout(t, func() int { return Root([]string{alias}) })
+		if got != constants.ExitOK {
+			t.Fatalf("expected ok exit for %s, got %d", alias, got)
+		}
+		for _, want := range []string{
+			"使い方:\n", "フラグ（構造化出力に対応するコマンド）:\n",
+			"対応ツール: " + strings.Join(constants.Tools, "、") + "\n",
+		} {
+			if !strings.Contains(output, want) {
+				t.Errorf("%s: Japanese help lacks %q:\n%s", alias, want, output)
+			}
+		}
+		// Every synopsis and flag name of the English starts a Japanese line verbatim.
+		for _, line := range strings.Split(golden, "\n") {
+			if !strings.HasPrefix(line, "  kae ") && !strings.HasPrefix(line, "  --") {
+				continue
+			}
+			// The synopsis ends where the padding of two or more spaces starts.
+			text, _, _ := strings.Cut(strings.TrimPrefix(line, "  "), "  ")
+			synopsis := "  " + text
+			if !strings.Contains(output, "\n"+synopsis) {
+				t.Errorf("%s: Japanese help lacks the synopsis %q", alias, synopsis)
+			}
+		}
+		if strings.Contains(output, "switch every tool now") {
+			t.Errorf("%s: Japanese help still holds English descriptions:\n%s", alias, output)
+		}
+	}
+	got, output := captureStdout(t, func() int { return Root([]string{"--help", "--json"}) })
+	if got != constants.ExitOK || output != golden {
+		t.Fatalf("JSON mode help: exit %d, want the English golden:\n%s", got, output)
 	}
 }
 

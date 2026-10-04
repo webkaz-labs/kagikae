@@ -23,6 +23,7 @@ import (
 	_ "github.com/webkaz-labs/kagikae/internal/companion/kubectl"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 const (
@@ -192,7 +193,7 @@ func CmdVersion(args []string) int {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s version [--format text|json]", toolName)
+		return usageLine("version [--format text|json]")
 	}
 	report := buildVersionReport()
 	if opts.Format == formatJSON {
@@ -231,13 +232,25 @@ func parseToolVersion(version string) (int, int, int) {
 	return major, minor, patch
 }
 
+// printHelp writes `kae help` on stdout. Each section is one constant format the
+// catalog translates (docs/CLI.md § Localization); the synopsis column and the
+// flag names stay verbatim in every language. Each section's format ends in a
+// newline, which reportf's own then turns into the blank line before the next. In
+// English the sections join into the text testdata/help.en.golden holds.
 func printHelp() {
-	fmt.Println(`kae - switch AI coding CLI subscription accounts (kagikae)
+	reportf(helpIntro)
+	reportf(helpUsage)
+	reportf(helpFlags)
+	reportf("Tools: %s", l10n.List(constants.Tools))
+}
+
+const helpIntro = `kae - switch AI coding CLI subscription accounts (kagikae)
 
 Two verbs by scope plus run: use = switch now (global), pin = bind this
 directory (-s/--shared default, -i/--isolated), run = one process.
+`
 
-Usage:
+const helpUsage = `Usage:
   kae [-f|--full]                      status summary: this directory's pin,
                                        global profile, tools, profiles
   kae init                             create config and directories
@@ -302,17 +315,16 @@ Usage:
                                        completion alone, for a completion file)
   kae version | --version | -v
   kae help | --help | -h
+`
 
-Flags (structured commands):
+const helpFlags = `Flags (structured commands):
   --json                shorthand for --format json
   --format text|json    output format
   --dry-run             preview without writing (add --no-login/use/rollback)
   --yes                 non-interactive confirmation (reserved)
   --no-color            disable color
   --config <path>       explicit config file path
-
-Tools: ` + strings.Join(constants.Tools, ", "))
-}
+`
 
 // removedCommand reports a removed or renamed command and names its
 // replacement (kept for one release). replacement is inserted verbatim in every

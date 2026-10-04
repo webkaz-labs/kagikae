@@ -67,6 +67,7 @@ var formatSinks = map[string]int{ // key -> format argument index
 	cmdPkg + ".App.acquireNamedSharedLock": 1,
 	l10nPkg + ".Sprintf":                   0,
 	l10nPkg + ".Msgf":                      0,
+	l10nPkg + ".Errorf":                    0,
 }
 
 // flagUsageArg is the index of the usage argument of each flag registration, the

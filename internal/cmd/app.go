@@ -509,41 +509,28 @@ func (app *App) editConfig(mutate func(*config.Editor)) error {
 	return nil
 }
 
-// cmdError carries a deterministic exit code with its message, as a message
-// value (l10n.Message): the English format and arguments, rendered English by
-// Error() and localized only by a human sink (finish).
+// cmdError carries a deterministic exit code with its message, an l10n.Error:
+// rendered English by Error() and localized only by a human sink (finish).
 type cmdError struct {
-	exit   int
-	format string
-	args   []any
-	// english is fmt.Errorf(format, args...): the English text and, through it,
-	// every cause the format wraps with %w.
-	english error
+	exit int
+	msg  *l10n.Error
 }
 
-func (e *cmdError) Error() string { return e.english.Error() }
+func (e *cmdError) Error() string { return e.msg.Error() }
 
-// Unwrap returns every cause the format wrapped with %w, so errors.Is and
-// errors.As see through the message whatever language renders it. A format
-// with several %w wraps them all, as fmt.Errorf does; exitOf still takes the
-// exit code from the outermost cmdError, never from a cause.
-func (e *cmdError) Unwrap() []error {
-	switch wrapped := e.english.(type) {
-	case interface{ Unwrap() []error }:
-		return wrapped.Unwrap()
-	case interface{ Unwrap() error }:
-		return []error{wrapped.Unwrap()}
-	}
-	return nil
-}
+// Unwrap returns every cause the format wrapped with %w (l10n.Error.Unwrap);
+// exitOf still takes the exit code from the outermost cmdError, never from a
+// cause.
+func (e *cmdError) Unwrap() []error { return e.msg.Unwrap() }
 
 // MessageFormat makes cmdError an l10n.Message.
-func (e *cmdError) MessageFormat() (string, []any) { return e.format, e.args }
+func (e *cmdError) MessageFormat() (string, []any) { return e.msg.MessageFormat() }
 
-// errf builds a cmdError. It hands its unchanged format and args to fmt.Errorf,
-// which keeps it a `go vet` printf wrapper that accepts %w.
+// errf builds a cmdError. It hands its unchanged format and args to l10n.Errorf,
+// which forwards them to fmt.Errorf, so errf stays a `go vet` printf wrapper
+// that accepts %w.
 func errf(exit int, format string, args ...any) *cmdError {
-	return &cmdError{exit: exit, format: format, args: args, english: fmt.Errorf(format, args...)}
+	return &cmdError{exit: exit, msg: l10n.Errorf(format, args...)}
 }
 
 // exitOf maps an error to its deterministic exit code.

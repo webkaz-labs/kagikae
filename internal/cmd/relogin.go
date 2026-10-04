@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"strings"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"

@@ -10,6 +10,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
@@ -74,7 +75,7 @@ func quoteList(items []string) string {
 // (writeDirFragment) and the global writer (regenGlobalFragment).
 func writeMiseFragment(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create mise conf.d dir: %w", err)
+		return l10n.Errorf("create mise conf.d dir: %w", err)
 	}
 	return patch.WriteFileAtomic(path, []byte(content), 0o644)
 }
@@ -169,11 +170,11 @@ func ensureGitExcluded(ctx context.Context, paths ...string) string {
 	if !ok {
 		// kae would otherwise create `…/we/info/exclude` somewhere unrelated for a
 		// repository at `…/we<LF>ird/repo`, while reporting the fragment ignored.
-		return warnGitExclude(paths, fmt.Errorf("git rev-parse returned %q", out))
+		return warnGitExclude(paths, l10n.Errorf("git rev-parse returned %q", out))
 	}
 	commonDir, err := filepath.Abs(first)
 	if err != nil {
-		return warnGitExclude(paths, fmt.Errorf("resolve git common dir %q: %w", first, err))
+		return warnGitExclude(paths, l10n.Errorf("resolve git common dir %q: %w", first, err))
 	}
 	// The answer must name a directory that already exists. git just reported this
 	// as its own common dir, so it does — and requiring it keeps kae from acting on
@@ -185,7 +186,7 @@ func ensureGitExcluded(ctx context.Context, paths ...string) string {
 	// `git status`. Never declare an artifact for a location you could not measure
 	// (AGENTS.md); failing closed here lands in the warning path above.
 	if info, serr := os.Stat(commonDir); serr != nil || !info.IsDir() {
-		return warnGitExclude(paths, fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
+		return warnGitExclude(paths, l10n.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
 	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
@@ -280,7 +281,7 @@ func warnGitExclude(paths []string, err error) string {
 	// Name what was actually being ignored: the fragment, this directory's store
 	// links, or both. Naming the fragment unconditionally would send a user
 	// looking at a file that is already ignored when it is a link that is not.
-	what := strings.Join(paths, ", ")
+	what := l10n.List(paths)
 	warnf("could not tell git to ignore %s: %v", what, err)
 	infof("the binding is in place; ignore %s yourself (machine-specific; must not be committed)", what)
 	return ""
@@ -541,7 +542,7 @@ func applyCompanionSection(lines, companionLines, redactions []string) ([]string
 		}
 	}
 	if envIdx < 0 {
-		return nil, fmt.Errorf("%s has no [env] block; cannot place companion bindings", fragmentRelPath)
+		return nil, l10n.Errorf("%s has no [env] block; cannot place companion bindings", fragmentRelPath)
 	}
 	// Rebuild once: redactions just before [env], the companion lines at the
 	// [env] block's end (end-of-file), then the trailing newline restored.

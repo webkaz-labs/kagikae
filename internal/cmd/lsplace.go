@@ -40,7 +40,7 @@ func (a *atFlag) String() string {
 func (a *atFlag) Set(value string) error {
 	n, err := strconv.Atoi(value)
 	if err != nil || n < 1 {
-		return fmt.Errorf("--at takes a place number from 1, got %q", value)
+		return l10n.Errorf("--at takes a place number from 1, got %q", value)
 	}
 	a.n, a.set = n, true
 	return nil
@@ -79,9 +79,9 @@ func resolveLsTarget(verb, word string) (string, int) {
 		groups := targetGroups(verb)
 		candidates := append(append([]string{}, groups...), constants.Tools...)
 		return "", usageError("unknown %s target: %s (targets: %s, or a tool: %s)%s", verb, word,
-			strings.Join(groups, ", "), strings.Join(constants.Tools, ", "), didYouMean(word, candidates))
+			l10n.List(groups), l10n.List(constants.Tools), didYouMean(word, candidates))
 	default:
-		return "", usageError("ambiguous %s target %q: matches %s", verb, word, strings.Join(matches, ", "))
+		return "", usageError("ambiguous %s target %q: matches %s", verb, word, l10n.List(matches))
 	}
 }
 
@@ -551,7 +551,7 @@ func runLsPick(ctx context.Context, app *App, opts commonOpts, req lsRequest) in
 			names = append(names, fmt.Sprintf("%d %s", row.Number, row.Path))
 		}
 		return usageError("kae ls %s --current matches %d places; choose one with --at N: %s",
-			req.target, len(choice.candidates), strings.Join(names, ", "))
+			req.target, len(choice.candidates), l10n.List(names))
 	}
 	row := choice.row
 	path, code := placePath(row, req)

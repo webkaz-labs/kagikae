@@ -62,6 +62,7 @@ var formatSinks = map[string]int{ // key -> format argument index
 	cmdPkg + ".infof":                      0,
 	cmdPkg + ".reportf":                    0,
 	cmdPkg + ".promptf":                    0,
+	cmdPkg + ".stderrf":                    0,
 	cmdPkg + ".App.acquireNamed":           2,
 	cmdPkg + ".App.acquireNamedLock":       1,
 	cmdPkg + ".App.acquireNamedSharedLock": 1,

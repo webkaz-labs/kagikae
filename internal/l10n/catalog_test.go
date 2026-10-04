@@ -463,7 +463,7 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 	if pkg == "fmt" {
 		if first, ok := printFuncs[name]; ok {
 			for _, arg := range call.Args[min(first, len(call.Args)):] {
-				if text, isConst := constString(info, arg); isConst && hasProse(text) {
+				if text, found := proseLiteral(info, arg); found {
 					add(kindPrint, fmt.Sprintf("fmt.%s writes %q", name, text))
 					break
 				}
@@ -474,6 +474,28 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 	if countErrors && ((pkg == "fmt" && name == "Errorf") || (pkg == "errors" && name == "New")) {
 		add(kindError, pkg+"."+name+" builds an English string, not a message value")
 	}
+}
+
+// proseLiteral returns the first constant part of a printed argument that holds
+// prose: the argument itself when it is a constant, else a constant operand of
+// the concatenation it is built by ("…" + strings.Join(…)). A call's own
+// arguments are not looked into: a sink's are judged as a sink's, and another
+// function's result is not a literal.
+func proseLiteral(info *types.Info, expr ast.Expr) (string, bool) {
+	if text, isConst := constString(info, expr); isConst {
+		return text, hasProse(text)
+	}
+	switch e := ast.Unparen(expr).(type) {
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		if text, found := proseLiteral(info, e.X); found {
+			return text, true
+		}
+		return proseLiteral(info, e.Y)
+	}
+	return "", false
 }
 
 func inCatalog(format string) bool {

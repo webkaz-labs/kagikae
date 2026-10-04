@@ -1,0 +1,80 @@
+kae - switch AI coding CLI subscription accounts (kagikae)
+
+Two verbs by scope plus run: use = switch now (global), pin = bind this
+directory (-s/--shared default, -i/--isolated), run = one process.
+
+Usage:
+  kae [-f|--full]                      status summary: this directory's pin,
+                                       global profile, tools, profiles
+  kae init                             create config and directories
+  kae edit                             open the config in $VISUAL / $EDITOR
+  kae doctor [tool] [--json]           environment / auth health checks (alias: kae d)
+  kae add <tool> [<account>]           register an account (official login
+                                       flow + snapshot; --no-login snapshots
+                                       the current login instead)
+  kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it
+                                       idempotently (the former kae apply)
+  kae use --auto [-P <profile>]       automatic apply; retain global isolation
+                                       (--quiet suppresses success output)
+  kae use [-s|-i] <profile>            switch every tool now (alias: kae u)
+  kae use <tool> <account>             switch one tool now
+  kae pin [-s|-i|-t] [<profile>]       bind this directory (alias: kae p);
+                                       -s shares settings/sessions with the real
+                                       home (credential private), -i isolates,
+                                       -t keeps one store for the directory's
+                                       tree across account switches (claude only)
+  kae pin <tool> <account>             re-bind one tool inside a bound dir
+  kae unpin                            remove the binding from .mise.toml
+  kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
+  kae relogin [<tool>]                 run the tool's login flow into this
+                                       directory's bound store, then capture the
+                                       result back into that account's snapshot
+  kae run [-s|-i|--env] <t|all> <n> -- C
+                                       run C with an account applied (alias: kae r);
+                                       -s (default) uses the real home and restores
+                                       the previous login after; -i runs in the
+                                       per-account isolated home (shared with use -i,
+                                       no lock); --env injects env-profile vars only
+  kae env set|unset|list ...           env-mode profiles (API keys)
+  kae companion add|rm|list ...        bind git/gh/cloud CLI auth to a profile
+                                       (per-directory; takes effect via kae pin)
+  kae mise init [-P profile] [--auto] [--write]
+                                       render the auth-mode tasks + opt-in hook
+                                       (bind directories with kae pin instead)
+  kae accounts [-f] [--json]           registered accounts
+  kae ls [<target>] [-f] [--json]      places and accounts: groups account, pin,
+                                       each relevant tool, repo, kae; a target
+                                       (account|pin|repo|kae|<tool>) shows one
+  kae ls <target> --current|--at N     print one place's path; a tool target
+                                       takes -s <tool>, -i <tool> <account>,
+                                       --project|--below|--home and --root
+  kae open [<target>] [--at N|--pick]  open a place in the file manager (the
+                                       current place unless --at or --pick; same
+                                       targets and selectors as kae ls, no
+                                       account; several places open the picker)
+  kae cd [<target>] [--at N|--pick]    move the shell to a place; needs the kae
+                                       shell function that eval "$(kae
+                                       completion zsh)" (or bash) defines
+  kae status [-f] [--json]             full status report (alias: kae s);
+                                       -f/--full on status, accounts and ls adds
+                                       the Identity and Driver columns
+  kae preservation list [--json]       list preserved credential records
+  kae preservation restore <id>        restore to the original credential store
+  kae preservation rm <id>             delete a preserved record with confirmation
+  kae backup list [--json]             list switch backups
+  kae rollback [--to <backup-id>]      restore a backup
+  kae completion <bash|zsh|fish>       print a shell completion script and the
+                                       kae shell function (--no-function: the
+                                       completion alone, for a completion file)
+  kae version | --version | -v
+  kae help | --help | -h
+
+Flags (structured commands):
+  --json                shorthand for --format json
+  --format text|json    output format
+  --dry-run             preview without writing (add --no-login/use/rollback)
+  --yes                 non-interactive confirmation (reserved)
+  --no-color            disable color
+  --config <path>       explicit config file path
+
+Tools: claude, codex, agy, opencode, cursor, copilot

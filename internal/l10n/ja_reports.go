@@ -93,13 +93,10 @@ var jaReports = map[string]string{
 	"Captured":   "登録日時",
 
 	// Table cells (status.go, credentialCell).
-	"present":            "あり",
-	"absent":             "なし",
-	"%d warning(s)":      "警告 %d 件",
-	"re-login now":       "今すぐ再ログイン",
-	"%d day(s) left":     "残り %d 日",
-	"%d hour(s) left":    "残り %d 時間",
-	"under an hour left": "残り 1 時間未満",
+	"present":       "あり",
+	"absent":        "なし",
+	"%d warning(s)": "警告 %d 件",
+	"re-login now":  "今すぐ再ログイン",
 
 	// status.go, doctor.go and edit.go report lines and the doctor prompt.
 	"This directory: profile %s (bound, %s)":                                      "このディレクトリ: プロファイル %s（固定、%s）",

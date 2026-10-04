@@ -143,7 +143,7 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 			attributionSource{Dir: dirs.Config, Unbound: purging})
 		if !preserved {
 			why := refused.Why
-			if why.empty() {
+			if why.Empty() {
 				why = msgf("kae could not write it into that snapshot")
 			}
 			warnf("leaving the %s credential in %s in place instead of deleting it: it is newer "+
@@ -298,7 +298,7 @@ func (app *App) harvestRenamedStore(ctx context.Context, be secret.Backend,
 	}
 	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc,
 		dirs, snapshot, attributionSource{})
-	if preserved || refused.Why.empty() {
+	if preserved || refused.Why.Empty() {
 		return
 	}
 	// The rename is not stopped by this — it renames either way and the copy stays where it
@@ -409,7 +409,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			consequence = msgf("and this bind replaces it")
 		}
 		switch {
-		case refused.Why.empty() || !replaced[store.Dir]:
+		case refused.Why.Empty() || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced
 			// — the walk returns those forever (kae keeps a store so a re-pin restores its
 			// sessions) and this operation does not touch them. Whatever this pass does not
@@ -687,7 +687,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		}
 		return dirIdentityConfirms(ctx, be, specs, acc, dirs.Config)
 	}
-	if refused := attribution(); !refused.Why.empty() {
+	if refused := attribution(); !refused.Why.Empty() {
 		// Reported by the caller, not here. Two harvests can look at one store in a
 		// single command (the pin-level pass and this chokepoint), so printing at the
 		// point of detection said the same thing twice — measured, 2026-08-04 — and only

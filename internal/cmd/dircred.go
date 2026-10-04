@@ -227,7 +227,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 					"shared, so a copy in it is not this bind's to spend",
 					clause, tool, accountName)
 			}
-		case !refused.Why.empty():
+		case !refused.Why.Empty():
 			warnf("%s, so this write replaces it", clause)
 		}
 	}

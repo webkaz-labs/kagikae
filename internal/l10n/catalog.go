@@ -11,6 +11,7 @@ var catalogAreas = map[string]map[string]string{
 	"errors":   jaErrors,
 	"warnings": jaWarnings,
 	"reports":  jaReports,
+	"checks":   jaChecks,
 	"help":     jaHelp,
 	"other":    jaOther,
 }

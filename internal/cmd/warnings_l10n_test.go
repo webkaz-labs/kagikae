@@ -145,7 +145,7 @@ func TestWarningMessageValuesKeepEnglishError(t *testing.T) {
 		"ログイン中アカウントの記録が別のアカウントを示しているため、kae は退避しません"; got != want {
 		t.Errorf("ordered clause:\n got %q\nwant %q", got, want)
 	}
-	if !(harvestRefusal{}).Why.empty() || why.empty() {
+	if !(harvestRefusal{}).Why.Empty() || why.Empty() {
 		t.Error("only the zero message is empty")
 	}
 }

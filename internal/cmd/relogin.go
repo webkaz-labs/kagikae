@@ -465,7 +465,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	if preserved {
 		return
 	}
-	if refused.Why.empty() {
+	if refused.Why.Empty() {
 		// The one route that refuses with no reason of its own: the harvest read a newer
 		// copy, attributed it, and its write into the snapshot failed — which it has
 		// already reported, naming the concrete error. A line here would be the second
@@ -531,7 +531,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	// Either harvested — harvestDirCredential says so itself — or the snapshot already
 	// holds a copy at least as new, which is the ordinary outcome of re-running this
 	// command and is not worth a line. Nothing kae printed contradicts the account.
-	case refused.Why.empty():
+	case refused.Why.Empty():
 		return true
 	case refused.Conflicting:
 		// Positive evidence that the login is somebody else's: the store now names an

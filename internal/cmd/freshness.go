@@ -405,7 +405,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnLoggedOutUnchanged(plan.Tool, active)
 			continue
 		}
-		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); !why.empty() {
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); !why.Empty() {
 			// Recapturing here would file a credential kae cannot attribute under this
 			// account's name and identity, and after that no offline check can tell the
 			// two apart (see keepSnapshotIdentity).
@@ -417,7 +417,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 			continue
 		}
-		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.empty() {
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.Empty() {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
@@ -620,7 +620,7 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		values[i] = artifact.Value{Data: data, Present: true}
 		// An absent live identity says nothing (the tool may not have rebuilt it
 		// yet); only a present one is evidence of anything.
-		if !live.Present || !reason.empty() {
+		if !live.Present || !reason.Empty() {
 			continue
 		}
 		// The gate decides the **wording**, never the decision. Getting that backwards

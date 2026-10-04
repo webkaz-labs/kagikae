@@ -334,7 +334,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		if !warning.empty() {
+		if !warning.Empty() {
 			warnMessage(warning)
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {

@@ -727,7 +727,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		case refused.Conflicting:
 			conflicting = append(conflicting, reader)
 			conflict = refused
-		case !refused.Why.empty():
+		case !refused.Why.Empty():
 			silent = append(silent, refused)
 		default:
 			confirmed++

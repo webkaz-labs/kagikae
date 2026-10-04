@@ -389,13 +389,13 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
 	dirs := store.dirs()
 	if dirs.Cred != "" {
-		return app.sharedStoreAttribution(ctx, be, store.Tool, dirs.Cred, acc, attributionSource{}).Why.empty()
+		return app.sharedStoreAttribution(ctx, be, store.Tool, dirs.Cred, acc, attributionSource{}).Why.Empty()
 	}
 	specs, err := app.dirSpecs(ctx, store.Tool, dirs)
 	if err != nil {
 		return false
 	}
-	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why.empty()
+	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why.Empty()
 }
 
 // pinUnsplitChecks reports a bound directory that still keeps its own copy of an

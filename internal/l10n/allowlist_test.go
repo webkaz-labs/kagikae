@@ -25,7 +25,7 @@ var machineOutput = map[string]bool{
 var notLocalized = map[string]string{
 	"internal/preservation/store.go": "every error reaches a person only through cmd's preservationError, " +
 		"which maps the sentinels to its own messages and never prints the rest: a backend error may carry " +
-		"credential material, so translating one would imply it may be shown",
+		"credential material, so translating one would imply it may be shown; drop this entry if cmd ever shows a store error other than through preservationError",
 	"internal/companion/companion.go:Spec.validate": "called only by Register, which panics at init on a " +
 		"programmer error in the companion registry",
 }

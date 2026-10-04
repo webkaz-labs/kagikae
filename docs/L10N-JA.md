@@ -147,7 +147,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 
 ### 原因のつなぎ方（提案、operator の判断待ち）
 
-区分は「提案」です。英語の `<verb> <object>: <cause>`（`read %s: %w`、`parse config: %w`、`create lock dir: %w` のように、`cannot` を書かずに失敗した手順だけを名指す前置き）を、上の表の `kae: cannot X: <cause>` と同じ型で訳す案です。
+区分は「提案」です。採用するときは上の「敬体と体言止め」表の「失敗の述語」行も、この案に合わせて改めます。英語の `<verb> <object>: <cause>`（`read %s: %w`、`parse config: %w`、`create lock dir: %w` のように、`cannot` を書かずに失敗した手順だけを名指す前置き）を、上の表の `kae: cannot X: <cause>` と同じ型で訳す案です。
 
 | 英語 | 日本語の案 |
 |---|---|

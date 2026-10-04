@@ -311,6 +311,6 @@ func (app *App) displayPath(path string) string {
 // printResultWarnings lists an apply result's warnings as indented report lines.
 func printResultWarnings(warnings []l10n.Msg) {
 	for _, warning := range warnings {
-		fmt.Printf("  warning: %s\n", warning)
+		reportf("  warning: %s", warning)
 	}
 }

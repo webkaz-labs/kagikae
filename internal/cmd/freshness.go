@@ -3,8 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -472,8 +470,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureFailed(plan.Tool, active, err)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "kae: refreshed %s/%s snapshot from the live store before switching away\n",
-			plan.Tool, active)
+		infof("refreshed %s/%s snapshot from the live store before switching away", plan.Tool, active)
 	}
 }
 

@@ -2645,7 +2645,9 @@ picker's text, and `--help` and usage text.
 - **Tokens and names.** JSON contract tokens, status vocabulary, command and flag
   names, tool, account and profile names, keychain services, variable names and
   paths are inserted verbatim, and so are the placeholders in a usage synopsis
-  (`<tool>`, `KEY=VALUE`) and kae's `[redacted]` marker.
+  (`<tool>`, `KEY=VALUE`) and kae's `[redacted]` marker. The parenthesised cell words `(missing)`, `(ad-hoc)`
+  and `(secret)` are tokens too; the words only a person reads (`present`, `absent`,
+  `re-login now`, the days left and warning counts) are localized.
 - **Embedded external errors.** Text produced by the OS, an upstream tool or the Go
   standard library appears verbatim.
 

@@ -11,6 +11,31 @@ commit gate and the smoke procedures beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## v0.23.0 candidate
+
+Assessed on 2026-10-05 (JST). Application commits since published v0.22.1 include
+the localization work (stages 0 to 5, accepted by the operator), place navigation
+and the claude 2.1.284 re-verification (`0a7f81c`); the reported version is
+`v0.23.0`.
+
+`mise run check` passed in the default locale and under `LC_ALL=C.UTF-8
+LANG=C.UTF-8`; the Japanese run was `KAE_LANG=ja LC_ALL=ja_JP.UTF-8 mise run
+test-fresh`, and `GOOS=linux go vet ./...` and `git diff --check` passed.
+`mise run goreleaser-check`, `mise run release-evidence`, `mise run release-smoke`
+and `mise run naming-agreement` passed. The last needed the new reviewed digest: the
+installed Claude was 2.1.284, and a login-free temp-HOME `security` shim showed it
+reads the same service names as kae writes (see [VALIDATION.md](VALIDATION.md)
+§ Upstream Behaviour Assumptions, claude).
+
+Not run, by the operator's decision: the real-machine account-switching checks of
+§ Real-Machine Acceptance and the fingerprint-table re-recording. `mise run audit`
+fails: its fingerprint test refuses the installed claude (2.1.284, recorded
+2.1.282, three literal counts moved: `CLAUDE_CONFIG_DIR`, `claudeAiOauth`,
+`oauthAccount`), agy (digest differs from the recorded 1.2.10 build), copilot
+(built-in package not materialized), cursor and opencode (artifact not readable).
+Authentication behaviour other than claude's naming is therefore carried by the
+v0.22.1 evidence and not re-measured here.
+
 ## v0.22.1 candidate
 
 Assessed on 2026-09-29 (JST). Application commits since published v0.22.0 are

@@ -1,19 +1,15 @@
 # Release Process
 
-## Current release — kae v0.22.1
+## Current release — kae v0.23.0
 
-Patch release. The `Limit` cell shows the time left until each window resets
-(`5h 16% (2h13m) · 7d 95% (3d4h)`), and each window's percent has its own
-color. Human tables align by display width and, on a terminal narrower than the
-table, print each row as a block. JSON output is unchanged. The release is tag
-`v0.22.1` at `474896bc84a213f6c7c68f5c561d931c211ffb9c` and the
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.22.1).
-
-[ACCEPTANCE.md](ACCEPTANCE.md) § v0.22.1 candidate records the checks and the
-publication result. The fresh-release consumer used an isolated release-age
-exception. Command ownership is [CLI.md](CLI.md) § Output Rules and
-§ Subscription windows in listings. [ROADMAP.md](ROADMAP.md) retains conditional
-upstream research and the later orchestration/remote exploration queue.
+Minor release. Human output is localized: kae writes Japanese when `KAE_LANG`,
+`LC_ALL`, `LC_MESSAGES` or `LANG` selects it, and English otherwise. Reports,
+errors, warnings, prompts, the picker, `kae help` and the usage and flag text are
+covered; JSON, machine lines and the `kae:` prefixes stay English
+([CLI.md](CLI.md) § Localization). The claude adapter's verified version moves to
+2.1.284 with its reviewed naming digest. The release is the tag `v0.23.0` and its
+GitHub release once published; [ACCEPTANCE.md](ACCEPTANCE.md) § v0.23.0 candidate
+records the checks and the publication result.
 
 ## Release procedure
 

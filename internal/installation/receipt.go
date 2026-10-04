@@ -258,7 +258,7 @@ func recordReplacement(root string, r Receipt, data []byte, record func(string, 
 	}
 	r.Status = constants.InstallActive
 	if err := record(root, r); err != nil {
-		return r, fmt.Errorf("binary installed; receipt finalization failed; reinstall to repair: %w", err)
+		return r, l10n.Errorf("binary installed; receipt finalization failed; reinstall to repair: %w", err)
 	}
 	return r, nil
 }
@@ -341,7 +341,7 @@ func Remove(root string, confirmed Receipt) (removed bool, err error) {
 	}
 	current.Status = constants.InstallRemoved
 	if err := save(root, current); err != nil {
-		return true, errors.Join(fmt.Errorf("binary removed; receipt history could not be finalized"), err)
+		return true, errors.Join(l10n.Errorf("binary removed; receipt history could not be finalized"), err)
 	}
 	return true, nil
 }

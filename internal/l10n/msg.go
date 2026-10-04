@@ -9,7 +9,9 @@ import "fmt"
 // JSON stay English. It is not a failure and has no exit code. The zero Msg
 // renders "" in every language.
 //
-// A Msg holds a slice, so it cannot be compared with == or used as a map key.
+// A Msg holds a slice, so it cannot be compared with == or used as a map key. It is a
+// struct, so `omitempty` never omits it: a string field that carried `omitempty` keeps
+// its JSON bytes only if the Msg field drops the tag and the writer skips the empty case.
 type Msg struct {
 	format  string
 	args    []any

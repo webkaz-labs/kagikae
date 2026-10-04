@@ -514,7 +514,7 @@ func warnLoggedOutUnchanged(tool, accountName string) {
 }
 
 // warnLoggedOutDuringRunUnchanged is the same for a login that vanished while `kae run -s`
-// ran; detail is the adapter's own warnings from warningsDetail, or "".
+// ran; detail is the adapter's own warnings from warningsDetail, empty when there are none.
 func warnLoggedOutDuringRunUnchanged(tool, accountName string, detail message) {
 	warnf("%s logged out during the run%s; snapshot %s/%s left unchanged",
 		tool, detail, tool, accountName)

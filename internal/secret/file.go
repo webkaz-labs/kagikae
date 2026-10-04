@@ -2,12 +2,12 @@ package secret
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -49,7 +49,7 @@ func (b fileBackend) Set(_ context.Context, key string, value []byte) error {
 	}
 	path := b.path(key)
 	if err := patch.MkdirAllDurable(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create secret dir: %w", err)
+		return l10n.Errorf("create secret dir: %w", err)
 	}
 	if err := patch.WriteFileAtomic(path, []byte(encodePayload(value)), 0o600); err != nil {
 		return err

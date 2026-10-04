@@ -2,10 +2,11 @@ package patch
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // SyncDir acknowledges directory entry mutations through the OS filesystem API.
@@ -39,7 +40,7 @@ func mkdirAllDurable(path string, mode fs.FileMode, syncDir func(string) error) 
 		info, err := os.Stat(base)
 		if err == nil {
 			if !info.IsDir() {
-				return fmt.Errorf("not a directory: %s", base)
+				return l10n.Errorf("not a directory: %s", base)
 			}
 			break
 		}
@@ -71,7 +72,7 @@ func mkdirAllDurable(path string, mode fs.FileMode, syncDir func(string) error) 
 				return statErr
 			}
 			if !info.IsDir() {
-				return fmt.Errorf("not a directory: %s", next)
+				return l10n.Errorf("not a directory: %s", next)
 			}
 		}
 		if err := syncDir(base); err != nil {

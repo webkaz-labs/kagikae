@@ -6,12 +6,13 @@ package patch
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/tailscale/hujson"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
 // decodeDoc parses exactly one strict JSON value, rejects duplicate object
@@ -22,13 +23,13 @@ func decodeDoc(doc []byte) (any, error) {
 	dec.UseNumber()
 	v, err := decodeValue(dec)
 	if err != nil {
-		return nil, fmt.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
 		if err == nil {
-			err = fmt.Errorf("unexpected value after top-level value")
+			err = l10n.Errorf("unexpected value after top-level value")
 		}
-		return nil, fmt.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", err)
 	}
 	return v, nil
 }
@@ -52,10 +53,10 @@ func decodeValue(dec *json.Decoder) (any, error) {
 			}
 			key, ok := keyToken.(string)
 			if !ok {
-				return nil, fmt.Errorf("object member name is not a string")
+				return nil, l10n.Errorf("object member name is not a string")
 			}
 			if _, exists := object[key]; exists {
-				return nil, fmt.Errorf("duplicate object member %q", key)
+				return nil, l10n.Errorf("duplicate object member %q", key)
 			}
 			value, err := decodeValue(dec)
 			if err != nil {
@@ -66,7 +67,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 		if closeToken, err := dec.Token(); err != nil {
 			return nil, err
 		} else if closeToken != json.Delim('}') {
-			return nil, fmt.Errorf("object closed by %q", closeToken)
+			return nil, l10n.Errorf("object closed by %q", closeToken)
 		}
 		return object, nil
 	case '[':
@@ -81,11 +82,11 @@ func decodeValue(dec *json.Decoder) (any, error) {
 		if closeToken, err := dec.Token(); err != nil {
 			return nil, err
 		} else if closeToken != json.Delim(']') {
-			return nil, fmt.Errorf("array closed by %q", closeToken)
+			return nil, l10n.Errorf("array closed by %q", closeToken)
 		}
 		return array, nil
 	default:
-		return nil, fmt.Errorf("unexpected delimiter %q", delim)
+		return nil, l10n.Errorf("unexpected delimiter %q", delim)
 	}
 }
 
@@ -105,7 +106,7 @@ func EncodeJSON(v any) ([]byte, error) {
 // splitPointer parses an RFC 6901 pointer like "/oauthAccount" into tokens.
 func splitPointer(pointer string) ([]string, error) {
 	if pointer == "" || !strings.HasPrefix(pointer, "/") {
-		return nil, fmt.Errorf("invalid json pointer %q", pointer)
+		return nil, l10n.Errorf("invalid json pointer %q", pointer)
 	}
 	raw := strings.Split(pointer[1:], "/")
 	tokens := make([]string, len(raw))
@@ -117,7 +118,7 @@ func splitPointer(pointer string) ([]string, error) {
 				continue
 			}
 			if j+1 >= len(t) || (t[j+1] != '0' && t[j+1] != '1') {
-				return nil, fmt.Errorf("invalid json pointer escape in %q", pointer)
+				return nil, l10n.Errorf("invalid json pointer escape in %q", pointer)
 			}
 			if t[j+1] == '0' {
 				decoded.WriteByte('~')
@@ -204,7 +205,7 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 	}
 	if !remove {
 		if _, err := decodeDoc(value); err != nil {
-			return nil, fmt.Errorf("pointer value: %w", err)
+			return nil, l10n.Errorf("pointer value: %w", err)
 		}
 	}
 	operations, changed, err := planPointerRewrite(root, tokens, pointer, value, remove, true)
@@ -216,7 +217,7 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 	}
 	parsed, err := hujson.Parse(doc)
 	if err != nil {
-		return nil, fmt.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", err)
 	}
 	return patchAndPack(&parsed, operations, pointer)
 }
@@ -245,7 +246,7 @@ func planPointerRewrite(
 ) ([]pointerOperation, bool, error) {
 	node, ok := root.(map[string]any)
 	if !ok {
-		return nil, false, fmt.Errorf("document root is not a json object")
+		return nil, false, l10n.Errorf("document root is not a json object")
 	}
 	operations := make([]pointerOperation, 0, len(tokens))
 	for i, tok := range tokens[:len(tokens)-1] {
@@ -255,7 +256,7 @@ func planPointerRewrite(
 				return nil, false, nil
 			}
 			if !createParents {
-				return nil, false, fmt.Errorf("pointer %s parent does not exist", pointer)
+				return nil, false, l10n.Errorf("pointer %s parent does not exist", pointer)
 			}
 			created := map[string]any{}
 			operations = append(operations,
@@ -266,7 +267,7 @@ func planPointerRewrite(
 		}
 		childObj, isObj := child.(map[string]any)
 		if !isObj {
-			return nil, false, fmt.Errorf("pointer %s traverses a non-object", pointer)
+			return nil, false, l10n.Errorf("pointer %s traverses a non-object", pointer)
 		}
 		node = childObj
 	}

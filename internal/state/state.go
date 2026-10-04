@@ -4,12 +4,12 @@ package state
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
@@ -38,11 +38,11 @@ func Load(path string) (*State, error) {
 		return New(), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read state: %w", err)
+		return nil, l10n.Errorf("read state: %w", err)
 	}
 	st := New()
 	if err := json.Unmarshal(data, st); err != nil {
-		return nil, fmt.Errorf("parse state: %w", err)
+		return nil, l10n.Errorf("parse state: %w", err)
 	}
 	if st.Active == nil {
 		st.Active = map[string]string{}
@@ -53,7 +53,7 @@ func Load(path string) (*State, error) {
 // Save writes state.json atomically (0600 under a 0700 dir).
 func Save(path string, st *State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
+		return l10n.Errorf("create state dir: %w", err)
 	}
 	data, err := patch.EncodeJSON(st)
 	if err != nil {

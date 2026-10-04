@@ -37,7 +37,6 @@ var notLocalized = map[string]string{
 // unmigrated call fails it until its message is in the catalog. Done when empty
 // (docs/ROADMAP.md, localization stage 5).
 var unmigrated = map[string]pendingCounts{
-	"internal/account/account.go":           {error: 3},
 	"internal/adapter/adapter.go":           {error: 1},
 	"internal/adapter/agy/agy.go":           {error: 3},
 	"internal/adapter/claude/claude.go":     {error: 7},
@@ -46,7 +45,6 @@ var unmigrated = map[string]pendingCounts{
 	"internal/adapter/cursor/cursor.go":     {error: 4},
 	"internal/adapter/opencode/opencode.go": {error: 3},
 	"internal/artifact/artifact.go":         {error: 15},
-	"internal/backup/backup.go":             {error: 3},
 	"internal/cmd/account.go":               {sink: 4, print: 7, error: 9},
 	"internal/cmd/app.go":                   {flag: 12, error: 6},
 	"internal/cmd/backup.go":                {sink: 3, print: 3},
@@ -86,19 +84,7 @@ var unmigrated = map[string]pendingCounts{
 	"internal/cmd/uninstall.go":             {sink: 1, print: 3, flag: 1, error: 1},
 	"internal/config/config.go":             {error: 21},
 	"internal/config/writer.go":             {error: 2},
-	"internal/envprofile/envprofile.go":     {error: 6},
 	"internal/installation/image_darwin.go": {error: 2},
 	"internal/installation/receipt.go":      {error: 2},
-	"internal/keychain/keychain.go":         {error: 5},
 	"internal/lock/lock.go":                 {error: 3},
-	"internal/patch/atomic.go":              {error: 6},
-	"internal/patch/durable.go":             {error: 2},
-	"internal/patch/json_pointer.go":        {error: 15},
-	"internal/patch/jsonc.go":               {error: 4},
-	"internal/picker/picker.go":             {error: 3},
-	"internal/secret/file.go":               {error: 1},
-	"internal/secret/keychain.go":           {error: 3},
-	"internal/secret/libsecret.go":          {error: 4},
-	"internal/secret/secret.go":             {error: 7},
-	"internal/state/state.go":               {error: 3},
 }

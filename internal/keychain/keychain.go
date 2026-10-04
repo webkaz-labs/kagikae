@@ -7,10 +7,10 @@ package keychain
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -68,7 +68,7 @@ func readItem(ctx context.Context, service, account string) (payload []byte, fou
 			}
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
+		return nil, false, l10n.Errorf("security find-generic-password %q failed (exit %d)", service, code)
 	}
 	raw := strings.TrimRight(stdout, "\n")
 	payload = []byte(raw)
@@ -141,7 +141,7 @@ func itemExists(ctx context.Context, service, account string) (bool, error) {
 	if strings.Contains(stderr, NotFoundMarker) {
 		return false, nil
 	}
-	return false, fmt.Errorf("security find-generic-password %q (account %q) failed (exit %d)",
+	return false, l10n.Errorf("security find-generic-password %q (account %q) failed (exit %d)",
 		service, account, code)
 }
 
@@ -161,7 +161,7 @@ func ItemAccount(ctx context.Context, service string) (string, bool, error) {
 			}
 			return "", false, nil
 		}
-		return "", false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
+		return "", false, l10n.Errorf("security find-generic-password %q failed (exit %d)", service, code)
 	}
 	account := ""
 	if m := acctRE.FindStringSubmatch(stdout); m != nil {
@@ -187,7 +187,7 @@ func WriteItem(ctx context.Context, service, account string, payload []byte) err
 	_, stderr, code := runner.Run(ctx, "security",
 		"add-generic-password", "-U", "-s", service, "-a", account, "-w", string(payload))
 	if code != 0 {
-		return fmt.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
+		return l10n.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
 	}
 	if c := cacheFrom(ctx); c != nil {
 		c.invalidate(service)
@@ -222,7 +222,7 @@ func deleteItem(ctx context.Context, service, account string) error {
 			}
 			return nil
 		}
-		return fmt.Errorf("security delete-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
+		return l10n.Errorf("security delete-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
 	}
 	if c := cacheFrom(ctx); c != nil {
 		c.invalidate(service)

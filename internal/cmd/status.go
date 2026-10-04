@@ -296,10 +296,10 @@ func stampOrEmpty(t time.Time) string {
 func credentialCell(state, reloginBy string, now time.Time) string {
 	switch state {
 	case constants.CredentialStale:
-		return "re-login now"
+		return l10n.Sprintf("re-login now")
 	case constants.CredentialExpiring:
 		if by, err := time.Parse(time.RFC3339, reloginBy); err == nil {
-			return roundDays(by.Sub(now)) + " left"
+			return leadTimeLeft(by.Sub(now))
 		}
 		return constants.CredentialExpiring
 	case constants.CredentialOK:
@@ -350,13 +350,13 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if ts.Account != nil {
 			accountName = *ts.Account
 		}
-		auth := paint(constants.StatusWarn, "absent", color)
+		auth := paint(constants.StatusWarn, l10n.Sprintf("absent"), color)
 		if ts.AuthPresent {
-			auth = paint(constants.StatusOK, "present", color)
+			auth = paint(constants.StatusOK, l10n.Sprintf("present"), color)
 		}
 		notes := ""
 		if len(ts.Warnings) > 0 {
-			notes = paint(constants.StatusWarn, fmt.Sprintf("%d warning(s)", len(ts.Warnings)), color)
+			notes = paint(constants.StatusWarn, l10n.Sprintf("%d warning(s)", len(ts.Warnings)), color)
 		}
 		// Auth is about the live store ("is anything logged in here"); Credential is
 		// about the snapshot kae would apply, which is a different question and the
@@ -367,7 +367,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		}
 		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color), notes})
 	}
-	printAccountTable([]string{"Tool", "Account", columnIdentity, columnDriver, "Auth", "Credential", "Limit", "Notes"}, rows, opts.Full, color)
+	printAccountTable([]column{colTool, colAccount, colIdentity, colDriver, colAuth, colCredential, colLimit, colNotes}, rows, opts.Full, color)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
@@ -460,7 +460,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 			limitCell(item.Usage, now, color), item.CapturedAt,
 		})
 	}
-	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit", "Captured"}, rows, opts.Full, color)
+	printAccountTable([]column{colTool, colAccount, colIdentity, colActive, colDriver, colCredential, colLimit, colCaptured}, rows, opts.Full, color)
 	return constants.ExitOK
 }
 

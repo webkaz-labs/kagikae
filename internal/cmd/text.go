@@ -159,37 +159,81 @@ func printTable(header []string, rows [][]string, color bool) {
 	}
 }
 
-// columnIdentity and columnDriver head the account-table columns that only
-// --full shows (docs/CLI.md § Output Rules).
+// column identifies a table column independently of the words that head it: a
+// caller chooses columns by id, and columnHeader turns an id into the header text
+// in the selected language only when the table is printed. Choosing by header
+// text would stop working the moment a header is translated.
+type column int
+
 const (
-	columnIdentity = "Identity"
-	columnDriver   = "Driver"
+	colTool column = iota
+	colAccount
+	colIdentity
+	colActive
+	colDriver
+	colAuth
+	colCredential
+	colLimit
+	colNotes
+	colCaptured
 )
 
-// printAccountTable prints one of the account tables — status, accounts and the
-// Accounts table of ls. Without full it drops the Identity and Driver columns
-// before printTable measures the width, so the narrower table is the one that is
-// fitted to the terminal or stacked. Every row has one cell per header column,
-// as each caller builds it; a shorter row is a caller bug and panics here.
-func printAccountTable(header []string, rows [][]string, full, color bool) {
-	if !full {
-		var keep []int
-		for i, h := range header {
-			if h != columnIdentity && h != columnDriver {
-				keep = append(keep, i)
-			}
-		}
-		narrowed := make([][]string, 0, len(rows)+1)
-		for _, cells := range append([][]string{header}, rows...) {
-			out := make([]string, len(keep))
-			for k, i := range keep {
-				out[k] = cells[i]
-			}
-			narrowed = append(narrowed, out)
-		}
-		header, rows = narrowed[0], narrowed[1:]
+// fullOnly reports whether a column is one that only --full shows
+// (docs/CLI.md § Output Rules).
+func (c column) fullOnly() bool { return c == colIdentity || c == colDriver }
+
+// columnHeader is the header text of a column in the selected language. Each
+// header is a constant format of its own, so the catalog test sees every word.
+func columnHeader(c column) string {
+	switch c {
+	case colTool:
+		return l10n.Sprintf("Tool")
+	case colAccount:
+		return l10n.Sprintf("Account")
+	case colIdentity:
+		return l10n.Sprintf("Identity")
+	case colActive:
+		return l10n.Sprintf("Active")
+	case colDriver:
+		return l10n.Sprintf("Driver")
+	case colAuth:
+		return l10n.Sprintf("Auth")
+	case colCredential:
+		return l10n.Sprintf("Credential")
+	case colLimit:
+		return l10n.Sprintf("Limit")
+	case colNotes:
+		return l10n.Sprintf("Notes")
+	case colCaptured:
+		return l10n.Sprintf("Captured")
 	}
-	printTable(header, rows, color)
+	panic(fmt.Sprintf("no header for column %d", int(c)))
+}
+
+// printAccountTable prints one of the account tables — status, accounts and the
+// Accounts table of ls. Without full it drops the fullOnly columns (Identity and
+// Driver) before printTable measures the width, so the narrower table is the one
+// that is fitted to the terminal or stacked, and the headers are worded after that
+// choice, so a wider header sets the width it really occupies. Every row has one
+// cell per column, as each caller builds it; a shorter row is a caller bug and
+// panics here.
+func printAccountTable(cols []column, rows [][]string, full, color bool) {
+	var keep []int
+	header := []string{}
+	for i, c := range cols {
+		if full || !c.fullOnly() {
+			keep = append(keep, i)
+			header = append(header, columnHeader(c))
+		}
+	}
+	narrowed := make([][]string, len(rows))
+	for r, cells := range rows {
+		narrowed[r] = make([]string, len(keep))
+		for k, i := range keep {
+			narrowed[r][k] = cells[i]
+		}
+	}
+	printTable(header, narrowed, color)
 }
 
 // dimUnknown recedes the "-" placeholder so known values carry the eye.

@@ -116,7 +116,7 @@ func TestRecoveryWithoutLoginSupport(t *testing.T) {
 	global := globalLoginRemedy(constants.ToolAgy, "main")
 	bound := pinLoginRemedy(constants.ToolAgy, "~/code/side-project").Error()
 	for _, want := range []string{"kae cannot launch a login", "verify the live agy login belongs to account main", "kae add --no-login agy main"} {
-		if !strings.Contains(global, want) {
+		if !strings.Contains(global.Error(), want) {
 			t.Fatalf("missing %q: %s", want, global)
 		}
 	}
@@ -125,7 +125,7 @@ func TestRecoveryWithoutLoginSupport(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, bound)
 		}
 	}
-	if strings.Contains(global+bound, "kae add --restore") || strings.Contains(bound, "kae relogin") {
+	if strings.Contains(global.Error()+bound, "kae add --restore") || strings.Contains(bound, "kae relogin") {
 		t.Fatal("recommended unsupported login")
 	}
 }

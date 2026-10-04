@@ -290,5 +290,5 @@ func printAccountItems(app *App, items []accountItem, addHint string, opts commo
 			limitCell(item.Usage, now, color),
 		})
 	}
-	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit"}, rows, opts.Full, color)
+	printAccountTable([]column{colTool, colAccount, colIdentity, colActive, colDriver, colCredential, colLimit}, rows, opts.Full, color)
 }

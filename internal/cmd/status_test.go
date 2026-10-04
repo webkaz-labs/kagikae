@@ -450,8 +450,8 @@ func TestLsFullThroughRoot(t *testing.T) {
 		code, out := captureStdout(t, func() int { return Root(c.args) })
 		mustExit(t, constants.ExitOK, code, out)
 		header := headerLine(t, out)
-		hasIdentity := strings.Contains(header, columnIdentity)
-		hasDriver := strings.Contains(header, columnDriver)
+		hasIdentity := strings.Contains(header, columnHeader(colIdentity))
+		hasDriver := strings.Contains(header, columnHeader(colDriver))
 		if hasIdentity != c.full || hasDriver != c.full {
 			t.Errorf("Root(%q) header %q: Identity %v, Driver %v, want %v", c.args, header, hasIdentity, hasDriver, c.full)
 		}

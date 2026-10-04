@@ -13,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -319,9 +320,8 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 }
 
 // staleCredentialDetail combines the observed deadline with global login guidance.
-func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
-	reason := staleCredentialReason(info, tool)
-	return fmt.Sprintf("%s; %s", reason, globalLoginRemedy(tool, accountName))
+func staleCredentialDetail(info freshness.Info, tool, accountName string) message {
+	return msgf("%s; %s", staleCredentialReason(info, tool), globalLoginRemedy(tool, accountName))
 }
 
 // staleCredentialReason states why a credential can no longer open a session,
@@ -333,37 +333,69 @@ func staleCredentialDetail(info freshness.Info, tool, accountName string) string
 //
 // Callers only reach it for a credential that is actually past its deadline, so
 // the dated branches always have the timestamp they print.
-func staleCredentialReason(info freshness.Info, tool string) string {
+func staleCredentialReason(info freshness.Info, tool string) message {
 	switch {
 	case info.Revoked:
-		return fmt.Sprintf("%s emptied it after a failed token refresh", tool)
+		return msgf("%s emptied it after a failed token refresh", tool)
 	case info.HasRefresh:
-		return fmt.Sprintf("it expired %s and its refresh token expired %s",
+		return msgf("it expired %s and its refresh token expired %s",
 			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
 	default:
-		return fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
+		return msgf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
 	}
 }
 
 // expiringCredentialDetail uses the same target and login prerequisites as a stale snapshot.
-func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) string {
-	when := fmt.Sprintf("needs an interactive re-login in %s (%s)",
-		roundDays(deadline.Sub(now)), utcStamp(deadline))
-	return fmt.Sprintf("%s; %s", when, globalLoginRemedy(tool, accountName))
+func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) message {
+	when := msgf("needs an interactive re-login in %s (%s)", leadTimeMessage(deadline.Sub(now)), utcStamp(deadline))
+	return msgf("%s; %s", when, globalLoginRemedy(tool, accountName))
 }
 
-// roundDays renders a lead time the way a human reads a deadline. Under a day it
-// says hours, because "in 0 days" is worse than useless on the last day; a
-// fraction of a day is rounded down so the number never overstates the time left.
-func roundDays(d time.Duration) string {
+// leadUnit is the unit a lead time is read in.
+type leadUnit int
+
+const (
+	leadUnderHour leadUnit = iota
+	leadHours
+	leadDays
+)
+
+// leadTime splits a lead time the way a human reads a deadline. Under a day it
+// counts hours, because "in 0 days" is worse than useless on the last day; a
+// fraction of a unit is rounded down so the number never overstates the time left.
+// The words each unit takes are a constant format per unit (leadTimeMessage and
+// leadTimeLeft), so a translation can word a count as its language needs.
+func leadTime(d time.Duration) (unit leadUnit, n int) {
 	if days := int(d / (24 * time.Hour)); days >= 1 {
-		return fmt.Sprintf("%d day(s)", days)
+		return leadDays, days
 	}
-	hours := int(d / time.Hour)
-	if hours < 1 {
-		return "under an hour"
+	if hours := int(d / time.Hour); hours >= 1 {
+		return leadHours, hours
 	}
-	return fmt.Sprintf("%d hour(s)", hours)
+	return leadUnderHour, 0
+}
+
+// leadTimeMessage is the lead time as a fragment ("2 day(s)") that another message
+// embeds.
+func leadTimeMessage(d time.Duration) message {
+	switch unit, n := leadTime(d); unit {
+	case leadDays:
+		return msgf("%d day(s)", n)
+	case leadHours:
+		return msgf("%d hour(s)", n)
+	}
+	return msgf("under an hour")
+}
+
+// leadTimeLeft is the lead time as a table cell ("2 day(s) left").
+func leadTimeLeft(d time.Duration) string {
+	switch unit, n := leadTime(d); unit {
+	case leadDays:
+		return l10n.Sprintf("%d day(s) left", n)
+	case leadHours:
+		return l10n.Sprintf("%d hour(s) left", n)
+	}
+	return l10n.Sprintf("under an hour left")
 }
 
 // utcStamp formats a credential timestamp for a human-readable warning.
@@ -840,9 +872,9 @@ func errUncapturedWithRemedy(tool, accountName string) *cmdError {
 		tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }
 
-func globalLoginRemedy(tool, accountName string) string {
+func globalLoginRemedy(tool, accountName string) message {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
+		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
 	}
-	return fmt.Sprintf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
+	return msgf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }

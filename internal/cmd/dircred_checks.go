@@ -80,7 +80,7 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 				Tool: bound.Tool, Code: constants.CheckCredentialExpiring,
 				Status: constants.StatusWarn,
 				Message: msgf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
-					bound.Tool, bound.Dir, roundDays(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
+					bound.Tool, bound.Dir, leadTimeMessage(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
 					pinLoginRemedy(bound.Tool, bound.Dir)),
 			})
 		}

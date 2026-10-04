@@ -156,3 +156,40 @@ func TestOnlyTheFlagSetMakerCallsNewFlagSet(t *testing.T) {
 		t.Fatalf("stray flag sets = %q, want the one in elsewhere", s.strayFlagSets)
 	}
 }
+
+// backquoteFixture registers a description with a backquote in English, one whose
+// Japanese holds one, and a clean one.
+const backquoteFixture = `package fx
+
+import "flag"
+
+func register(fs *flag.FlagSet) {
+	fs.Bool("a", false, "run ` + "`kae use`" + `")
+	fs.Bool("b", false, "japanese quotes")
+	fs.Bool("c", false, "plain")
+}
+`
+
+func TestBackquotedFlagDescriptionsAreFoundInEitherLanguage(t *testing.T) {
+	restore := UseCatalogForTest(map[string]string{
+		"run `kae use`":   "kae use を実行",
+		"japanese quotes": "`kae use` を実行",
+		"plain":           "そのまま",
+	})
+	t.Cleanup(restore)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fx.go"), []byte(backquoteFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	s := newScan(dir, map[string]int{})
+	pkg := listedPackage{ImportPath: "fx", Dir: dir, GoFiles: []string{"fx.go"}}
+	if err := s.checkPackage(fset, importer.ForCompiler(fset, "source", nil), pkg); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.backquotedFlags) != 2 ||
+		!strings.Contains(s.backquotedFlags[0], "\"run `kae use`\"") ||
+		!strings.Contains(s.backquotedFlags[1], `"japanese quotes"`) {
+		t.Fatalf("backquoted flags = %q, want a and b", s.backquotedFlags)
+	}
+}

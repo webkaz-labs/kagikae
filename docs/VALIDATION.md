@@ -2270,9 +2270,9 @@ assembly with its `CLAUDE_SECURESTORAGE_CONFIG_DIR` and NFC rule, the
 `.claude<suffix>.json` identity path, the account-attribute character class, and
 `profileFetchedAt` compared as `Date.now()-v<$U` with `$U` equal to `86400000`.
 The host-managed credential-file checks were not re-read on this build; that row
-keeps its 2.1.260 reading. `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was not re-run.
+keeps its earlier provenance: the row's 2.1.260 reading, re-established on 2.1.261 and partly re-read on 2.1.282 above. `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was not re-run.
 The rows a login, refresh, real account or switch gates keep the provenance written
-on them, measured on 2.1.282 or earlier. No 2.1.282 bundle remained installed, so
+on them; none was re-run on 2.1.282 or 2.1.284. No 2.1.282 bundle remained installed, so
 there was no bundle-pair comparison. Three literal counts moved from their recorded
 values (`CLAUDE_CONFIG_DIR` 80 → 78, `claudeAiOauth` 28 → 29, `oauthAccount`
 79 → 81). § Upstream Literal Fingerprints still records 2.1.282, so the audit

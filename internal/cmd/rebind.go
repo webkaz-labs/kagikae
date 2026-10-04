@@ -49,7 +49,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	if m, known := bindModeFor(info.Mode); known && !m.bindsTool(tool) {
 		return finish(opts, errf(constants.ExitUnsupported,
 			"`kae pin %s <account>` does not apply in this directory: %s",
-			tool, modeUnboundReason(m, tool)))
+			tool, modeUnboundMessage(m, tool)))
 	}
 	if _, bound := info.Accounts[tool]; !bound {
 		return finish(opts, errf(constants.ExitNotFound,
@@ -190,7 +190,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		}
 	}
 	linked, removed := app.syncStoreLinks(tools, want)
-	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
+	reportf("Re-bound %s to account %s (%s; sessions/settings unchanged)", tool, accountName, info.Mode)
 	app.reportStoreLinks(linked, removed, ensureGitExcluded(ctx, linked...))
 	return constants.ExitOK
 }

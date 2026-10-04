@@ -62,7 +62,7 @@ func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 
 	const tombstone = `{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}}`
 	fake := &runnertest.Fake{Stdout: tombstone, Code: 0}
-	var lines []string
+	var lines []message
 	runner.With(fake, func() {
 		lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "", map[string]bool{bound: true}, fragmentInfo{}, false)
 	})
@@ -74,7 +74,7 @@ func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 	if strings.Contains(args, sha8Of(bound)) {
 		t.Fatalf("the bound store's item must survive: %v", fake.Args)
 	}
-	if len(lines) != 1 || !strings.Contains(lines[0], stale) {
+	if len(lines) != 1 || !strings.Contains(lines[0].Error(), stale) {
 		t.Fatalf("the removal must be reported: %v", lines)
 	}
 }
@@ -98,7 +98,7 @@ func TestPruneDirCredentialsKeepsARevokedLookingCopyWithALiveDeadline(t *testing
 			mkdirs(t, stale, bound)
 
 			fake := &runnertest.Fake{Stdout: `{"claudeAiOauth":` + oauth + `}`, Code: 0}
-			var lines []string
+			var lines []message
 			var stderr string
 			runner.With(fake, func() {
 				_, stderr = captureStderr(t, func() int {
@@ -146,7 +146,7 @@ func TestPruneDirCredentialsDeletesALostAccountsCopyOnlyWhenPurging(t *testing.T
 				sim.payload = claudeOAuthPayload("sk-ant-oat01-REFRESHED-cccc", app.Now().Add(8*time.Hour))
 				sim.ops = nil
 
-				var lines []string
+				var lines []message
 				_, stderr := captureStderr(t, func() int {
 					lines = app.pruneDirCredentials(context.Background(), testBackend(t, app),
 						pinID, "", nil, fragmentInfo{}, purging)
@@ -204,7 +204,7 @@ func TestPruneDirCredentialsKeepsWhenTheSnapshotPayloadIsUnreadable(t *testing.T
 		sim.payload = claudeOAuthPayload("sk-ant-oat01-REFRESHED-cccc", app.Now().Add(8*time.Hour))
 		sim.ops = nil
 
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, true)
 			return 0
@@ -253,7 +253,7 @@ func TestPruneDirCredentialsKeepsUnreadableCredential(t *testing.T) {
 		sim.payload = `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r"}}`
 		sim.ops = nil
 
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "", nil, fragmentInfo{}, false)
 			return 0
@@ -283,7 +283,7 @@ func TestPruneDirCredentialsSkipsBoundAndUnbindableStores(t *testing.T) {
 	seedKeyringCodex(t, codexStore)
 
 	fake := &runnertest.Fake{Code: 0}
-	var lines []string
+	var lines []message
 	runner.With(fake, func() {
 		lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "", map[string]bool{claudeStore: true}, fragmentInfo{}, false)
 	})
@@ -322,7 +322,7 @@ func TestPruneDirCredentialsReportsNothingWhenNoItemExists(t *testing.T) {
 	mkdirs(t, stale)
 
 	fake := &runnertest.Fake{Stderr: "security: " + keychain.NotFoundMarker, Code: 44}
-	var lines []string
+	var lines []message
 	runner.With(fake, func() {
 		lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "", nil, fragmentInfo{}, false)
 	})
@@ -377,7 +377,7 @@ func TestPruneDirCredentialsHarvestsBeforeDeleting(t *testing.T) {
 		sim.payload = claudeOAuthPayload(refreshed, now.Add(8*time.Hour))
 
 		be := testBackend(t, app)
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
 			return 0
@@ -392,7 +392,7 @@ func TestPruneDirCredentialsHarvestsBeforeDeleting(t *testing.T) {
 		if !strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("a harvested item must still be swept: %v", sim.ops)
 		}
-		if len(lines) != 1 || !strings.Contains(lines[0], stale) {
+		if len(lines) != 1 || !strings.Contains(lines[0].Error(), stale) {
 			t.Fatalf("the removal must be reported: %v", lines)
 		}
 	})
@@ -426,7 +426,7 @@ func TestPruneDirCredentialsKeepsACopyItCannotDate(t *testing.T) {
 			`","refreshToken":"r","expiresAt":"1814400000000"}}`
 
 		be := testBackend(t, app)
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
 			return 0
@@ -495,7 +495,7 @@ func TestPruneDirCredentialsKeepsAnItemItCannotAttributeToARecord(t *testing.T) 
 		sim.ops = nil
 
 		be := testBackend(t, app)
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
 			return 0
@@ -574,7 +574,7 @@ func TestPruneDirCredentialsKeepsUnattributableCredential(t *testing.T) {
 		sim.ops = nil
 
 		be := testBackend(t, app)
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			// A previous binding kae could not read: the zero fragment attributes nothing.
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
@@ -623,7 +623,7 @@ func TestPruneDirCredentialsWillNotAttributeASharedStoreFromAnIsolatedBinding(t 
 		// The binding being replaced was isolated, so it says nothing about who owns a
 		// leftover *shared* store.
 		prev := fragmentInfo{Mode: modeIsolated, Accounts: map[string]string{constants.ToolClaude: "main"}}
-		var lines []string
+		var lines []message
 		_, stderr := captureStderr(t, func() int {
 			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, prev, false)
 			return 0
@@ -727,7 +727,7 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 
 			// Unreadable at all: not JSON kae's parser recognizes as a credential.
 			fake := &runnertest.Fake{Stdout: `{"somethingElse":true}`, Code: 0}
-			var lines []string
+			var lines []message
 			var stderr string
 			runner.With(fake, func() {
 				_, stderr = captureStderr(t, func() int {
@@ -743,7 +743,7 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 			if !strings.Contains(stderr, tc.wantSays) {
 				t.Errorf("want stderr to contain %q: %q", tc.wantSays, stderr)
 			}
-			if tc.wantDeleted && (len(lines) != 1 || !strings.Contains(lines[0], stale)) {
+			if tc.wantDeleted && (len(lines) != 1 || !strings.Contains(lines[0].Error(), stale)) {
 				t.Errorf("a purge that removed it must report it: %v", lines)
 			}
 			if !tc.wantDeleted && len(lines) != 0 {

@@ -58,8 +58,9 @@ Mise verifies the signed manifest and selected archive. Inspect accepted signers
 with `mise packslip pins`; investigate verification failures without forgetting
 pins or changing release-age/lockfile policies. Earlier releases use
 `mise use -g github:webkaz-labs/kagikae@vX.Y.Z`; they have no Packslip bundle.
-The Packslip manifest selects macOS and GNU/Linux on amd64/arm64. Its Linux
-selection does not cover musl; direct archives remain a separate installation path.
+The Packslip manifest selects macOS on arm64 and GNU/Linux on amd64/arm64;
+releases before v0.24.0 also select macOS on amd64. Its Linux selection does not
+cover musl; direct archives remain a separate installation path.
 
 From source with Go (builds the binary as `kagikae`; alias it to `kae`):
 
@@ -143,10 +144,13 @@ If the binary is already gone, reinstall through the same manager and run the
 cleanup. Remove an unwanted postinstall recipe deliberately, so later installs
 cannot re-enable setup. Config, credentials and accepted signer records are retained.
 
-Prebuilt archives and `checksums.txt` for macOS and Linux (amd64/arm64) are on
-[GitHub Releases](https://github.com/webkaz-labs/kagikae/releases); release
-assets carry build-provenance attestations. Windows is not built yet
-([docs/ROADMAP.md](docs/ROADMAP.md)).
+Prebuilt archives and `checksums.txt` for macOS (arm64) and Linux (amd64/arm64)
+are on [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases); release
+assets carry build-provenance attestations. Intel Macs (darwin/amd64) are not
+supported from v0.24.0: those releases ship no darwin/amd64 archive, and the
+shell installer refuses them there; a source build with `go install` is not
+tested there. Earlier releases keep their published darwin/amd64 archives.
+Windows is not built yet ([docs/ROADMAP.md](docs/ROADMAP.md)).
 
 `kae` needs the official tool CLIs themselves for logging in — it snapshots and
 restores what they create.
@@ -579,7 +583,7 @@ always English. The selection rules are in [docs/CLI.md](docs/CLI.md#localizatio
 
 | Platform | Status |
 |----------|--------|
-| macOS | Release binaries available; adapter-specific capability guards apply. |
+| macOS | Release binaries for Apple silicon (arm64); Intel (amd64) is unsupported from v0.24.0. Adapter-specific capability guards apply. |
 | Linux | Release binaries available; libsecret or file backend, with adapter-specific limitations. |
 | Windows | No release binaries; see [docs/ROADMAP.md](docs/ROADMAP.md) for deferred platform work. |
 

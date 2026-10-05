@@ -34,8 +34,8 @@ by hand — the tag does it.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
    `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`
    CI runs — a **subset** of `mise run check`, and that workflow's own steps are
-   the copy of it to read — then GoReleaser builds darwin/linux × amd64/arm64
-   (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
+   the copy of it to read — then GoReleaser builds darwin/arm64 and linux ×
+   amd64/arm64 (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
    with a grouped changelog, and attests the archives named by the release
    checksum manifest. A separate `packslip` job then downloads these published
    assets for the exact tag and source commit, verifies their provenance and

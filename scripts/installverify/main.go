@@ -31,8 +31,8 @@ func write(path, data string, mode os.FileMode) error {
 	return os.WriteFile(path, []byte(data), mode)
 }
 
-func archive(root, tag string) error {
-	name := fmt.Sprintf("kae_%s_%s_%s.tar.gz", tag[1:], runtime.GOOS, runtime.GOARCH)
+func archive(root, tag, platform string) error {
+	name := fmt.Sprintf("kae_%s_%s.tar.gz", tag[1:], platform)
 	path := filepath.Join(root, name)
 	f, err := os.Create(path)
 	if err != nil {
@@ -108,9 +108,11 @@ func check() error {
 		}
 	}
 	env = append(env, "PATH="+shim+":"+os.Getenv("PATH"), "KAE_REPO=webkaz-labs/kagikae")
+	platform := runtime.GOOS + "_" + runtime.GOARCH
+	var stderr string
 	run := func(tag string, want int) error {
 		files := map[string]string{}
-		for _, name := range []string{"checksums.txt", fmt.Sprintf("kae_%s_%s_%s.tar.gz", strings.TrimPrefix(tag, "v"), runtime.GOOS, runtime.GOARCH)} {
+		for _, name := range []string{"checksums.txt", fmt.Sprintf("kae_%s_%s.tar.gz", strings.TrimPrefix(tag, "v"), platform)} {
 			asset := filepath.Join(assetDir, name)
 			// Invalid-version controls are refused before the transport is used.
 			if _, err := os.Stat(asset); err == nil {
@@ -125,14 +127,16 @@ func check() error {
 			return err
 		}
 
-		out, stderr, code := runner.RunWithEnv(context.Background(), env, "sh", filepath.Join(repo, "scripts/install.sh"), "--version", tag, "--install-dir", filepath.Dir(destination))
+		var out string
+		var code int
+		out, stderr, code = runner.RunWithEnv(context.Background(), env, "sh", filepath.Join(repo, "scripts/install.sh"), "--version", tag, "--install-dir", filepath.Dir(destination))
 		if code != want {
 			return fmt.Errorf("installer %s returned %d, want %d: %s %s", tag, code, want, out, stderr)
 		}
 		return nil
 	}
 	for _, tag := range []string{"v0.20.3", "v0.20.2"} {
-		if err := archive(assetDir, tag); err != nil {
+		if err := archive(assetDir, tag, platform); err != nil {
 			return err
 		}
 		if err := run(tag, 0); err != nil {
@@ -180,13 +184,52 @@ func check() error {
 	if err := run("v0.20.2", 10); err != nil {
 		return err
 	}
-	if err := archive(assetDir, "v0.21.0"); err != nil {
+	if err := archive(assetDir, "v0.21.0", platform); err != nil {
 		return err
 	}
 	if err := run("v0.21.0", 37); err != nil {
 		return err
 	}
 	if err := run("v0.21.0-invalid", 2); err != nil {
+		return err
+	}
+	// Under a faked uname, v0.24.0 still installs on linux/amd64 and darwin/arm64,
+	// so the Intel macOS guard refuses neither by architecture nor by OS alone.
+	// The archive is a shell script, so any host runs it.
+	fakeUname := func(system, machine string) error {
+		return write(filepath.Join(shim, "uname"), "#!/bin/sh\ncase \"$1\" in -s) echo "+system+";; -m) echo "+machine+";; *) exit 90;; esac\n", 0o700)
+	}
+	for _, host := range [][3]string{{"Linux", "x86_64", "linux_amd64"}, {"Darwin", "arm64", "darwin_arm64"}} {
+		if err := fakeUname(host[0], host[1]); err != nil {
+			return err
+		}
+		platform = host[2]
+		if err := archive(assetDir, "v0.24.0", platform); err != nil {
+			return err
+		}
+		if err := run("v0.24.0", 37); err != nil {
+			return fmt.Errorf("%s: %w", platform, err)
+		}
+	}
+	// Intel macOS: tags before v0.24.0 still install their darwin/amd64 archive;
+	// later tags are refused by name before any download.
+	if err := fakeUname("Darwin", "x86_64"); err != nil {
+		return err
+	}
+	platform = "darwin_amd64"
+	if err := archive(assetDir, "v0.23.0", platform); err != nil {
+		return err
+	}
+	if err := run("v0.23.0", 37); err != nil {
+		return err
+	}
+	if err := run("v0.24.0", 1); err != nil {
+		return err
+	}
+	if !strings.Contains(stderr, "Intel macOS (darwin/amd64) is unsupported from v0.24.0; v0.24.0 has no darwin/amd64 archive (--version v0.23.0 installs the last one)") {
+		return fmt.Errorf("darwin/amd64 v0.24.0 refused for another reason: %s", stderr)
+	}
+	if err := os.Remove(filepath.Join(shim, "uname")); err != nil {
 		return err
 	}
 	return unmodified()

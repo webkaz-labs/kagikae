@@ -43,7 +43,8 @@ mise が署名とアーカイブを検証します。`mise packslip pins` で受
 確認でき、検証エラー時に信頼記録や公開後待機・lockfile の方針を緩める必要は
 ありません。旧リリースには Packslip がないため、
 `mise use -g github:webkaz-labs/kagikae@vX.Y.Z` を使います。
-Packslip の選択対象は macOS と GNU/Linux の amd64/arm64 です。musl 環境は
+Packslip の選択対象は macOS の arm64 と GNU/Linux の amd64/arm64 です。v0.24.0 より前の
+リリースは macOS の amd64 も選択対象です。musl 環境は
 この選択対象に含めず、直接アーカイブを使う導入経路とは区別します。
 任意の自動初期化、更新、バックエンド移行、削除は
 [利用ガイド](docs/GUIDE.ja.md#mise-での導入更新移行) を参照してください。
@@ -77,8 +78,12 @@ fish で `mise completion fish --tool kae | source` を使い、版変更後に�
 隔離検証では Bash・Zsh の登録と版切り替えを実行しています。fish は資材取得までで、
 実シェルでの検証は未実施です。
 
-macOS と Linux の amd64/arm64 向けバイナリ、チェックサム、ビルド来歴の証明は
+macOS の arm64 と Linux の amd64/arm64 向けバイナリ、チェックサム、ビルド来歴の証明は
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases) にあります。
+Intel Mac（darwin/amd64）は v0.24.0 から対象外です。これ以降のリリースには
+darwin/amd64 のアーカイブが無く、シェルインストーラーも導入を拒否します。`go install` による
+ソースからのビルドも Intel Mac では未検証です。それより前の
+リリースで公開済みの darwin/amd64 アーカイブはそのまま残ります。
 Windows 向けリリースは保留中です。ログインには対象ツールの公式 CLI が必要です。
 
 ## 最初の設定

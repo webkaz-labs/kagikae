@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
@@ -21,15 +20,7 @@ var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // v0.21.0 is the first signed-distribution release; older tags retain their
 // archive and provenance checks without acquiring a retroactive requirement.
-func packslipRelease(tag string) bool {
-	if !tagPattern.MatchString(tag) {
-		return false
-	}
-	parts := strings.Split(tag[1:], ".")
-	major, err1 := strconv.ParseUint(parts[0], 10, 64)
-	minor, err2 := strconv.ParseUint(parts[1], 10, 64)
-	return err1 == nil && err2 == nil && (major > 0 || minor >= 21)
-}
+func packslipRelease(tag string) bool { return releaseFrom(tag, [3]uint64{0, 21, 0}) }
 
 func packslipIdentity(tag string) string {
 	return "https://github.com/" + repository + "/.github/workflows/release.yml@refs/tags/" + tag

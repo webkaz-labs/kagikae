@@ -298,6 +298,7 @@ above sets scope; it does not override a disabled capability.
 
 Codex per-directory keyring binding is disabled pending the capability check in
 [ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks. Cursor Linux
-support and Windows release binaries are not enabled. Deferred work and its
+support and Windows release binaries are not enabled; Intel macOS (darwin/amd64)
+is unsupported and ships no release binary from v0.24.0. Deferred work and its
 prerequisites live in [ROADMAP.md](ROADMAP.md); the current release and proposed
 next work live in [RELEASE.md](RELEASE.md).

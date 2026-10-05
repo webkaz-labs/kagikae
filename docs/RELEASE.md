@@ -21,7 +21,11 @@ by hand — the tag does it.
 
 1. Bump `toolVersion` in `internal/cmd/cmd.go` to the new `vX.Y.Z` (the binary's
    reported version is hardcoded, not injected; it must match the tag) and the
-   `TestBuildVersionReport` expectation.
+   `TestBuildVersionReport` expectation. While `.goreleaser.yaml` excludes
+   darwin/amd64 unconditionally, that tag is v0.24.0 or later, including a patch
+   tag released after a failed signer change (below); otherwise first move
+   `intelMacDropped` in `scripts/releaseverify` and the `scripts/install.sh`
+   boundary to it.
 2. Follow [VALIDATION.md](VALIDATION.md) § Standard Suite: run its commit gate and
    **every slower release-time check it names**, including `release-evidence`, before
    the tag. Update the docs (ROADMAP/VALIDATION and any behavior docs). Work the
@@ -34,8 +38,8 @@ by hand — the tag does it.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
    `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`
    CI runs — a **subset** of `mise run check`, and that workflow's own steps are
-   the copy of it to read — then GoReleaser builds darwin/linux × amd64/arm64
-   (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
+   the copy of it to read — then GoReleaser builds darwin/arm64 and linux ×
+   amd64/arm64 (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
    with a grouped changelog, and attests the archives named by the release
    checksum manifest. A separate `packslip` job then downloads these published
    assets for the exact tag and source commit, verifies their provenance and

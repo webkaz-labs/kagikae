@@ -120,6 +120,16 @@ case "$(uname -m)" in
     ;;
 esac
 
+# No Intel macOS archive ships from v0.24.0; earlier tags keep theirs. The version
+# format was validated above, so the minor field is numeric.
+if [ "$os" = "darwin" ] && [ "$arch" = "amd64" ]; then
+  intel_mac=$(printf '%s\n' "$version" | awk '{ split(substr($0, 2), v, "."); print (v[1] > 0 || v[2] >= 24) ? "unsupported" : "shipped" }')
+  if [ "$intel_mac" = "unsupported" ]; then
+    echo "install.sh: Intel macOS (darwin/amd64) is unsupported from v0.24.0; ${version} has no darwin/amd64 archive (--version v0.23.0 installs the last one)" >&2
+    exit 1
+  fi
+fi
+
 # GoReleaser names archives by the version without the leading "v"
 # (kae_0.9.0_darwin_arm64.tar.gz) with the binary at the archive root.
 archive="kae_${version#v}_${os}_${arch}.tar.gz"

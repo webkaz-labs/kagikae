@@ -215,8 +215,10 @@ go run ./scripts/packslipverify fixture
 
 The real shell installer consumes synthetic archives through a non-forwarding curl
 fixture. `scripts/installverify` checks legacy first install and downgrade, both
-directions of the shell/Go installation lock, receipt/history refusal, and a failing
-receipt-capable binary without legacy fallback. It does not test release transport.
+directions of the shell/Go installation lock, receipt/history refusal, a failing
+receipt-capable binary without legacy fallback, and, under a faked `uname`, the
+v0.24.0 install on linux/amd64 and darwin/arm64 beside its Intel macOS refusal and
+an earlier tag's darwin/amd64 install. It does not test release transport.
 
 ```bash
 go run ./scripts/installverify

@@ -1235,6 +1235,19 @@ alternative exists (`secret-tool`).
   the capability (dropping codex from `bindableNotYetDeclared`) is what that result
   unblocks. Until it passes a bound directory has no codex login until you log in
   inside it.
+- **Does a `pin -s` or `run -s` codex session reach the global managed daemon?**
+  (recorded 2026-10-06, not measured). codex's daemon socket lives under
+  `CODEX_HOME` ([ADAPTERS.md](ADAPTERS.md) § Resident processes), and `use -i`,
+  `run -i` and `pin -i` homes each have their own. A shared bind's codex home is built
+  from symlinks into the real home, so if `app-server-control` is among them, a
+  session in a `pin -s` directory talks to the global daemon and runs the global
+  account rather than the bound one; `run -s` raises the same question for the child.
+  Neither has been observed. kae's resident-process reconcile concerns the real home
+  only ([CLI.md](CLI.md) § kae use Semantics), so it neither causes nor detects this.
+  Done when a measurement in a scratch codex home records, for a `pin -s` directory
+  and a `run -s` child, which socket the session connects to and which account it
+  runs. If either reaches the global daemon, the decision of what kae does about it
+  (deny the link in the shared bind, warn, or accept) becomes its own entry.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
   returns one spec), and the restore path reconciles a backup record against it.

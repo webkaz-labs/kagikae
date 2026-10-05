@@ -173,8 +173,13 @@ inside `node_modules` records which).
 
 ## Packslip consumer smoke
 
-Requires mise 2026.9.3 and a provenance-verified Packslip 1.1.1 executable on PATH
-or in `PACKSLIP_BIN`. The fixture runner builds temporary application versions and
+Requires mise 2026.9.3 or later and a provenance-verified Packslip 1.1.1 executable
+on PATH or in `PACKSLIP_BIN`. Packslip stays exactly the release workflow's signer
+version, because the fixture must produce the bundle production publishes; mise is
+a lower bound, and the result's `mise` field records the version exercised. The
+five refusal controls (key, project, digest, platform, missing asset) are what show
+that a newer mise still verifies. On 2026-10-05 the fixture passed with mise 2026.9.3
+and with 2026.10.2. The fixture runner builds temporary application versions and
 uses ephemeral key/unlogged trust only inside the smoke HOME. Its HTTP server does
 not forward requests. This checks the actual mise backend; production publication
 also needs `mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.

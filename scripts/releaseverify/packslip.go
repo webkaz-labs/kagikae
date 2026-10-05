@@ -85,9 +85,20 @@ func refuseForeignSigner(bundle, tag, commit, dir, repo string, run commandFunc)
 		return fmt.Errorf("foreign signer control did not complete: %w", err)
 	}
 	if !strings.Contains(exit.stderr, "identity mismatch: expected "+foreign+", got ") {
-		return fmt.Errorf("packslip refused the foreign signer identity for another reason: %v: %s", err, strings.TrimSpace(exit.stderr))
+		return fmt.Errorf("packslip refused the foreign signer identity for another reason: %v: %s", err, boundedStderr(exit.stderr))
 	}
 	return nil
+}
+
+// boundedStderr keeps a refusal diagnostic readable without letting an
+// unexpectedly long stderr into the result.
+func boundedStderr(stderr string) string {
+	const limit = 512
+	text := strings.TrimSpace(stderr)
+	if len(text) > limit {
+		return text[:limit] + "..."
+	}
+	return text
 }
 
 func preparePackslip(tag, commit, dir, repo string, run commandFunc) error {

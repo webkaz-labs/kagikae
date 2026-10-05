@@ -18,7 +18,9 @@ and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 CI is a **subset**, not a mirror, apart from the picker PTY suite (§ Picker PTY suite
 says which part of it each runs): `.github/workflows/check.yml`'s own steps are the one
 copy of which of those steps run there, and everything else is enforced on a
-developer's machine only.
+developer's machine only. `check.yml` runs on linux/amd64;
+`.github/workflows/platforms.yml` runs a smaller subset (build, vet and
+`go test ./...`) on darwin/arm64 and linux/arm64 (§ Check retention and CI admission).
 [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions; the workflow steps
 own their environment constraints.
 
@@ -122,6 +124,46 @@ controls covered unused imports and blank lines, not local import grouping.
 Reconsider admission if CI cost no longer justifies detection; compare total gate
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
+
+**arm64 platform jobs.** `platforms.yml`, called from `ci.yml` beside `check.yml`,
+runs build, vet and `go test ./...` on `macos-latest` (darwin/arm64) and
+`ubuntu-24.04-arm` (linux/arm64). It is not part of the release gate, which uses
+`check.yml` alone. Intel macOS (darwin/amd64) is not a CI platform.
+
+- **Admitted for detection.** `check.yml` compiles and tests only linux/amd64, so it
+  does not see a broken darwin-only file (a `_darwin.go` file or `//go:build darwin`
+  code that no longer compiles or vets), a darwin-only test failure, or an
+  arm64-only failure. The `Confirm platform` step fails when a runner label stops
+  resolving to the platform its job is named for.
+- **Excluded.** The formatter, picker PTY suite, Node, docs checks, module verify and
+  every other local-gate step stay where they are. Linux installs zsh, which the
+  completion and shell-function tests skip without; fish stays skipped on both, and
+  bash is the runner's own (3.2 on macOS passes locally).
+- **Cache.** Within this workflow only, build, vet and test run in that order in one
+  job and share one `GOCACHE`, so vet and test reuse what build compiled. `actions/setup-go`
+  keys its cache on runner OS, architecture, Go version and `go.sum`, so the
+  platforms do not restore each other's cache, and its restored module cache serves
+  module resolution. On one darwin/arm64 machine with 10 CPUs and a warm module cache
+  (2026-10-05), build, vet and test took 8.3 s, 2.9 s and 27.7 s from an empty shared
+  `GOCACHE`, against 7.7 s, 9.3 s and 36.2 s with an empty cache per step, and 0.3 s,
+  0.4 s and 5.3 s warm. This does not change `check.yml`'s cache or the deferral of
+  shared-cache work across workflows.
+- **Runner cost: unmeasured.** No run of `platforms.yml` exists yet. The measurement
+  is per platform: queue time, job time, per-step time, `setup-go`'s cache hit or
+  miss and the CPU count `Confirm platform` prints, for a cold run and a warm run on
+  an unchanged `go.sum`, recorded in this paragraph.
+- **Real-home risk on macOS.** Only `internal/cmd`'s `TestMain` installs fail-loud
+  runner defaults. Tests in `internal/keychain`, `internal/secret`, `internal/artifact`
+  and the adapters rely on each test stubbing the runner, and some codex tests inject
+  `GOOS: "darwin"`: a missed stub there finds no `security` on Linux but reaches the
+  real one on macOS. `TestAppTerminalSeam` calls `newApp("")`, which resolves the
+  real home and reads its config file without writing. The macOS job therefore puts
+  a recording `security` shim first on `PATH` and fails after the tests if anything
+  invoked it; a test that sets its own `PATH` bypasses the shim and also cannot reach
+  `/usr/bin/security` by name. On 2026-10-05 a local `go test ./...` with `HOME`,
+  `TMPDIR` and the XDG and tool-home variables pointed at temporary directories and
+  the same shim first on `PATH` passed with no `security` invocation; the temporary
+  `HOME` received only Go's own telemetry files.
 
 ## Picker PTY suite
 

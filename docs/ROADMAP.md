@@ -297,14 +297,19 @@ alternative exists (`secret-tool`).
   place and requires the disagreement guard to fail.
 
 - **CI runs a subset of the gate; `docs-check` was the one step whose price fell**.
-  Compare `mise.toml`'s local gate with `check.yml`'s steps for current coverage.
+  Compare `mise.toml`'s local gate with `check.yml`'s and `platforms.yml`'s steps for
+  current coverage.
   Further admission requires per-step detection controls, Linux cost measurements
   and a decision about cache and runner writes. The
   [validation rationale](VALIDATION.md#check-retention-and-ci-admission) covers
-  formatter, docs-selftest and build admission. Those decisions do not admit the
-  remaining local checks. Shared build-cache changes remain deferred until a
-  same-condition measurement establishes duplicate compilation and its effect on
-  total gate time.
+  formatter, docs-selftest and build admission and the arm64 build/vet/test jobs.
+  Those decisions do not admit the remaining local checks. The arm64 jobs' runner
+  cost is unmeasured; the same section names what to measure. Within
+  `platforms.yml`, build, vet and test share one job's `GOCACHE` by operator
+  direction (2026-10-05), backed by a local same-condition comparison. Shared
+  build-cache changes elsewhere — `check.yml`'s cache and any cache shared between
+  jobs or workflows — remain deferred until a same-condition measurement on runners
+  establishes duplicate compilation and its effect on total gate time.
   Descriptions of CI, including release procedures, must preserve the subset distinction.
 
 - ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed

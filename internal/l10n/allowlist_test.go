@@ -25,6 +25,9 @@ var notLocalized = map[string]string{
 	"internal/preservation/store.go": "every error reaches a person only through cmd's preservationError, " +
 		"which maps the sentinels to its own messages and never prints the rest: a backend error may carry " +
 		"credential material, so translating one would imply it may be shown; drop this entry if cmd ever shows a store error other than through preservationError",
+	"internal/wsrpc/wsrpc.go": "its only caller, cmd's resident-daemon probe, reduces every error to the " +
+		"`unknown` token and prints none: a peer's message may carry personal data, so translating one would " +
+		"imply it may be shown; drop this entry if cmd ever shows a wsrpc error",
 	"internal/companion/companion.go:Spec.validate": "called only by Register, which panics at init on a " +
 		"programmer error in the companion registry",
 }

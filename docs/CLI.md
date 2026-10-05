@@ -123,7 +123,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--env` | `run` | inject env-profile vars only (no home redirect, no lock) |
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
-| `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app. It never bypasses a credential safety guard |
+| `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app — unless the run is the hook shape (`--auto`) |
 | `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon or quit the ChatGPT app after the switch; warn instead (§ kae use Semantics) |
 | `--no-color` | all | disable color in human text output |
 | `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules) and each `Limit` reading's age (§ Subscription windows in listings); `--json` is unchanged |
@@ -254,31 +254,39 @@ them as follows; tools without resident processes are unaffected.
    will leave live, and reads `absent` (no daemon socket), `matches`, `differs` or
    `unknown` (the socket exists but kae could not read an account from it). It also
    asks whether the ChatGPT app is running (macOS only) and whether this command
-   changes codex's account at all. The probe is read-only, so `--dry-run` runs it
-   too, and then stops.
+   changes codex's account at all. The probe only reads, so `--dry-run` runs it
+   too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
-   transaction, under the warning rules of § Output Rules.
+   transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
+   it writes nothing and reconciles nothing, and its plan carries the notice and the
+   `planned` outcome.
 3. **The transaction** runs unchanged ([ARCHITECTURE.md](ARCHITECTURE.md)
    § Switch Transaction), including the teardown of global isolation.
 4. **Restart, after the locks are released.** When the daemon `differs` and nothing
    below suppresses it, kae runs `codex app-server daemon restart` with `CODEX_HOME`
    set to the real codex home — never the value a bound directory exports — then
-   probes again every 250 ms for at most 5 s. The outcome is `restarted` when the
-   daemon then holds the live account, `restart_unverified` when it does not or
-   cannot be read, and `restart_failed` when the command fails. A failed or
-   unverified restart is a warning: the switch stays applied and is not rolled back,
-   and the exit code stays `0`. When the transaction failed or rolled any tool back,
-   there is no restart. A profile switch reconciles once, after the whole
-   transaction.
+   probes again every 250 ms for at most 5 s, comparing the daemon with the live
+   credential as it reads it at that moment, so a later switch by another kae
+   process does not make this one's restart look unverified. The outcome is
+   `restarted` when the daemon then holds the live account, `restart_unverified`
+   when it does not or cannot be read, and `restart_failed` when the command fails.
+   A failed or unverified restart is a warning: the switch stays applied and is not
+   rolled back, and the exit code stays `0`. When the transaction failed or rolled
+   any tool back, there is no restart. A profile switch reconciles once, after the
+   whole transaction. What a restart interrupts in clients connected to the daemon
+   has not been measured ([ROADMAP.md](ROADMAP.md) § Current work order).
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
    `ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: `.
-   `--yes` answers yes without asking, on a terminal or not. On yes, kae asks the app
-   to quit, waits for it to stop running (every 250 ms, at most 20 s), and relaunches
-   it only once it has stopped. It never forces the quit: an app still running at
-   the deadline is left running with a warning. When macOS refuses kae permission to
-   control the app, kae says how to quit and reopen it by hand. Without `--yes`, a
-   run that cannot ask — no terminal, `--json` — warns instead.
+   The Japanese rendering takes the confirmation shape [L10N-JA.md](L10N-JA.md)
+   fixes rather than a question. `--yes` answers yes without asking, on a terminal
+   or not. On yes, kae asks the app to quit, waits for it to stop running (every
+   250 ms, at most 20 s), and relaunches it only once it has stopped. It never forces
+   the quit: an app still running at the deadline is left running with a warning.
+   When macOS refuses kae permission to control the app, kae says how to quit and
+   reopen it by hand. When kae cannot tell whether the app is running at all, it
+   warns and does nothing to it. Without `--yes`, a run that cannot ask — no
+   terminal, `--json` — warns instead.
 6. **Sessions.** Whenever this command changed codex's account, kae warns that a
    codex session started before the switch and not connected to the managed daemon
    keeps the previous account until it is restarted. kae does not look for such a
@@ -287,22 +295,47 @@ them as follows; tools without resident processes are unaffected.
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 
 - `--no-restart` is given (`use` in every form, `add`, `rollback`);
-- the run is a hook shape: `--auto` or `--quiet` (the mise enter hook runs
-  `kae use --auto --quiet`). `--yes` does not change this;
-- `--dry-run` is given. The plan reports what would be done (`planned` for the
-  daemon).
+- the run is the hook shape, `--auto` (the mise enter hook runs
+  `kae use --auto --quiet`). `--yes` does not change this. `--quiet` alone is not
+  the hook shape: it changes output only, so a bare `kae use` or `kae use --quiet`
+  typed by hand reconciles like an explicit switch;
+- `--dry-run` is given (step 2).
 
 A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
-`codex app-server daemon restart`. `absent` and `matches` print nothing.
+`codex app-server daemon restart`. `absent` and `matches` print nothing. A socket
+upstream has moved also reads `absent`, so the switch is silent about it;
+`resident_drift` in `kae doctor` is what reports that case.
+
+The ChatGPT app's `outcome` by condition, for a run where the app is running and
+this command changed codex's account:
+
+| Condition | `outcome` |
+|---|---|
+| `--no-restart` | `opted_out` |
+| hook shape (`--auto`), with or without `--yes` | `warned` |
+| `--dry-run` | `planned` |
+| no terminal or `--json`, without `--yes` | `warned` |
+| asked and answered no | `declined` |
+| quit observed, then relaunched | `relaunched` |
+| quit observed, `open -b` failed | `relaunch_failed` |
+| still running at the deadline | `quit_timeout` |
+| macOS refused permission (`-1743`) | `quit_denied` |
+| the quit request failed otherwise | `quit_failed` |
+
+When kae cannot tell whether the app is running, the entry is `observed: unknown`,
+`outcome: warned`, whatever the condition.
 
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result
 carries them in `residents` (§ `kae use ... --json` (the switch report)), and no
 prompt is shown. Only the global, real-home codex daemon is concerned: `use -i`,
 `run -i` and `pin -i` run codex under their own `CODEX_HOME`, which has its own
-daemon socket, and kae neither probes nor restarts those. Whether a `pin -s` or
-`run -s` session reaches the global daemon is not measured
+daemon socket, and kae neither probes nor restarts those. `kae run -s` writes the
+real codex home for the child's lifetime and is outside this reconcile: its child
+runs under the real `CODEX_HOME`, so a codex session it starts reaches the global
+daemon if it uses the daemon at all. Whether a session in a `pin -s` directory
+reaches the global daemon is not measured
 ([ROADMAP.md](ROADMAP.md) § Hardening backlog — daily-use robustness).
 
 ## kae run Semantics
@@ -560,7 +593,7 @@ refreshed because you have since logged out or signed in to another account.
 Please sign in again." right after a switch or login, restart the same processes.
 Observed on 2026-10-05: that message after a `kae add` cleared once the app and the
 daemon were restarted. The next day a daemon was observed refusing to adopt the
-account on disk ([VALIDATION.md](VALIDATION.md) § codex resident processes); that
+account on disk ([ADAPTERS.md](ADAPTERS.md) § Resident processes); that
 the message comes from the same refusal is likely but was not established.
 
 `kae backup list` supports choosing an explicit global rollback target;
@@ -1801,7 +1834,9 @@ in the same transaction.
   resident process after the transaction (§ kae use Semantics) can only be known
   once it has happened, so kae gives the advance notice before the write and the
   outcome after it — a restart's result, a declined or timed-out app quit — once
-  that outcome is settled.
+  that outcome is settled. Where the account is not known before the write — the
+  login flow of `kae add`, which decides it — there is no advance notice: the
+  probe and its outcome both follow the flow (§ kae add Semantics).
 - JSON mode never emits color, progress, prompts, or localized text (§ Localization), on stdout or stderr.
 - The account tables print their default columns unless `--full` (`-f`) adds
   the rest (§ Human Text lists the tables and both column sets). This holds
@@ -2453,13 +2488,28 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   apply offline. The message names the one-time fix (start the tool once, then
   `kae add --no-login <tool> <account>`).
 - `resident_drift`: codex's managed daemon for the real codex home holds an account
-  other than the live credential's (§ kae use Semantics, **Resident processes
-  (codex)**). It is a **local IPC probe**, not an offline comparison: kae connects
-  to the daemon's socket and sends the read-only requests
-  [SECURITY.md](SECURITY.md) § Resident processes allows, and makes no network call
-  itself. Only a readable `differs` is reported; no socket, a matching account and
-  an unreadable answer are silent. Names `codex app-server daemon restart`. Neither
-  account is printed. Doctor never restarts anything.
+  other than the live credential's, kae cannot read which account it holds, or
+  kae cannot find it where the adapter says it is (§ kae use Semantics,
+  **Resident processes (codex)**). It is a **local probe**, not an offline
+  comparison, in two halves, and kae makes no network call for either:
+  - kae connects to the daemon's socket and sends the read-only requests
+    [SECURITY.md](SECURITY.md) § Resident processes allows. A readable `differs`
+    warns and names `codex app-server daemon restart`; `unknown` warns that the
+    daemon's answer could not be read — doctor is where a protocol change has to
+    surface, and a switch warns on `unknown` for the same reason.
+  - kae runs `codex app-server daemon version` (with `CODEX_HOME` set to the real
+    codex home, under the same 5 s deadline as `upstream_version`) and reads its
+    `status` and `socketPath`. A daemon that reports itself running at a
+    `socketPath` other than the one the adapter declares, or while the declared
+    socket is absent, warns that codex's socket rule has changed. That is the case a
+    switch cannot see: a moved socket reads `absent` there and prints nothing.
+    Output kae cannot parse is skipped, like a failing `--version`.
+
+  No socket with no running daemon, and a matching account, are silent. Neither
+  account is printed. Doctor never restarts anything. The check runs by default;
+  whether the daemon contacts the network to answer has not been measured, and the
+  acceptance result for that decides whether it stays default or becomes opt-in
+  like `companion_token_drift` ([ROADMAP.md](ROADMAP.md) § Current work order).
 - `upstream_version`: the installed tool's `--version` is a newer **major or
   minor** than the version its adapter's behaviour assumptions were verified
   against (`VerifiedVersion()`). A patch bump is silent by design, an older
@@ -2469,8 +2519,8 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   switching silently, so the version is the sole offline signal. **cursor is
   exempt** (it declares no version): its date-based version would read every new
   build month as a minor bump and warn monthly — see docs/ADAPTERS.md "Verified
-  Upstream Versions". This is the one doctor check that launches the upstream
-  CLIs: one `<binary> --version` per installed tool, run **concurrently** under a
+  Upstream Versions". It launches the upstream CLIs — `resident_drift` is the
+  only other doctor check that does, and runs codex alone: one `<binary> --version` per installed tool, run **concurrently** under a
   5s deadline for the whole round. They are assumed offline, but that is a
   property of the third-party binaries rather than of kae (copilot's already
   prints an update hint), so the deadline is what guarantees `kae doctor` cannot
@@ -2545,12 +2595,14 @@ defined in `internal/constants`:
 | Field | Tokens |
 |---|---|
 | `kind` | `daemon` (codex's managed daemon), `desktop_app` (the ChatGPT app, macOS), `session` (codex sessions kae does not look for) |
-| `observed` | `absent`, `matches`, `differs`, `unknown` (daemon); `running` (desktop app, listed only when it is running); `unknown` (session) |
-| `outcome` | `none` (nothing to do), `planned` (`--dry-run`: would restart), `restarted`, `restart_unverified`, `restart_failed`, `opted_out` (`--no-restart`), `warned` (a warning instead of an action), `declined` (the app prompt answered no), `relaunched`, `quit_timeout` (the app was still running at the deadline), `quit_denied` (macOS refused permission to control the app) |
+| `observed` | `absent`, `matches`, `differs`, `unknown` (daemon); `running`, or `unknown` when kae could not tell (desktop app, listed only in those two cases); `unknown` (session) |
+| `outcome` | `none` (nothing to do), `planned` (`--dry-run`: would restart or quit), `restarted`, `restart_unverified`, `restart_failed`, `opted_out` (`--no-restart`), `warned` (a warning instead of an action), `declined` (the app prompt answered no), `relaunched`, `relaunch_failed` (the quit was observed, `open -b` failed), `quit_timeout` (the app was still running at the deadline), `quit_denied` (macOS refused permission to control the app), `quit_failed` (the quit request failed for another reason) |
 
-A `daemon` entry is present for every codex result whose switch wrote the real
-codex home. A `session` entry, outcome `warned`, is present when the command changed
-codex's account. No entry carries an account, email or plan. Adding the field kept
+A `daemon` entry is present for every codex result whose switch writes the real
+codex home, or under `--dry-run` would write it. A `session` entry, outcome
+`warned`, is present when the command changes codex's account, or under `--dry-run`
+would change it. Which `outcome` the app gets under which condition is the table in
+§ kae use Semantics. No entry carries an account, email or plan. Adding the field kept
 `schema_version` at `1`.
 
 `profile` is `null` for the tool+account form. `kae add --no-login --json`
@@ -2627,7 +2679,7 @@ does not cause rollback to silently select an older one.
   "ok": true,
   "backup_id": "20260611T012345Z",
   "restored": [
-    {"tool": "claude", "artifacts": 2}
+    {"tool": "claude", "artifacts": 2, "residents": []}
   ]
 }
 ```

@@ -378,17 +378,19 @@ is a credential nothing reads.
 
 ### Resident processes
 
-codex reads its credential when a process starts and does not watch `auth.json`.
-A running codex re-reads the file only to recover its own login, and it discards
-what it read when the account id on disk differs from the one it holds, so a
-switch never reaches a process that was already running. What that leaves running,
-and how kae reaches each one:
+Observed on 0.160.0 (2026-10-06, below): a running codex keeps the credential it
+read when it started. It re-read `auth.json` only on its own recovery path and
+discarded what it read when the account id on disk differed from the one it held,
+so a switch did not reach a process that was already running. Upstream declined a
+request to let a running session follow a changed `auth.json` (openai/codex#43010,
+closed as not planned; read 2026-10-06). What that leaves running, and how kae
+reaches each one:
 
 | Process | What kae does |
 |---|---|
 | managed daemon (`codex app-server --managed-daemon`, controlled by `codex app-server daemon`) | probes the account it holds and restarts it when that differs ([CLI.md](CLI.md) § kae use Semantics) |
 | the codex server embedded in the ChatGPT desktop app (macOS) | quits and relaunches the app with consent; it speaks stdio to the app, so kae cannot ask it which account it holds |
-| a long-running codex session not connected to the daemon (an open TUI, `codex resume`) | a fixed warning only; kae does not look for one |
+| a long-running codex session (an open TUI, `codex resume`) that does not go through the daemon | a fixed warning only; kae does not look for one. Which sessions use the daemon at all is not measured |
 
 The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 § Adapter Interface) and declares:
@@ -408,14 +410,44 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   printed.
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
   switched home.
+- **status** `codex app-server daemon version`, whose JSON names `status` and
+  `socketPath`; doctor only.
 - **desktop app** bundle id `com.openai.codex`, darwin only.
 
-None of this is a documented upstream interface. The socket path, the protocol
-and the answer's shape were observed on 0.160.0, and a change to any of them makes
-the probe answer `unknown` rather than a guess: no socket is `absent`, a refused or
-unreadable exchange is `unknown`, and kae restarts only on a readable `differs`.
-[VALIDATION.md](VALIDATION.md) § codex resident processes records the observations
-and what is still unverified. `VerifiedVersion()` does not move for these rows
+None of this is a documented upstream interface, and two kinds of upstream change
+fail differently. A changed protocol or answer shape makes the probe answer
+`unknown`: kae restarts only on a readable `differs`, and a switch and doctor both
+warn on `unknown`. A **moved socket** is the likelier change and the quieter one:
+the probe finds no socket, reads `absent`, and a switch says nothing, so the
+restart silently stops happening. `doctor resident_drift` is what catches it, by
+comparing the `socketPath` that `codex app-server daemon version` reports for a
+running daemon with the declared one ([CLI.md](CLI.md) § `kae doctor --json`);
+`upstream_version` flagging a newer codex is the prompt to re-check these rows.
+
+**Observed 2026-10-06 on 0.160.0**, on one macOS machine, sending only the three
+read-only requests and issuing no login, logout, refresh or daemon command:
+
+- `codex --version` printed `codex-cli 0.160.0`; `codex app-server daemon version`
+  reported CLI, managed daemon and app-server at 0.160.0, `status` running, and the
+  `socketPath` above. `lsof` showed the daemon listening on the symlink's target.
+- The daemon's `account/read` named a different account from the `auth.json`
+  beside it, which had been rewritten about an hour after the daemon started.
+  codex's own log recorded `Skipping auth reload due to account id mismatch`
+  repeatedly from an earlier daemon, which then failed permanently on its revoked
+  token rather than adopt the account on disk.
+- Plain JSONL through `codex app-server proxy` got no answer. A WebSocket handshake
+  got `101 Switching Protocols`, and masked text frames got answers; an
+  `account/updated` notification arrived before the `account/read` answer.
+- The schema from `codex app-server generate-json-schema --experimental` documents
+  `refreshToken` as the flag that refreshes and lists no method that re-reads
+  `auth.json`. `codex app-server daemon restart` exists; it was **not executed**.
+- The ChatGPT app ran its own `codex … app-server` over stdio as a child of
+  `/Applications/ChatGPT.app`.
+
+What is still unverified, and the acceptance that settles it, is tracked in
+[ROADMAP.md](ROADMAP.md) § Current work order. No re-executor reaches these
+observations yet, so they are not in [VALIDATION.md](VALIDATION.md)
+§ Upstream Behaviour Assumptions, and `VerifiedVersion()` does not move for them
 until that acceptance runs.
 
 ### Preserved

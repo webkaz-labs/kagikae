@@ -222,8 +222,11 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   above cannot — `refreshTokenExpiresAt` is exactly what an invalidation does not
   move.
 - `ResidentHolder` declares a tool whose resident processes keep the account they
-  started with (codex). It does no IO: `ResidentDaemon(env)` returns the daemon's
-  socket path and its restart argv and environment, `CredentialAccount(payload)`
+  started with (codex). It connects to nothing, starts nothing and writes nothing;
+  its only filesystem access is `ResidentDaemon` resolving `CODEX_HOME`'s symlinks,
+  the same canonicalization the keyring store key already does in the adapter.
+  `ResidentDaemon(env)` returns the daemon's socket path and its restart and
+  status argv and environment, `CredentialAccount(payload)`
   reads an opaque account key from a credential payload (file or keyring alike),
   `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer, and
   `DesktopApps()` lists the bundle ids of desktop apps that embed the tool (non-empty
@@ -285,7 +288,9 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
 
 Before step 2, a tool that implements `ResidentHolder` is probed once, read-only
 and without a lock, so the advance notice reaches stderr before anything is
-written; `--dry-run` stops after that notice. Step 10 runs once for the whole
+written. `--dry-run` runs that probe too, since it only reads, and adds the
+notice and the `planned` outcomes to its plan; it writes nothing and runs no
+step 10. Step 10 runs once for the whole
 transaction, only for tools that implement the capability, and not at all when
 step 7 rolled any tool back. It is outside the locks for the reason
 [SECURITY.md](SECURITY.md) § Resident processes gives; [CLI.md](CLI.md)
@@ -301,7 +306,8 @@ holding more than one legitimate item — agy's `gemini`/`antigravity`, codex's
 per-`CODEX_HOME` `Codex Auth` — is never conflated. No child runs
 during a switch, so the cache never serves a stale live credential.
 
-`--dry-run` runs steps 1–3 and prints the plan from the artifact specs; it also
+`--dry-run` runs steps 1–3 and the resident probe, and prints the plan from the
+artifact specs; it also
 annotates a stale switch target (snapshot past `expiresAt` with no refresh
 token) with a warning, the same `internal/freshness` predicate `doctor` uses.
 

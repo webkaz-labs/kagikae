@@ -2471,47 +2471,6 @@ re-verification path for these rows. § Real-Machine Acceptance owns the release
 § Optional account-combination checks owns the cross-account evidence and its release
 classification.
 
-### codex resident processes
-
-The resident-process contract ([ADAPTERS.md](ADAPTERS.md) § Resident processes)
-rests on these observations. They were made on one macOS machine on 2026-10-06
-against codex 0.160.0 (`codex --version` printed `codex-cli 0.160.0`, and
-`codex app-server daemon version` reported CLI, managed daemon and app-server all at
-0.160.0). Only the three read-only requests were sent; no login, logout, refresh or
-daemon command was issued, and nothing under the codex home was written. None of
-these rows has been re-run since, and none is reached by a re-executor yet: the
-codex `VerifiedVersion()` stays where § Other tools puts it until the acceptance
-below records a run.
-
-| Assumption | Observed 2026-10-06 on 0.160.0 |
-|---|---|
-| A running codex keeps the account it started with. It re-reads `auth.json` only on its own recovery paths and drops the result when the disk's account id differs from the one in memory | The managed daemon's `account/read` named a different account from the `auth.json` beside it, which was rewritten an hour after the daemon started. codex's own log recorded `Skipping auth reload due to account id mismatch` repeatedly from an earlier daemon, which then failed permanently on its revoked token rather than adopt the disk's account. No protocol method re-reads the file (schema generated with `codex app-server generate-json-schema --experimental`) |
-| The daemon's control socket is `<CODEX_HOME>/app-server-control/app-server-control.sock`, a symlink to a socket under `/private/tmp/codex-daemon-<uid>/`, one per codex home | `codex app-server daemon version` reported that `socketPath`; `lsof` showed the daemon listening on the symlink's target |
-| The socket speaks JSON-RPC over a WebSocket (HTTP `Upgrade` on the Unix socket), not newline-delimited JSON | Plain JSONL through `codex app-server proxy` got no answer. A WebSocket handshake got `101 Switching Protocols`, and masked text frames carrying `initialize`, `initialized` and `account/read` with `refreshToken: false` got answers. An `account/updated` notification arrived before the `account/read` answer |
-| `account/read` with `refreshToken: false` does not change auth state, and its answer carries the account type, email, plan and a ChatGPT account id | The generated schema documents `refreshToken` as the flag that refreshes; the answer had those fields |
-| `codex app-server daemon restart` is the lifecycle command that restarts the managed daemon | The subcommand exists on 0.160.0. **Not executed** in this observation |
-| The ChatGPT desktop app's bundle id is `com.openai.codex`, and it runs its own codex app-server over stdio | Observed as the parent of a `codex … app-server` process under `/Applications/ChatGPT.app` |
-
-**Not verified**, so the acceptance has to settle each before it can be relied on:
-
-- **U1** whether the `codex` on `PATH`, which runs the restart, can be a different
-  version from the managed daemon it restarts (the daemon runs its own copy under
-  the codex home), and what the restart does when they differ.
-- **U2** whether the daemon's `workspaceRouting.chatgptAccountId` and the
-  credential's `tokens.account_id` are the same namespace. If they are not, every
-  probe reads `differs` and every switch restarts the daemon.
-- **U3** whether the daemon contacts the network to answer `account/read` with
-  `refreshToken: false`.
-- **U6** which of the `osascript` calls need the Automation (TCC) permission, and
-  what the first one does when it has not been granted.
-
-**Acceptance record.** The real-machine run of `kae use`, `kae add` and
-`kae rollback` against a running daemon and app is recorded here, with placeholder
-names only. No run is recorded yet.
-
-| Date | codex | What was run | Result |
-|---|---|---|---|
-
 ### git behaviour kae depends on
 
 `kae pin` keeps its fragment out of `git status` by writing the repository's

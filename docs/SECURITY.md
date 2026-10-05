@@ -162,13 +162,15 @@ child could rotate the live credential unseen — a cached value would be stale.
 - The `identity_drift` doctor check compares the stored identity payload against
   the live one. It is **offline** — a comparison of state already on the
   machine, no probe and no network call — so nothing about the login is
-  transmitted. `resident_drift` is the one doctor check that probes something: a
-  **local IPC probe** of codex's managed daemon under the rules of § Resident
-  processes. kae makes no network call for it; whether the daemon contacts the
-  network to answer is not established (§ Resident processes). Neither value reaches the output: an identity is PII (an email
+  transmitted. Neither value reaches the output: an identity is PII (an email
   address), so a finding names only the tool, the account, and the artifact or the
   bound directory it is about. The check has two frames and both obey that rule:
   the active account's live state, and a bound directory's own store.
+- The `resident_drift` doctor check is a **local probe** of codex's managed daemon
+  under the rules of § Resident processes: it connects to the daemon's Unix socket
+  and runs `codex app-server daemon version`. kae makes no network call for it;
+  whether the daemon contacts the network to answer is not established
+  (§ Resident processes). Neither account it compares reaches the output.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
   **Offline**, no credential in the environment, nothing to redact.
@@ -219,11 +221,13 @@ child could rotate the live credential unseen — a cached value would be stale.
   pins that. Claude's request uses the `User-Agent` of the verified Claude Code
   release because that endpoint throttles other agents before it returns the
   windows; the header is not a claim that kae is Claude Code.
-- `codex app-server daemon restart` (the managed daemon's own lifecycle command),
-  `osascript` and `open -b` (the ChatGPT app on macOS) run through
+- `codex app-server daemon restart` and `codex app-server daemon version` (the
+  managed daemon's own lifecycle commands), `osascript` and `open -b` (the ChatGPT
+  app on macOS) run through
   `internal/runner` with argv arrays and no shell, under the limits of
-  § Resident processes: the restart through `runner.RunWithEnv`, `osascript`
-  through `runner.Run`, and `open -b` through `runner.Launch`.
+  § Resident processes: the restart and `daemon version` through
+  `runner.RunWithEnv`, `osascript` through `runner.Run`, and `open -b` through
+  `runner.Launch`.
 
 ## File Permissions
 
@@ -319,7 +323,9 @@ owns the limits on how.
 
 **kae sends no signal to a resident process and never identifies a process by
 name, argv or pid.** It does not enumerate processes and does not read another
-process's argv. It reaches a resident process through exactly two paths:
+process's argv. It observes a resident process only through the daemon probe
+below, `codex app-server daemon version` (doctor only) and an `osascript` query
+of whether the app is running. It acts on one through exactly two paths:
 
 1. **The owner's lifecycle command.** `codex app-server daemon restart`, run with
    `CODEX_HOME` set explicitly to the codex home kae switched. Inheriting
@@ -336,7 +342,8 @@ process's argv. It reaches a resident process through exactly two paths:
 **Observing the daemon** is a read-only local IPC probe, and every limit below is
 part of the contract:
 
-- kae connects only to the socket of the codex home it switched, and only after
+- kae connects only to the socket of the real codex home — the one a switch
+  writes and doctor inspects — and only after
   checking that the socket's resolved path is owned by the current uid.
 - kae sends a fixed request sequence and nothing else: `initialize`, the
   `initialized` notification, and `account/read` with `refreshToken: false`. The
@@ -350,7 +357,7 @@ part of the contract:
   to run.
 - kae makes no network call for the probe. Whether the daemon itself contacts the
   network to answer `account/read` with `refreshToken: false` has not been
-  measured ([VALIDATION.md](VALIDATION.md) § codex resident processes).
+  measured ([ROADMAP.md](ROADMAP.md) § Current work order).
 
 **The restart runs outside the per-tool locks.** The locks serialize kae's own
 read-modify-write of the credential store (§ Mutation Safety Rules); restarting the
@@ -490,5 +497,6 @@ credential it holds, and a mislabelled token is undetectable afterwards
 | `secret-tool` (Linux) | libsecret read/write | stdin used for store; output of lookup is secret |
 | upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |
 | `codex app-server daemon restart` | restart codex's managed daemon after a switch changed the account it holds | argv and environment from the adapter; `CODEX_HOME` set to the switched home, never inherited; no credential in argv or environment (§ Resident processes) |
-| `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; only stdout `true` with exit 0 means running; stderr is localized, so the only thing read from it is the Apple Events error number `-1743` (automation not permitted) (§ Resident processes) |
+| `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output (§ Resident processes) |
+| `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; stdout `true` with exit 0 means running and `false` with exit 0 not running; anything else means kae cannot tell, and it then acts on nothing; stderr is localized, so the only thing read from it is the Apple Events error number `-1743` (automation not permitted) (§ Resident processes) |
 | `open -b` (macOS) | relaunch the ChatGPT app after its quit was observed | allowlisted bundle id only, through `runner.Launch` |

@@ -197,3 +197,71 @@ func TestPackslipPublicationRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifierToolRange(t *testing.T) {
+	for version, ok := range map[string]bool{
+		"packslip 1.1.1": true, "packslip 1.6.0\n": true, "packslip 1.10.0": true,
+		"packslip 1.1.0": false, "packslip 0.9.9": false, "packslip 2.0.0": false,
+		"packslip 1.6": false, "packslip 1.6.0-rc1": false, "other 1.6.0": false,
+	} {
+		got, err := verifierTools("repo", func(name string, args, env []string, cwd string) (string, error) {
+			if len(args) != 1 || args[0] != "--version" || env != nil || cwd != "repo" {
+				t.Fatalf("unexpected version probe: %s %v", name, args)
+			}
+			if name == "mise" {
+				return "2026.10.2 macos-arm64 (2026-10-04)\n", nil
+			}
+			return version, nil
+		})
+		if (err == nil) != ok {
+			t.Fatalf("%q: err %v", version, err)
+		}
+		if ok && (got.Mise != "2026.10.2" || "packslip "+got.Packslip != strings.TrimSpace(version)) {
+			t.Fatalf("%q: recorded %+v", version, got)
+		}
+	}
+}
+
+func TestUnsupportedVerifierStopsBeforeDownload(t *testing.T) {
+	_, err := verify(signedTag, t.TempDir(), t.TempDir(), "darwin", "arm64", func(name string, args, env []string, cwd string) (string, error) {
+		if name != "packslip" {
+			t.Fatalf("ran %s before the verifier version was accepted", name)
+		}
+		return "packslip 2.0.0", nil
+	})
+	if err == nil {
+		t.Fatal("unsupported verifier accepted")
+	}
+}
+
+func TestForeignSignerControl(t *testing.T) {
+	dir := t.TempDir()
+	names, _ := archivesFor(signedTag)
+	foreign := strings.TrimSuffix(packslipIdentity(signedTag), "0")
+	want := []string{"verify", "bundle", "--identity", foreign, "--issuer", "https://token.actions.githubusercontent.com"}
+	for _, name := range names {
+		want = append(want, "--artifact", filepath.Join(dir, name))
+	}
+	if !strings.HasPrefix(packslipIdentity(signedTag), foreign) || foreign == packslipIdentity(signedTag) {
+		t.Fatal("control identity must be a strict prefix of the release identity")
+	}
+	for outcome, ok := range map[string]bool{"refused": true, "accepted": false, "usage": false, "launch": false} {
+		err := refuseForeignSigner("bundle", signedTag, signedCommit, dir, dir, func(name string, args, env []string, cwd string) (string, error) {
+			if name != "packslip" || !reflect.DeepEqual(args, want) || env != nil || cwd != dir {
+				t.Fatalf("control changed more than the identity: %s %v", name, args)
+			}
+			switch outcome {
+			case "refused":
+				return "", exitError{name: "packslip", code: 1, stderr: "verification failed: bundle does not verify: Verification error: identity mismatch: expected " + foreign + ", got " + packslipIdentity(signedTag)}
+			case "usage":
+				return "", exitError{name: "packslip", code: 2, stderr: "error: unexpected argument"}
+			case "launch":
+				return "", errors.New("packslip failed: executable file not found")
+			}
+			return "", nil
+		})
+		if (err == nil) != ok {
+			t.Fatalf("%s: err %v", outcome, err)
+		}
+	}
+}

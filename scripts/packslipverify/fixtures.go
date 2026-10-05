@@ -21,7 +21,12 @@ import (
 	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
-const fixtureCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+const (
+	fixtureCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	// signerPackslip matches the release workflow's signer, not the newest
+	// Packslip: the fixture must produce the bundle shape production publishes.
+	signerPackslip = "1.1.1"
+)
 
 type fixtureServer struct {
 	releases map[string]map[string]any
@@ -35,6 +40,8 @@ func (f *fixtureServer) handler() *distribution.Fixture {
 	routes := map[string]distribution.Response{
 		// This fixture publishes release assets, without a repository discovery file.
 		"/api.github.com/repos/webkaz-labs/kagikae/contents/.well-known/packslip.json": {Status: 404},
+		// mise 2026.10.2 asks for the same file here (measured 2026-10-05).
+		"/raw.githubusercontent.com/webkaz-labs/kagikae/HEAD/.well-known/packslip.json": {Status: 404},
 	}
 	for path, body := range f.files {
 		routes[path] = distribution.Response{Body: body}
@@ -207,7 +214,7 @@ func (s *scenario) fixture() (result any, err error) {
 	if packslip == "" {
 		packslip = "packslip"
 	}
-	s.require(strings.TrimSpace(s.run(s.home, packslip, "--version")) == "packslip 1.1.1", "fixture signing CLI must be Packslip 1.1.1")
+	s.require(strings.TrimSpace(s.run(s.home, packslip, "--version")) == "packslip "+signerPackslip, "fixture signing CLI must be Packslip "+signerPackslip)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -258,5 +265,5 @@ func (s *scenario) fixture() (result any, err error) {
 	settings := "[settings]\nminimum_release_age = \"0\"\nlockfile = true\n[settings.url_replacements]\n'regex:^https?://([^/]+)/(.*)$' = " + quote(server.URL+"/$1/$2") + "\n"
 	s.write(filepath.Join(global, "config.toml"), settings, 0o600)
 	s.lifecycle(root, global, publicKey, backend, defects)
-	return map[string]any{"status": "success", "mise": "2026.9.3", "trust": "ephemeral key/unlogged fixture only", "checks": s.checks, "requests": backend.requests.Load()}, s.err
+	return map[string]any{"status": "success", "mise": s.miseVersion, "packslip": signerPackslip, "trust": "ephemeral key/unlogged fixture only", "checks": s.checks, "requests": backend.requests.Load()}, s.err
 }

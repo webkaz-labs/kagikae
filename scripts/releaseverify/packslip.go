@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,61 @@ func packslipRelease(tag string) bool {
 
 func packslipIdentity(tag string) string {
 	return "https://github.com/" + repository + "/.github/workflows/release.yml@refs/tags/" + tag
+}
+
+// The release/v1 format is unchanged within Packslip 1.x (upstream 1.2.0-1.6.0
+// notes), so the verifier accepts that major from the oldest version exercised.
+var (
+	minimumPackslip = [3]uint64{1, 1, 1}
+	packslipVersion = regexp.MustCompile(`^packslip ([0-9]+)\.([0-9]+)\.([0-9]+)$`)
+)
+
+func verifierTools(repo string, run commandFunc) (*tools, error) {
+	out, err := run("packslip", []string{"--version"}, nil, repo)
+	if err != nil {
+		return nil, err
+	}
+	match := packslipVersion.FindStringSubmatch(strings.TrimSpace(out))
+	if match == nil {
+		return nil, fmt.Errorf("unrecognized packslip version %q", strings.TrimSpace(out))
+	}
+	var got [3]uint64
+	for i := range got {
+		if got[i], err = strconv.ParseUint(match[i+1], 10, 64); err != nil {
+			return nil, err
+		}
+	}
+	if got[0] != minimumPackslip[0] || slices.Compare(got[:], minimumPackslip[:]) < 0 {
+		return nil, fmt.Errorf("verifier requires packslip >=1.1.1,<2; found %s", strings.TrimSpace(out))
+	}
+	out, err = run("mise", []string{"--version"}, nil, repo)
+	if err != nil {
+		return nil, err
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return nil, errors.New("mise --version printed no version")
+	}
+	return &tools{Packslip: strings.Join(match[1:], "."), Mise: fields[0]}, nil
+}
+
+// refuseForeignSigner repeats the accepted verification with one change, an
+// identity that is a strict prefix of the release's, and requires Packslip's
+// identity refusal, not merely a nonzero exit (usage errors also exit nonzero).
+// It runs only after the exact identity verified the same bytes.
+func refuseForeignSigner(bundle, tag, commit, dir, repo string, run commandFunc) error {
+	spec := releaseSpec(tag, commit)
+	foreign := strings.TrimSuffix(spec.Identity, tag) + tag[:len(tag)-1]
+	args := []string{"verify", bundle, "--identity", foreign, "--issuer", spec.Issuer}
+	for _, a := range spec.Artifacts {
+		args = append(args, "--artifact", filepath.Join(dir, a.Name))
+	}
+	_, err := run("packslip", args, nil, repo)
+	var exit exitError
+	if !errors.As(err, &exit) || !strings.Contains(exit.stderr, "identity mismatch: expected "+foreign) {
+		return fmt.Errorf("packslip did not refuse a foreign signer identity: %v", err)
+	}
+	return nil
 }
 
 func preparePackslip(tag, commit, dir, repo string, run commandFunc) error {

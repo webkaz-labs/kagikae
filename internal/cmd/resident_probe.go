@@ -19,9 +19,21 @@ import (
 
 // Limits of the resident-daemon probe (docs/SECURITY.md § Resident processes).
 const (
-	residentProbeTimeout = 2 * time.Second
-	residentProbeMaxMsg  = 1 << 20
+	defaultResidentProbeTimeout = 2 * time.Second
+	residentProbeMaxMsg         = 1 << 20
 )
+
+// credentialReader returns the credential payload a probe compares the daemon
+// with; ok is false when there is none to read.
+type credentialReader func(context.Context) ([]byte, bool)
+
+// residentProbeLimit bounds one probe: App.residentProbeTimeout, or the default.
+func (app *App) residentProbeLimit() time.Duration {
+	if app.residentProbeTimeout > 0 {
+		return app.residentProbeTimeout
+	}
+	return defaultResidentProbeTimeout
+}
 
 // unixDialer is the seam the daemon probe connects through: App.dialUnix, or
 // the standard dialer.
@@ -39,9 +51,11 @@ func (app *App) euid() int {
 	return os.Geteuid()
 }
 
-// probeResidentDaemon asks the managed daemon of env's tool home which account
-// it holds and compares it with the account of the credential that credential
-// returns, read only once the socket is known to exist. It returns one of the
+// probeResidentDaemon asks the managed daemon spec describes which account it
+// holds and compares it with the account of the credential that credential
+// returns, read only once the socket is known to exist. The caller derives spec
+// once (h.ResidentDaemon) and uses the same one for a restart, so the two
+// cannot resolve the home differently. It returns one of the
 // constants.ResidentObserved* tokens:
 //
 //   - absent: the declared socket, or the target it links to, does not exist;
@@ -54,10 +68,10 @@ func (app *App) euid() int {
 //
 // It sends adapter.DaemonProbeRequests and nothing else, and no account, email
 // or plan leaves it: the result is the token only.
-func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolder, env adapter.Env,
-	credential func(context.Context) ([]byte, bool),
+func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolder, spec adapter.DaemonSpec,
+	credential credentialReader,
 ) string {
-	socket, err := filepath.EvalSymlinks(h.ResidentDaemon(env).Socket)
+	socket, err := filepath.EvalSymlinks(spec.Socket)
 	if errors.Is(err, fs.ErrNotExist) {
 		return constants.ResidentObservedAbsent
 	}
@@ -73,7 +87,7 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 		return constants.ResidentObservedUnknown
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, residentProbeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, app.residentProbeLimit())
 	defer cancel()
 	// The connection goes to the resolved path the owner check examined, which
 	// also keeps a long declared path from reaching the sun_path limit.
@@ -117,9 +131,10 @@ func ownedSocket(path string, uid int) bool {
 
 // liveCredential returns a reader of ad's live credential in env, from
 // whichever store the adapter resolves (auth.json or the keyring item), for
-// probeResidentDaemon. ok is false when the store cannot be resolved or read,
-// or holds nothing.
-func liveCredential(ad adapter.Adapter, env adapter.Env) func(context.Context) ([]byte, bool) {
+// probeResidentDaemon. It reads what is live when called, not what a switch
+// will leave: the probe before a switch is given the target's payload instead.
+// ok is false when the store cannot be resolved or read, or holds nothing.
+func liveCredential(ad adapter.Adapter, env adapter.Env) credentialReader {
 	return func(ctx context.Context) ([]byte, bool) {
 		specs, err := ad.Artifacts(ctx, env)
 		if err != nil {

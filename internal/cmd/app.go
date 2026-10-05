@@ -63,6 +63,9 @@ type App struct {
 	// net.Dialer.DialContext (unixDialer). Tests leave it nil and serve a fake
 	// daemon on a real socket, so the WebSocket framing is exercised.
 	dialUnix wsrpc.Dialer
+	// residentProbeTimeout bounds one daemon probe; zero means the default
+	// (residentProbeLimit). Tests shorten it so a silent daemon costs little.
+	residentProbeTimeout time.Duration
 	// euidForTest replaces os.Geteuid for the probe's socket-owner check, which a
 	// test cannot otherwise fail without a file owned by another user. Nil in
 	// production.

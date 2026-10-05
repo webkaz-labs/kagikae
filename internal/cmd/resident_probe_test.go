@@ -1,15 +1,9 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
-	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/wsrpctest"
 )
 
 // Fixture personal data a daemon answer carries; none of it may leave the probe.
@@ -36,13 +31,13 @@ func accountReadReply(accountID string) string {
 		accountID + `","backendOrigin":"https://chatgpt.com","accountRoutingOverride":"NO_CONSTRAINT"}}}`
 }
 
-// fakeDaemon is a codex managed daemon on a real Unix socket: it completes the
-// WebSocket upgrade, records every client message, and answers the third one
-// with answer (after a notification, as the real daemon sends). An empty answer
-// keeps it silent until the client hangs up.
+// fakeDaemon is a codex managed daemon on a real Unix socket (wsrpctest): it
+// completes the WebSocket upgrade, records every client message, and answers
+// the third one with answer, after a notification as the real daemon sends.
+// An empty answer keeps it silent until the client hangs up.
 type fakeDaemon struct {
 	socket   string // the short path it listens on
-	accepted atomic.Int32
+	accepted *atomic.Int32
 	mu       sync.Mutex
 	messages []string
 }
@@ -53,105 +48,31 @@ func (d *fakeDaemon) received() []string {
 	return append([]string(nil), d.messages...)
 }
 
-// startFakeDaemon listens in a short directory under /tmp: macOS t.TempDir()
-// paths can exceed the 104-byte sun_path limit, and the declared socket under
-// the codex home links here the way codex's own does.
+// startFakeDaemon listens in a short directory under /tmp, beyond the sun_path
+// limit's reach; the declared socket under the codex home links there the way
+// codex's own does.
 func startFakeDaemon(t *testing.T, answer string) *fakeDaemon {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "kaed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	d := &fakeDaemon{socket: filepath.Join(dir, "d.sock")}
-	ln, err := net.Listen("unix", d.socket)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			d.accepted.Add(1)
-			go d.serve(conn, answer)
-		}
-	}()
-	return d
-}
-
-func (d *fakeDaemon) serve(conn net.Conn, answer string) {
-	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	br := bufio.NewReader(conn)
-	req, err := http.ReadRequest(br)
-	if err != nil {
-		return
-	}
-	sum := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-	_, _ = io.WriteString(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"+
-		"Connection: Upgrade\r\nSec-WebSocket-Accept: "+base64.StdEncoding.EncodeToString(sum[:])+"\r\n\r\n")
-	for i := 0; ; i++ {
-		op, payload, err := readClientFrame(br)
-		if err != nil || op == 0x8 {
+	d := &fakeDaemon{}
+	d.socket, d.accepted = wsrpctest.ServeEach(t, func(p *wsrpctest.Peer) {
+		if p.Upgrade() != nil {
 			return
 		}
-		d.mu.Lock()
-		d.messages = append(d.messages, string(payload))
-		d.mu.Unlock()
-		if i == 2 && answer != "" {
-			_, _ = conn.Write(serverTextFrame(`{"jsonrpc":"2.0","method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}}`))
-			_, _ = conn.Write(serverTextFrame(answer))
+		for i := 0; ; i++ {
+			f, err := p.ReadFrame()
+			if err != nil || f.Op == wsrpctest.OpClose {
+				return
+			}
+			d.mu.Lock()
+			d.messages = append(d.messages, string(f.Payload))
+			d.mu.Unlock()
+			if i == 2 && answer != "" {
+				_ = p.Send(wsrpctest.Text(`{"jsonrpc":"2.0","method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}}`),
+					wsrpctest.Text(answer))
+			}
 		}
-	}
-}
-
-func readClientFrame(br *bufio.Reader) (byte, []byte, error) {
-	var h [2]byte
-	if _, err := io.ReadFull(br, h[:]); err != nil {
-		return 0, nil, err
-	}
-	n := uint64(h[1] & 0x7F)
-	switch n {
-	case 126:
-		var ext [2]byte
-		if _, err := io.ReadFull(br, ext[:]); err != nil {
-			return 0, nil, err
-		}
-		n = uint64(binary.BigEndian.Uint16(ext[:]))
-	case 127:
-		var ext [8]byte
-		if _, err := io.ReadFull(br, ext[:]); err != nil {
-			return 0, nil, err
-		}
-		n = binary.BigEndian.Uint64(ext[:])
-	}
-	var mask [4]byte
-	if _, err := io.ReadFull(br, mask[:]); err != nil {
-		return 0, nil, err
-	}
-	payload := make([]byte, n)
-	if _, err := io.ReadFull(br, payload); err != nil {
-		return 0, nil, err
-	}
-	for i := range payload {
-		payload[i] ^= mask[i%4]
-	}
-	return h[0] & 0x0F, payload, nil
-}
-
-func serverTextFrame(msg string) []byte {
-	frame := []byte{0x81}
-	switch n := len(msg); {
-	case n <= 125:
-		frame = append(frame, byte(n))
-	default:
-		frame = append(frame, 126)
-		frame = binary.BigEndian.AppendUint16(frame, uint16(n))
-	}
-	return append(frame, msg...)
+	})
+	return d
 }
 
 // probeFixture is an App whose real codex home holds a file-store credential
@@ -187,10 +108,11 @@ func probe(t *testing.T, app *App, ad adapter.Adapter, h adapter.ResidentHolder)
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return app.probeResidentDaemon(ctx, h, app.Env, liveCredential(ad, app.Env))
+	return app.probeResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env))
 }
 
 func TestProbeResidentDaemonMatchesAndDiffers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		daemonAccount, want string
 	}{
@@ -208,6 +130,7 @@ func TestProbeResidentDaemonMatchesAndDiffers(t *testing.T) {
 
 // What reaches the daemon is the fixed read-only sequence, as sent on the wire.
 func TestProbeResidentDaemonSendsOnlyTheReadOnlySequence(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
 	d := startFakeDaemon(t, accountReadReply(probeAccount))
 	linkSocket(t, app, h, d.socket)
@@ -241,6 +164,7 @@ func TestProbeResidentDaemonSendsOnlyTheReadOnlySequence(t *testing.T) {
 }
 
 func TestProbeResidentDaemonAbsent(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
 	if got := probe(t, app, ad, h); got != constants.ResidentObservedAbsent {
 		t.Errorf("no socket: probe = %q", got)
@@ -261,6 +185,7 @@ func TestProbeResidentDaemonAbsent(t *testing.T) {
 // The declared path under a long home exceeds sun_path; the probe connects to
 // the short target the link names.
 func TestProbeResidentDaemonFollowsTheLinkPastTheSunPathLimit(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, "")
 	app.Env.Home = filepath.Join(app.Env.Home, strings.Repeat("h", 60))
 	writeFile(t, filepath.Join(app.Env.Home, ".codex", "auth.json"),
@@ -276,6 +201,7 @@ func TestProbeResidentDaemonFollowsTheLinkPastTheSunPathLimit(t *testing.T) {
 }
 
 func TestProbeResidentDaemonUnknownWithoutConnecting(t *testing.T) {
+	t.Parallel()
 	for name, setup := range map[string]func(t *testing.T, app *App, h adapter.ResidentHolder, d *fakeDaemon){
 		"socket owned by another user": func(t *testing.T, app *App, h adapter.ResidentHolder, d *fakeDaemon) {
 			app.euidForTest = func() int { return os.Geteuid() + 1 }
@@ -298,6 +224,7 @@ func TestProbeResidentDaemonUnknownWithoutConnecting(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			app, ad, h := probeFixture(t, probeAccount)
 			d := startFakeDaemon(t, accountReadReply(probeAccount))
 			setup(t, app, h, d)
@@ -314,13 +241,9 @@ func TestProbeResidentDaemonUnknownWithoutConnecting(t *testing.T) {
 // A daemon that exited can leave its socket file behind; connecting to it is
 // refused, and that is unknown, not absent: the socket exists.
 func TestProbeResidentDaemonStaleSocketIsUnknown(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
-	dir, err := os.MkdirTemp("/tmp", "kaed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	socket := filepath.Join(dir, "d.sock")
+	socket := filepath.Join(wsrpctest.ShortDir(t), "d.sock")
 	ln, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)
@@ -337,6 +260,7 @@ func TestProbeResidentDaemonStaleSocketIsUnknown(t *testing.T) {
 
 // A JSON-RPC response may carry "error": null beside its result; that is no error.
 func TestProbeResidentDaemonNullErrorIsNoError(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
 	answer := `{"jsonrpc":"2.0","id":2,"error":null,"result":{"workspaceRouting":{"chatgptAccountId":"` + probeOtherAcct + `"}}}`
 	d := startFakeDaemon(t, answer)
@@ -347,6 +271,7 @@ func TestProbeResidentDaemonNullErrorIsNoError(t *testing.T) {
 }
 
 func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
+	t.Parallel()
 	for name, answer := range map[string]string{
 		"not JSON":       `account`,
 		"JSON-RPC error": `{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"` + probeEmail + `"}}`,
@@ -359,6 +284,7 @@ func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 		"id is a number":      `{"jsonrpc":"2.0","id":2,"result":{"workspaceRouting":{"chatgptAccountId":7}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			app, ad, h := probeFixture(t, probeAccount)
 			d := startFakeDaemon(t, answer)
 			linkSocket(t, app, h, d.socket)
@@ -369,19 +295,21 @@ func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 	}
 }
 
-// A daemon that never answers is unknown at the caller's deadline.
+// A daemon that never answers is unknown at the caller's deadline, when that
+// comes before the probe's own.
 func TestProbeResidentDaemonDeadlineIsUnknown(t *testing.T) {
+	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
 	d := startFakeDaemon(t, "")
 	linkSocket(t, app, h, d.socket)
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if got := app.probeResidentDaemon(ctx, h, app.Env, liveCredential(ad, app.Env)); got != constants.ResidentObservedUnknown {
+	if got := app.probeResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env)); got != constants.ResidentObservedUnknown {
 		t.Errorf("probe = %q, want unknown", got)
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Errorf("probe took %v past a 200ms deadline", elapsed)
+		t.Errorf("probe took %v past a 100ms deadline", elapsed)
 	}
 }
 
@@ -389,16 +317,27 @@ func TestProbeResidentDaemonDeadlineIsUnknown(t *testing.T) {
 func TestProbeResidentDaemonBoundsASilentDaemon(t *testing.T) {
 	t.Parallel()
 	app, ad, h := probeFixture(t, probeAccount)
+	limit := 200 * time.Millisecond
+	app.residentProbeTimeout = limit
 	d := startFakeDaemon(t, "")
 	linkSocket(t, app, h, d.socket)
 	start := time.Now()
-	got := app.probeResidentDaemon(context.Background(), h, app.Env, liveCredential(ad, app.Env))
+	got := app.probeResidentDaemon(context.Background(), h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env))
 	elapsed := time.Since(start)
 	if got != constants.ResidentObservedUnknown {
 		t.Errorf("probe = %q, want unknown", got)
 	}
-	if elapsed < residentProbeTimeout || elapsed > residentProbeTimeout+time.Second {
-		t.Errorf("probe returned after %v, want about %v", elapsed, residentProbeTimeout)
+	if elapsed < limit || elapsed > limit+time.Second {
+		t.Errorf("probe returned after %v, want about %v", elapsed, limit)
+	}
+}
+
+// The probe's own limit is 2 seconds unless a test shortens it
+// (docs/SECURITY.md § Resident processes).
+func TestResidentProbeLimitDefaultsToTwoSeconds(t *testing.T) {
+	t.Parallel()
+	if got := (&App{}).residentProbeLimit(); got != 2*time.Second {
+		t.Errorf("residentProbeLimit = %v, want 2s", got)
 	}
 }
 

@@ -89,7 +89,9 @@ const (
 	daemonInitialized = `{"jsonrpc":"2.0","method":"initialized"}`
 	daemonAccountRead = `{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}`
 
-	// DaemonProbeResponseID is the JSON-RPC id of the account/read request.
+	// DaemonProbeResponseID is the JSON-RPC id of the account/read request,
+	// written into daemonAccountRead above; TestDaemonProbeRequestsAreTheFixedReadOnlySequence
+	// fails if the two part.
 	DaemonProbeResponseID = 2
 )
 

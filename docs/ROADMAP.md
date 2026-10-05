@@ -64,8 +64,15 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code and lands on main together with the first implementation slice, not
-before it. Each slice is its own commit and review:
+the code. Until the first slice users can see (slice 3, the reconcile in
+`kae use`) is ready, the contract and the slices before it stay on the integration
+branch `feat/resident-reconcile`, and they land on main together with slice 3, not
+before it. The feature then ships stage by stage, so a release cut between slices
+ships only part of what the contract describes: the release notes of each release
+name which slices it ships, and the user-facing paragraphs (README, README.ja,
+GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
+and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
+from slice 6. Each slice is its own commit and review:
 
 1. `internal/wsrpc`, the WebSocket-over-Unix-socket client.
 2. The codex adapter's `ResidentHolder` and the daemon probe.
@@ -75,7 +82,12 @@ before it. Each slice is its own commit and review:
    in this slice.
 4. The same reconcile in `kae add` and `kae rollback`.
 5. `internal/desktopapp`: the ChatGPT app's confirmation, quit and relaunch.
-6. `doctor resident_drift`, including the moved-socket check.
+   Until it lands, slices 3 and 4 emit no `desktop_app` entry and do nothing to the
+   app.
+6. `doctor resident_drift`. Its socket half runs by default. Its moved-socket half
+   (`codex app-server daemon version`) ships disabled and stays disabled until the
+   acceptance records that the command starts no daemon when none runs and makes no
+   network call; once that is recorded it is enabled by default.
 7. Usage attribution: a veto on a codex usage reading kae would attribute to the
    wrong account (a veto only, no re-attribution). Last, as a separate slice.
 8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with

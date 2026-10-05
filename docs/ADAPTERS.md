@@ -411,7 +411,9 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
   switched home.
 - **status** `codex app-server daemon version`, whose JSON names `status` and
-  `socketPath`; doctor only.
+  `socketPath`; doctor only, and not run until the acceptance records that it starts
+  no daemon when none runs and makes no network call (enabled by default once that
+  is recorded).
 - **desktop app** bundle id `com.openai.codex`, darwin only.
 
 None of this is a documented upstream interface, and two kinds of upstream change
@@ -421,7 +423,8 @@ warn on `unknown`. A **moved socket** is the likelier change and the quieter one
 the probe finds no socket, reads `absent`, and a switch says nothing, so the
 restart silently stops happening. `doctor resident_drift` is what catches it, by
 comparing the `socketPath` that `codex app-server daemon version` reports for a
-running daemon with the declared one ([CLI.md](CLI.md) § `kae doctor --json`);
+running daemon with the declared one ([CLI.md](CLI.md) § `kae doctor --json`) —
+once that half is enabled; until then a moved socket goes unreported by kae;
 `upstream_version` flagging a newer codex is the prompt to re-check these rows.
 
 **Observed 2026-10-06 on 0.160.0**, on one macOS machine, sending only the three

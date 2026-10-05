@@ -24,5 +24,4 @@ func (s *scenario) verifyShells(root, projectDir string) {
 		s.err = err
 	}
 	s.checks = append(s.checks, checks...)
-	s.checks = append(s.checks, "fish runtime unverified: resource retrieval only; fish is not required by this fixture")
 }

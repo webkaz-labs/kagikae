@@ -98,6 +98,9 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | env profile | 環境変数プロファイル | 決定 | |
 | secret backend | シークレットストア | 決定 | secret store と同一視する |
 | cancel | キャンセル | 確定 | |
+| resident process | 常駐プロセス | 提案 | 切替の後も起動時のアカウントを使い続ける上流のプロセス。子プロセスと混ぜない |
+| managed daemon | 管理デーモン | 提案 | 初出は「管理デーモン（`codex app-server daemon`）」と併記する。GUIDE.ja.md の既存の書き方に合わせる |
+| ChatGPT desktop app | ChatGPT アプリ | 提案 | 製品名 ChatGPT は訳さない |
 
 ### 型と記号
 

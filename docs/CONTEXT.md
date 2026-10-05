@@ -73,6 +73,8 @@ to change a name.
 | **preservation record** | credential bytes retained with original-store and binding evidence, without account adoption | Recovery and retention are defined in [CLI.md](CLI.md) § kae preservation Semantics |
 | **capture back** | **narrower than harvest**: the single harvest `kae relogin` runs after the tool's own login flow ([CLI.md](CLI.md) § kae relogin Semantics) | Not a synonym for harvest, and the only place the phrase is correct |
 | **tombstone** | a credential the tool itself overwrote to record that its own login is dead | What kae may conclude from one is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § What kae observed is not what the tool can do |
+| **resident process** | an upstream process that outlives a switch and keeps the account it started with: codex's managed daemon, the ChatGPT desktop app's embedded codex server, a long-running codex session | Not a **child process**, which kae starts and waits for. What kae may do to one is [SECURITY.md](SECURITY.md) § Resident processes; which ones codex has is [ADAPTERS.md](ADAPTERS.md) § Resident processes |
+| **managed daemon** | codex's background app-server for one codex home, controlled by `codex app-server daemon` | Upstream's own word (`--managed-daemon`). Not kae: kae runs no daemon |
 | **supersedes**, **orderable** | the two predicates deciding whether one copy of a credential is newer than another (`internal/cmd/freshness.go`) | `orderable` is `supersedes`'s precondition. The normative text is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Ordering two copies of one credential; do not restate either predicate as a word-list here, because a *subset* of one of them is this repository's most-repeated defect |
 
 ## Naming audit

@@ -301,7 +301,7 @@ alternative exists (`secret-tool`).
   Further admission requires per-step detection controls, Linux cost measurements
   and a decision about cache and runner writes. The
   [validation rationale](VALIDATION.md#check-retention-and-ci-admission) covers
-  formatter, docs-selftest and build admission. Those decisions do not admit the
+  formatter, docs-selftest, build and signing-test admission. Those decisions do not admit the
   remaining local checks. Shared build-cache changes remain deferred until a
   same-condition measurement establishes duplicate compilation and its effect on
   total gate time.

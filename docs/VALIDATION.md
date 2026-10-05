@@ -16,9 +16,10 @@ it had already drifted — this line omitted `smoke-selftest` for as long as it 
 and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
 CI is a **subset**, not a mirror, apart from the picker PTY suite (§ Picker PTY suite
-says which part of it each runs): `.github/workflows/check.yml`'s own steps are the one
-copy of which of those steps run there, and everything else is enforced on a
-developer's machine only.
+says which part of it each runs) and the Packslip signing test, which the local gate
+skips without `PACKSLIP_BIN` and CI runs on linux/amd64 (§ Packslip consumer smoke):
+`.github/workflows/check.yml`'s own steps are the one copy of which of those steps
+run there, and everything else is enforced on a developer's machine only.
 [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions; the workflow steps
 own their environment constraints.
 
@@ -123,6 +124,20 @@ Reconsider admission if CI cost no longer justifies detection; compare total gat
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
 
+The signing test's admission is also for detection. Its `Signing test` step fetches
+the release signer's linux-x64 archive, checks the sha256 recorded in the step, verifies
+its build provenance and runs `TestSignerCLIStatesSpecLibc` with it;
+`TestCheckWorkflowSignsWithReleaseSigner` fails when that step's version differs from
+`signerPackslip` or when it drops the digest check, the provenance check or the test.
+On 2026-10-05, in an Ubuntu 24.04 linux/amd64 container (emulated on an arm64 Mac),
+the step's commands, run as written, detected a release-workflow mutation the always-on
+suite passes: renaming the fish completion resource's archive member in `release.yml`
+left `go test ./scripts/releaseverify` passing and failed the step with `packslip
+completion resource mismatch`. A wrong recorded digest failed the step at `sha256sum`.
+The step took 14.7 s with a warm Go build cache and 81.8 s with an empty one;
+fetching and verifying the archive alone took 6.6 s. Those times are from that emulated
+container, not a GitHub runner, whose step time is not yet measured.
+
 ## Picker PTY suite
 
 `mise run tui-e2e` drives the built `kae` through a pseudo-terminal, which no Go test
@@ -197,10 +212,14 @@ way. On 2026-10-05, in an Ubuntu 24.04 linux/arm64 container, the signing test
 passed with both signers (1.6.0 without the manifest left `libc` unset on both
 Linux artifacts, and with it both were `gnu`; 1.1.1 gave `gnu` either way), and
 the fixture passed with mise 2026.9.3 and 2026.10.2 signing with Packslip 1.6.0.
+On 2026-10-05, in an Ubuntu 24.04 linux/amd64 container, the signing test passed with
+1.6.0 (the control lost `libc`); 1.1.1 and the fixture were not run there. CI runs the
+signing test with 1.6.0 on linux/amd64 in its `Signing test` step (§ Check retention
+and CI admission).
 The fixture builds the application with `GOPROXY=off` inside the swapped smoke
 HOME, so on a host whose module cache is not already visible there, run
 `go mod download` and export `GOMODCACHE` before the smoke block; the first
-Linux run failed on that until it did. linux/amd64 was not run. The signing test
+Linux run failed on that until it did. The signing test
 does not run the Action's shell wrapper or OIDC signing. The fixture runner
 builds temporary application versions and uses ephemeral key/unlogged trust only inside
 the smoke HOME. Its HTTP server does not forward requests. This checks the

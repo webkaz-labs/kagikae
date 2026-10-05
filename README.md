@@ -595,7 +595,8 @@ Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
 `mise run check` remains the full authoritative gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
 **subset** of it, plus the full picker PTY suite
-([docs/VALIDATION.md](docs/VALIDATION.md) § Picker PTY suite). Static analysers,
+([docs/VALIDATION.md](docs/VALIDATION.md) § Picker PTY suite) and the Packslip
+signing test ([docs/VALIDATION.md](docs/VALIDATION.md) § Packslip consumer smoke). Static analysers,
 `shellcheck` and smoke selftests remain in the local gate. Compare `check.yml`'s
 steps with `mise.toml`'s `[tasks.check]` for the current coverage.
 Tagging `vX.Y.Z`

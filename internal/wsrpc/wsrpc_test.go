@@ -31,7 +31,6 @@ const wantResp = `{"jsonrpc":"2.0","id":2,"result":{"account":{"email":"` + secr
 
 // srv is the server side of one fake connection.
 type srv struct {
-	t    *testing.T
 	conn net.Conn
 	br   *bufio.Reader
 }
@@ -61,7 +60,7 @@ func startServer(t *testing.T, handle func(s *srv) error) (socket string, done <
 		}
 		defer func() { _ = conn.Close() }()
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-		ch <- handle(&srv{t: t, conn: conn, br: bufio.NewReader(conn)})
+		ch <- handle(&srv{conn: conn, br: bufio.NewReader(conn)})
 	}()
 	return socket, ch
 }
@@ -157,6 +156,9 @@ func (s *srv) readFrame() (frame, error) {
 		}
 		n = binary.BigEndian.Uint64(ext[:])
 	}
+	if n > 1<<20 {
+		return frame{}, fmt.Errorf("client frame declares %d bytes", n)
+	}
 	if !f.masked {
 		_, _ = s.conn.Write(rawFrame(true, opClose, closePayload(1002)))
 		return frame{}, errors.New("client frame not masked")
@@ -175,14 +177,17 @@ func (s *srv) readFrame() (frame, error) {
 }
 
 // readRequests reads the client's request frames and checks them.
-func (s *srv) readRequests() error {
-	for i, want := range testReqs {
+func (s *srv) readRequests() error { return s.expect(testReqs) }
+
+// expect reads one client frame per element of reqs and checks it byte for byte.
+func (s *srv) expect(reqs [][]byte) error {
+	for i, want := range reqs {
 		f, err := s.readFrame()
 		if err != nil {
 			return err
 		}
 		if !f.fin || f.op != opText || !bytes.Equal(f.payload, want) {
-			return fmt.Errorf("request %d: fin=%v op=%d payload=%q", i, f.fin, f.op, f.payload)
+			return fmt.Errorf("request %d: fin=%v op=%d %d bytes; want %d", i, f.fin, f.op, len(f.payload), len(want))
 		}
 	}
 	return nil
@@ -323,35 +328,61 @@ func TestHandshakeAndFirstFrameInOneWrite(t *testing.T) {
 }
 
 func TestHandshakeRejections(t *testing.T) {
+	// ok101 is a valid 101 header block without the terminating blank line, so
+	// a case can append one header and be rejected for that header alone.
+	ok101 := func(accept string) string {
+		return "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n"
+	}
 	cases := []struct {
 		name string
 		resp func(accept string) string
+		// want is a substring the error must contain, pinning which check fired.
+		want string
 	}{
 		{"accept mismatch", func(string) string {
 			return response101(acceptKey("not-the-client-key"))
-		}},
+		}, "Accept mismatch"},
 		{"accept carries data", func(string) string {
 			return response101(secret)
-		}},
+		}, "Accept mismatch"},
 		{"status 200", func(accept string) string {
 			return "HTTP/1.1 200 OK\r\nSec-WebSocket-Accept: " + accept + "\r\nContent-Length: 15\r\n\r\n" + secret
-		}},
+		}, "status 200"},
 		{"status 400 with body", func(string) string {
 			return "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\n" + secret
-		}},
+		}, "status 400"},
 		{"missing upgrade", func(accept string) string {
 			return "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n"
-		}},
+		}, "missing Upgrade"},
 		{"missing connection", func(accept string) string {
 			return "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n"
-		}},
+		}, "missing Connection"},
 		{"unrequested extension", func(accept string) string {
-			return "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept +
-				"\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n"
-		}},
-		{"oversized headers", func(accept string) string {
-			return "HTTP/1.1 101 Switching Protocols\r\nX-Pad: " + strings.Repeat("a", handshakeLimit) + "\r\n\r\n"
-		}},
+			return ok101(accept) + "Sec-WebSocket-Extensions: permessage-deflate\r\n\r\n"
+		}, "unrequested"},
+		{"unrequested subprotocol", func(accept string) string {
+			return ok101(accept) + "Sec-WebSocket-Protocol: jsonrpc\r\n\r\n"
+		}, "unrequested"},
+		// Only the padding header is wrong, so only the budget can reject it.
+		{"headers over budget", func(accept string) string {
+			return ok101(accept) + "X-Pad: " + strings.Repeat("a", handshakeLimit) + "\r\n\r\n"
+		}, "response headers exceed"},
+		// net/http quotes the offending bytes into these errors; none may surface.
+		{"malformed status code", func(string) string {
+			return "HTTP/1.1 " + secret + " Switching Protocols\r\n\r\n"
+		}, "malformed response"},
+		{"malformed version", func(string) string {
+			return secret + " 101 Switching Protocols\r\n\r\n"
+		}, "malformed response"},
+		{"duplicate content length", func(string) string {
+			return "HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2" + secret + "\r\n\r\n"
+		}, "malformed response"},
+		{"unsupported transfer encoding", func(string) string {
+			return "HTTP/1.1 200 OK\r\nTransfer-Encoding: " + secret + "\r\n\r\n"
+		}, "malformed response"},
+		{"header without colon", func(accept string) string {
+			return ok101(accept) + "X-Bad " + secret + "\r\n\r\n"
+		}, "malformed response"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,8 +395,8 @@ func TestHandshakeRejections(t *testing.T) {
 				return nil
 			})
 			_, err := call(t, socket, 2, 1<<20, 2*time.Second)
-			if !errors.Is(err, ErrHandshake) {
-				t.Fatalf("Call error = %v; want ErrHandshake", err)
+			if !errors.Is(err, ErrHandshake) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Call error = %v; want ErrHandshake containing %q", err, tc.want)
 			}
 			if strings.Contains(err.Error(), secret) {
 				t.Fatalf("error leaks peer data: %v", err)
@@ -482,6 +513,9 @@ func TestReadFailures(t *testing.T) {
 		{"text inside fragmented message", [][]byte{rawFrame(false, opText, []byte("{")), text("{}")}, 1 << 20, ErrProtocol},
 		{"fragmented ping", [][]byte{rawFrame(false, opPing, nil)}, 1 << 20, ErrProtocol},
 		{"malformed json", [][]byte{text(`{"email":"` + secret)}, 1 << 20, ErrProtocol},
+		{"invalid utf-8", [][]byte{text(`{"jsonrpc":"2.0","id":2,"result":"` + secret + "\xff\"}")}, 1 << 20, ErrProtocol},
+		{"control frame over 125 bytes", [][]byte{rawFrame(true, opPing, bytes.Repeat([]byte("p"), 126))}, 1 << 20, ErrProtocol},
+		{"reserved data opcode", [][]byte{rawFrame(true, 0x3, []byte(`{"jsonrpc":"2.0","id":2,"result":{}}`))}, 1 << 20, ErrProtocol},
 		{"close mid-stream", [][]byte{
 			text(`{"jsonrpc":"2.0","method":"note"}`),
 			rawFrame(true, opClose, append(closePayload(1001), secret...)),
@@ -605,4 +639,55 @@ func TestDialError(t *testing.T) {
 	if _, err := call(t, missing, 2, 1<<20, time.Second); err == nil {
 		t.Fatal("Call succeeded without a listener")
 	}
+}
+
+// sized returns a JSON-RPC message with the given id that is exactly n bytes.
+func sized(id, n int) []byte {
+	head := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":"`, id)
+	return []byte(head + strings.Repeat("x", n-len(head)-2) + `"}`)
+}
+
+// TestExtendedLengthsRoundTrip covers the 16-bit (126..65535) and 64-bit
+// length encodings in both directions. The 70000-byte message also exceeds
+// the handshake budget, so it fails unless the budget is lifted after the 101.
+func TestExtendedLengthsRoundTrip(t *testing.T) {
+	for _, n := range []int{126, 200, 65535, 65536, 70000} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			reqs := [][]byte{sized(1, n), sized(2, n)}
+			want := sized(2, n)
+			socket, done := startServer(t, func(s *srv) error {
+				if err := s.upgrade(); err != nil {
+					return err
+				}
+				if err := s.expect(reqs); err != nil {
+					return err
+				}
+				return s.send(rawFrame(true, opText, sized(1, n)), rawFrame(true, opText, want))
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			got, err := Call(ctx, (&net.Dialer{}).DialContext, socket, reqs, 2, 1<<20)
+			if err != nil {
+				t.Fatalf("Call: %v", err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("Call returned %d bytes; want the %d-byte message", len(got), len(want))
+			}
+			serverErr(t, done)
+		})
+	}
+}
+
+func TestUTF8SplitAcrossFragments(t *testing.T) {
+	msg := []byte(`{"jsonrpc":"2.0","id":2,"result":"鍵"}`)
+	cut := bytes.IndexRune(msg, '鍵') + 1 // inside the 3-byte sequence
+	socket, done := failingServer(t, rawFrame(false, opText, msg[:cut]), rawFrame(true, opContinuation, msg[cut:]))
+	got, err := call(t, socket, 2, 1<<20, 2*time.Second)
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if !bytes.Equal(got, msg) {
+		t.Fatalf("Call = %q; want %q", got, msg)
+	}
+	serverErr(t, done)
 }

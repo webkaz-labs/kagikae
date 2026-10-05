@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Dialer opens the transport connection. The production value is
@@ -74,7 +75,7 @@ const (
 // Call dials socket (a unix-domain socket path) with dial, upgrades the
 // connection to WebSocket, sends each element of reqs as one text message in
 // order, and returns the complete JSON-RPC response message (the raw object,
-// including "jsonrpc", "id" and either "result" or "error") whose numeric "id"
+// including "jsonrpc", "id" and either "result" or "error") whose integer "id"
 // equals wantID. Returning the whole message lets the caller tell a JSON-RPC
 // error from a result without a second error channel.
 //
@@ -85,9 +86,13 @@ const (
 //
 // maxMsg bounds one reassembled message in bytes and must be positive; a
 // larger message, or a frame header declaring a larger length, returns
-// ErrMessageTooLarge before the payload is read. The ctx deadline (and
-// cancellation) applies to the whole exchange: dial, handshake, writes and
-// reads.
+// ErrMessageTooLarge before the payload is read. A text message that is not
+// valid UTF-8 returns ErrProtocol (RFC 6455 §8.1).
+//
+// The ctx deadline (and cancellation) applies to the whole exchange: dial,
+// handshake, writes and reads. Callers must give ctx a deadline: Call does not
+// impose one, so a ctx with neither deadline nor cancellation waits on a silent
+// peer forever.
 func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID int, maxMsg int) ([]byte, error) {
 	if maxMsg <= 0 {
 		return nil, fmt.Errorf("wsrpc: maxMsg must be positive, got %d", maxMsg)
@@ -115,8 +120,13 @@ func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID
 		// The only conn deadlines are the ctx deadline and the cancel hook, so a
 		// conn timeout means ctx is done or about to be (its timer may fire a
 		// moment after the conn's).
+		// The wait is bounded in case a custom Dialer returned a conn with its
+		// own deadline.
 		if errors.Is(err, os.ErrDeadlineExceeded) {
-			<-ctx.Done()
+			select {
+			case <-ctx.Done():
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, fmt.Errorf("wsrpc: %w", ctxErr)
@@ -181,7 +191,7 @@ func (c *client) handshake() error {
 
 	resp, err := http.ReadResponse(c.br, &http.Request{Method: http.MethodGet})
 	if err != nil {
-		return fmt.Errorf("%w: read response: %w", ErrHandshake, err)
+		return handshakeReadErr(err)
 	}
 	// A 101 has no body; a non-101 body is never read (it may echo data).
 	if resp.StatusCode != http.StatusSwitchingProtocols {
@@ -201,6 +211,22 @@ func (c *client) handshake() error {
 		return fmt.Errorf("%w: unrequested extension or subprotocol", ErrHandshake)
 	}
 	return nil
+}
+
+// handshakeReadErr classifies a failure to read the 101 response. net/http and
+// textproto quote the offending status line or header into their error text,
+// which may carry personal data, so only the class survives.
+func handshakeReadErr(err error) error {
+	switch {
+	case errors.Is(err, ErrHandshake): // header budget exceeded (limitReader)
+		return err
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		return fmt.Errorf("%w: read response: %w", ErrHandshake, os.ErrDeadlineExceeded)
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return fmt.Errorf("%w: read response: %w", ErrHandshake, io.ErrUnexpectedEOF)
+	default:
+		return fmt.Errorf("%w: malformed response", ErrHandshake)
+	}
 }
 
 func acceptKey(key string) string {
@@ -309,6 +335,9 @@ func (c *client) readMessage(maxMsg int) ([]byte, error) {
 		}
 		msg = append(msg, payload...)
 		if fin {
+			if !utf8.Valid(msg) {
+				return nil, fmt.Errorf("%w: text message is not valid UTF-8 (%d bytes)", ErrProtocol, len(msg))
+			}
 			return msg, nil
 		}
 	}

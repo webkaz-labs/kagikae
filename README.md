@@ -592,14 +592,16 @@ git diff --check
 
 Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
 `mise run check` remains the full authoritative gate. CI
-([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
-**subset** of it, plus the full picker PTY suite
-([docs/VALIDATION.md](docs/VALIDATION.md) § Picker PTY suite). Static analysers,
-`shellcheck` and smoke selftests remain in the local gate. Compare `check.yml`'s
+([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs a **subset** of it:
+`check.yml` on linux/amd64, plus the full picker PTY suite
+([docs/VALIDATION.md](docs/VALIDATION.md) § Picker PTY suite), and `platforms.yml`'s
+build, vet and tests on darwin/arm64 and linux/arm64. Static analysers,
+`shellcheck` and smoke selftests remain in the local gate. Compare both workflows'
 steps with `mise.toml`'s `[tasks.check]` for the current coverage.
-Tagging `vX.Y.Z`
-runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that same
-subset.
+The release procedure requires `ci.yml` green on the commit before tagging `vX.Y.Z`
+([docs/RELEASE.md](docs/RELEASE.md) § Release procedure). The tag then runs
+[GoReleaser](https://goreleaser.com) to publish the binaries, behind `check.yml`
+alone.
 
 ## Documentation
 

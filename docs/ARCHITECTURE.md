@@ -44,6 +44,9 @@ kagikae/
     textui/               # may kae prompt? (stdin terminal, /dev/tty, TERM, size) and the terminal handle
     l10n/                 # output language selection, Japanese catalog, message rendering
     runner/               # subprocess seam (template standard)
+    wsrpc/                # minimal WebSocket-over-UDS JSON-RPC client (stdlib only):
+                          #   one fixed request sequence, size and deadline bounded
+    desktopapp/           # darwin desktop-app quit/relaunch by bundle id through runner
     testutil/runnertest/  # shared canned-response runner fake for tests
     testutil/l10ntest/    # English pin for TestMain, explicit Japanese for one test
   tools/devtools/         # common commands, shell entrypoints and libraries; same module
@@ -98,6 +101,13 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   (`open` / `xdg-open`) — goes through `runner.Launch`: stdin and stdout to the
   null device, stderr to kae's, and a wait for the opener process only; a runner
   without `Launch` (a test double) answers through `Run`.
+- **Resident-process seams.** The daemon probe dials a Unix socket, which is not a
+  subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
+  `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
+  framing is exercised. The daemon restart goes through `runner.RunWithEnv`, the
+  app's `osascript` through `runner.Run` and its relaunch through `runner.Launch`.
+  Waits use `App.Now` and an injected sleeper. [SECURITY.md](SECURITY.md)
+  § Resident processes owns the limits on all of them.
 - **Completion backend seam** (`cmd/complete.go`): the hidden
   `kae __complete <kind>` reads the live router/config/captured state and prints
   one candidate per line. It is the single source for both completion surfaces —
@@ -211,6 +221,18 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   relogin deadline. That is the whole reason it can see an invalidation the five
   above cannot — `refreshTokenExpiresAt` is exactly what an invalidation does not
   move.
+- `ResidentHolder` declares a tool whose resident processes keep the account they
+  started with (codex). It connects to nothing, starts nothing and writes nothing;
+  its only filesystem access is `ResidentDaemon` resolving `CODEX_HOME`'s symlinks,
+  the same canonicalization the keyring store key already does in the adapter.
+  `ResidentDaemon(env)` returns the daemon's socket path and its restart and
+  status argv and environment, `CredentialAccount(payload)`
+  reads an opaque account key from a credential payload (file or keyring alike),
+  `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer, and
+  `DesktopApps()` lists the bundle ids of desktop apps that embed the tool (non-empty
+  on darwin only). The key is compared and never printed. `cmd` owns the probe, the
+  restart and the app handling; [ADAPTERS.md](ADAPTERS.md) § Resident processes owns
+  what the codex adapter declares.
 
 `VerifiedVersion() string` and `VerifiedOn() string` are **not** among them: they
 are methods of `Adapter` itself, because kae relies on undocumented *behaviour* of
@@ -260,7 +282,20 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
 8. update state.json (under the state lock, re-reading the file); prune old
    backups
 9. release locks
+10. reconcile resident processes (no lock): restart a managed daemon that holds
+    an account other than the one now live, then handle a running desktop app
 ```
+
+Before step 2, a tool that implements `ResidentHolder` is probed once, read-only
+and without a lock, so the advance notice reaches stderr before anything is
+written. `--dry-run` runs that probe too, since it only reads, and adds the
+notice and the `planned` outcomes to its plan; it writes nothing and runs no
+step 10. Step 10 runs once for the whole
+transaction, only for tools that implement the capability, and not at all when
+step 7 rolled any tool back. It is outside the locks for the reason
+[SECURITY.md](SECURITY.md) § Resident processes gives; [CLI.md](CLI.md)
+§ kae use Semantics owns its outcomes. `kae add` (login flow) and `kae rollback`
+run the same reconcile after their own locks are released.
 
 The whole switch wraps `ctx` in `keychain.WithReadCache`, so the `security`
 reads steps 3–6 make of one tool's keychain service collapse to a single
@@ -271,7 +306,8 @@ holding more than one legitimate item — agy's `gemini`/`antigravity`, codex's
 per-`CODEX_HOME` `Codex Auth` — is never conflated. No child runs
 during a switch, so the cache never serves a stale live credential.
 
-`--dry-run` runs steps 1–3 and prints the plan from the artifact specs; it also
+`--dry-run` runs steps 1–3 and the resident probe, and prints the plan from the
+artifact specs; it also
 annotates a stale switch target (snapshot past `expiresAt` with no refresh
 token) with a warning, the same `internal/freshness` predicate `doctor` uses.
 

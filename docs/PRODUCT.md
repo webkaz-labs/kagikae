@@ -265,6 +265,12 @@ The others are what `kae` will not do:
   hold a payload that is well-formed, unexpired and dead. kae rolls back anyway and
   says so when it can prove it ([CLI.md](CLI.md) § `kae rollback --json`) — reversible
   is a property of kae's records, not of an upstream token.
+- Two actions after a switch are outside that backup-and-rollback promise, because
+  they act on processes rather than files: kae may restart codex's managed daemon,
+  and with consent it may quit and relaunch the ChatGPT desktop app. kae never
+  signals a process or forces a quit, and `--no-restart` turns both off
+  ([SECURITY.md](SECURITY.md) § Resident processes, [CLI.md](CLI.md) § kae use
+  Semantics).
 - Companion-auth lockstep is **opt-in and auth-only**: kae drives the env/config
   the companion CLIs already read (a kae-owned `GIT_CONFIG_GLOBAL` that includes
   the user's own `~/.gitconfig`, an env token resolved at mise eval time, or a

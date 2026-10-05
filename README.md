@@ -203,6 +203,14 @@ To add another tool, capture it separately (for example, `kae add --no-login
 codex main`) and add that tool to the profile with `kae profile set main codex
 main`.
 
+codex's managed daemon keeps the account it started with, so when `kae use`,
+`kae add` or `kae rollback` leaves it holding another account, kae restarts it after
+the switch and says so on stderr. A running ChatGPT desktop app is quit and
+relaunched only after you confirm. `--no-restart` turns both into a warning, and
+so does the mise enter hook (`kae use --auto`). Otherwise `--yes` counts as that
+confirmation — a script that passes `--yes` to `kae use` quits a running app
+([docs/CLI.md](docs/CLI.md) § kae use Semantics).
+
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
 restores a selected restorable global backup. `kae use --dry-run` previews its
 planned artifact changes.

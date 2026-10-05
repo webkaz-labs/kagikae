@@ -15,12 +15,13 @@ jobs:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
-    # One run per ref and platform; a newer push to a pull request cancels the older
-    # run, while main keeps every push's result. macOS runners have the smaller free
-    # concurrency allowance, so a stale run must not hold one.
+    # On a pull request, one run per ref and platform: a newer push cancels the older
+    # run, so a stale run does not hold a macOS runner, which has the smaller free
+    # concurrency allowance. Elsewhere the group is the commit, so a later push to
+    # main neither cancels nor queues behind an earlier push's run.
     concurrency:
-      group: platforms-${{ github.ref }}-${{ matrix.platform }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      group: platforms-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ matrix.platform }}
+      cancel-in-progress: true
     strategy:
       # Each platform's result stands on its own: an arm64 Linux failure must not
       # hide whether darwin passed.
@@ -41,9 +42,12 @@ jobs:
         with:
           fetch-depth: 1
 
-      # setup-go keys its cache on runner OS, architecture, Go version and go.sum,
-      # so the two platforms never restore each other's build or module cache. The
-      # module cache it restores is what the build below resolves from.
+      # setup-go v6 (src/cache-restore.ts) keys its cache as
+      # `setup-go-${platform}-${arch}-${linuxVersion}go-${versionSpec}-${fileHash}`:
+      # runner OS, architecture, the Linux image, the go.mod version spec and the
+      # go.sum hash, with no restore keys. The two platforms therefore never restore
+      # each other's build or module cache, and the restored module cache is what the
+      # build below resolves from.
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -73,21 +77,44 @@ jobs:
 
       # Tests outside internal/cmd have no fail-loud runner guard, and a missed stub
       # would reach the runner's real keychain through `security`. Put a recording
-      # shim first on PATH; the step after the tests fails if anything called it.
+      # shim first on PATH. The log path is written into the shim, so a subprocess
+      # started with an emptied environment that keeps PATH still records.
       - name: Install security shim
+        id: security-shim
         if: runner.os == 'macOS'
         run: |
           shim="$RUNNER_TEMP/security-shim"
+          log="$RUNNER_TEMP/security-shim.log"
           mkdir -p "$shim"
-          cat > "$shim/security" <<'EOF'
+          cat > "$shim/security" <<EOF
           #!/bin/sh
-          echo "security $1" >> "$KAE_SECURITY_SHIM_LOG"
+          echo "security \$1" >> '$log'
           echo "security shim: unstubbed security call refused" >&2
           exit 1
           EOF
           chmod +x "$shim/security"
           echo "$shim" >> "$GITHUB_PATH"
-          echo "KAE_SECURITY_SHIM_LOG=$RUNNER_TEMP/security-shim.log" >> "$GITHUB_ENV"
+
+      # Positive control, before any test: `security` must resolve to the shim, fail,
+      # and leave its line in the log. The log is then emptied for the tests.
+      - name: Probe security shim
+        id: security-probe
+        if: steps.security-shim.outcome == 'success'
+        run: |
+          log="$RUNNER_TEMP/security-shim.log"
+          if [ "$(command -v security)" != "$RUNNER_TEMP/security-shim/security" ]; then
+            echo "security resolves to $(command -v security), not the shim" >&2
+            exit 1
+          fi
+          if security probe 2>/dev/null; then
+            echo "the security shim exited 0" >&2
+            exit 1
+          fi
+          if [ "$(cat "$log")" != "security probe" ]; then
+            echo "the security shim did not record the probe" >&2
+            exit 1
+          fi
+          : > "$log"
 
       # build, vet, then test, in one job and one GOCACHE: each step reuses the
       # packages the previous one compiled. Executables stay in runner temp.
@@ -102,18 +129,15 @@ jobs:
       - name: Test
         run: go test ./...
 
-      # Runs after a failed test step too, so a keychain call is reported either way.
-      # Only the subcommand is logged, never its arguments. The PATH comparison is the
-      # positive control: a shim that did not resolve first proved nothing.
+      # Runs after a failed test step too, so a keychain call is reported either way,
+      # but not after a cancel or when the shim never passed its probe. Only the
+      # subcommand is logged, never its arguments.
       - name: Check security shim
-        if: ${{ always() && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && steps.security-probe.outcome == 'success' }}
         run: |
-          if [ "$(command -v security)" != "$RUNNER_TEMP/security-shim/security" ]; then
-            echo "security resolves to $(command -v security), not the shim" >&2
-            exit 1
-          fi
-          if [ -s "$KAE_SECURITY_SHIM_LOG" ]; then
+          log="$RUNNER_TEMP/security-shim.log"
+          if [ -s "$log" ]; then
             echo "tests invoked security:" >&2
-            sort "$KAE_SECURITY_SHIM_LOG" | uniq -c >&2
+            sort "$log" | uniq -c >&2
             exit 1
           fi

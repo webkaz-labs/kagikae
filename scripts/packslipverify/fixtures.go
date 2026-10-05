@@ -25,7 +25,8 @@ const (
 	fixtureCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	// signerPackslip matches the release workflow's signer, not the newest
 	// Packslip: the fixture must produce the bundle shape production publishes.
-	signerPackslip = "1.1.1"
+	// When changing it, run TestSignerCLIStatesSpecLibc with PACKSLIP_BIN set.
+	signerPackslip = "1.6.0"
 )
 
 type fixtureServer struct {

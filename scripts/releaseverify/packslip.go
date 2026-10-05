@@ -119,7 +119,38 @@ func preparePackslip(tag, commit, dir, repo string, run commandFunc) error {
 	if err := verifyArchives(dir, names); err != nil {
 		return err
 	}
-	return verifySource(tag, commit, dir, names, repo, run)
+	if err := verifySource(tag, commit, dir, names, repo, run); err != nil {
+		return err
+	}
+	return writePackslipManifest(tag, commit, dir)
+}
+
+// packslipManifestFile is the signing Action's manifest input, written beside
+// the verified archives; the Action's artifacts glob does not collect it.
+const packslipManifestFile = "release.toml"
+
+// writePackslipManifest states each artifact's C library from releaseSpec, so the
+// signer records the libc the verifier requires. Packslip 1.4.0 and later omit
+// libc for a static Linux build unless the manifest names it, which would also
+// select the archive on musl hosts.
+func writePackslipManifest(tag, commit, dir string) error {
+	var b strings.Builder
+	for _, a := range releaseSpec(tag, commit).Artifacts {
+		if a.Libc == "" {
+			continue
+		}
+		// A JSON string is also a valid TOML basic string.
+		path, err := json.Marshal(filepath.Join(dir, a.Name))
+		if err != nil {
+			return err
+		}
+		libc, err := json.Marshal(a.Libc)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "[[artifact]]\npath = %s\nlibc = %s\n\n", path, libc)
+	}
+	return os.WriteFile(filepath.Join(dir, packslipManifestFile), []byte(b.String()), 0o600)
 }
 
 func verifySource(tag, commit, dir string, names []string, repo string, run commandFunc) error {

@@ -193,7 +193,15 @@ reproduce cannot be added silently. The signing test's control signs without
 the manifest: from Packslip 1.4.0 the statement must then fail on `libc`. On
 2026-10-05 the signing test passed with Packslip 1.6.0 (the control lost
 `libc`) and with 1.1.1, the rollback signer, whose statement keeps `gnu` either
-way. It does not run the Action's shell wrapper or OIDC signing. The fixture runner
+way. On 2026-10-05, in an Ubuntu 24.04 linux/arm64 container, the signing test
+passed with both signers (1.6.0 without the manifest left `libc` unset on both
+Linux artifacts, and with it both were `gnu`; 1.1.1 gave `gnu` either way), and
+the fixture passed with mise 2026.9.3 and 2026.10.2 signing with Packslip 1.6.0.
+The fixture builds the application with `GOPROXY=off` inside the swapped smoke
+HOME, so on a host whose module cache is not already visible there, run
+`go mod download` and export `GOMODCACHE` before the smoke block; the first
+Linux run failed on that until it did. linux/amd64 was not run. The signing test
+does not run the Action's shell wrapper or OIDC signing. The fixture runner
 builds temporary application versions and uses ephemeral key/unlogged trust only inside
 the smoke HOME. Its HTTP server does not forward requests. This checks the
 actual mise backend; production publication also needs

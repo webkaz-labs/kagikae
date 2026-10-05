@@ -122,7 +122,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
-| `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules); `--json` is unchanged |
+| `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules) and each `Limit` reading's age (§ Subscription windows in listings); `--json` is unchanged |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
 | `--auto` | bare `use` | preserve global isolated selections when applying a resolved profile |
 | `--quiet` | bare `use` | suppress the success report (for hooks); errors still reported |
@@ -470,6 +470,16 @@ verify both in the tool and its environment before login or capture.
 | Snapshot, payload or recorded identity missing/invalid | Verify that the live tool is logged into the intended account in the global store before `kae add --no-login <tool> <account>`. Capture records that login; it does not renew expired authentication. If logged out, first take the login path above. |
 | Bound-directory credential needs login | Check the bound account with `kae status` there, stop other sessions using its credential, then run `kae relogin <tool>` in that directory and select the bound account. It selects the bound store itself and retains its attribution/refusal checks. |
 | Tool has no kae-driven login | For global recovery, log into that account through the tool first, then verify the global store and capture with `--no-login`. Before manual bound-directory login, verify mise activation, trust and the effective tool environment select the bound store; changing directory alone is insufficient. See § kae add Semantics and § kae relogin Semantics for supported flows. |
+
+codex's resident processes — the ChatGPT app, the managing daemon
+(`codex app-server daemon`) and long-running codex sessions — keep running and
+hold authentication in memory. Before re-capturing a codex login with `kae add`,
+quit them or run `codex app-server daemon restart`; if codex says it is logged out
+or signed in to another account right after the login, restart them. Observed on
+2026-10-05: one `kae add` failed with that message until the app and the daemon
+were restarted, while two ordinary `kae use` switches passed with them running.
+Only the restart's effect was observed; how the resident processes interfere was
+not established.
 
 `kae backup list` supports choosing an explicit global rollback target;
 `kae preservation list` supports choosing an explicit original-store restore.
@@ -1710,7 +1720,8 @@ in the same transaction.
 - The account tables print their default columns unless `--full` (`-f`) adds
   the rest (§ Human Text lists the tables and both column sets). This holds
   whether or not stdout is a terminal and in the stacked layout below; the
-  omitted columns are left out before the width is measured. `--json` is
+  omitted columns are left out before the width is measured. `--full` also adds
+  each `Limit` reading's age (§ Subscription windows in listings). `--json` is
   unchanged by `--full`. `kae ls` accepts `--full` for its other tables without
   effect.
 - Human tables fit the terminal. When stdout is a terminal narrower than the
@@ -1861,6 +1872,17 @@ has no `resets_at`. `-` means kae has no reading, not that the account is under
 its limit. Each window's percent has its own color: green below 80%, a warning
 color from 80%, and an error color at 100%; the countdown is dim. Color follows
 the same `NO_COLOR` rule as the rest of the table.
+
+With `--full`, a cell that has a reading ends with how long ago that reading was
+taken: `5h 16% (2h13m) · 7d 95% (3d4h) · 22h13m ago`. Every window in a cell
+comes from one reading with one `observed_at`, so the age appears once, after the
+last window, joined by the same ` · `. It uses the countdown's format, truncated
+to the two largest units; under a minute, or an `observed_at` that is not in the
+past, reads `1m ago`. It is dim, like the countdown. `-` gets no age, and neither
+does a reading without `observed_at`. The age shows that a remembered reading
+may be old; kae does not judge it stale or color it. Without `--full` the cell
+is unchanged, and `--json` is unchanged by `--full`: `observed_at` already
+carries the instant.
 
 ```json
 "usage": {
@@ -2648,7 +2670,9 @@ picker's text, and `--help` and usage text.
   placeholders such as `<tool>` and `KEY=VALUE`): only the `usage:` prefix of the
   line is localized. So is kae's `[redacted]` marker. The parenthesised cell words `(missing)`, `(ad-hoc)`
   and `(secret)` are tokens too; the words only a person reads (`present`, `absent`,
-  `re-login now`, the days left and warning counts) are localized.
+  `re-login now`, the days left, warning counts and the `ago` of a `Limit`
+  reading's age) are localized. The window labels and durations in a `Limit` cell
+  (`5h`, `2h13m`) are not.
 - **Embedded external errors.** Text produced by the OS, an upstream tool or the Go
   standard library appears verbatim.
 

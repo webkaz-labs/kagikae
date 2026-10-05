@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 const (
@@ -30,6 +31,7 @@ const (
 type scenario struct {
 	ctx              context.Context
 	home, repo, mise string
+	miseVersion      string
 	env              map[string]string
 	err              error
 	checks           []string
@@ -155,8 +157,11 @@ func newScenario(ctx context.Context) (*scenario, error) {
 		return nil, err
 	}
 	s := &scenario{ctx: ctx, home: home, repo: repo, mise: mise, env: smokeEnvironment()}
-	version := s.run(home, mise, "--version")
-	s.require(strings.HasPrefix(version, "2026.9.3 "), "consumer requires tested mise 2026.9.3")
+	version, err := distribution.MiseAtLeast(s.run(home, mise, "--version"), distribution.MinimumMise)
+	if s.err == nil && err != nil {
+		s.err = err
+	}
+	s.miseVersion = version
 	return s, s.err
 }
 

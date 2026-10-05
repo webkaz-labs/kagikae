@@ -40,10 +40,28 @@ type (
 		NativeVersion string   `json:"native_version,omitempty"`
 		Installer     string   `json:"installer,omitempty"`
 		Packslip      string   `json:"packslip,omitempty"`
+		Toolchain     *tools   `json:"toolchain,omitempty"`
 		Consumer      string   `json:"consumer,omitempty"`
 		Reason        string   `json:"reason,omitempty"`
 	}
 )
+
+// tools records the versions this run actually exercised. Verifier versions
+// float within their accepted range, so the result is the compatibility record.
+type tools struct {
+	Packslip string `json:"packslip"`
+	Mise     string `json:"mise"`
+}
+
+// exitError is a completed process with a nonzero status, distinguishable from
+// a launch failure so a refusal control cannot pass on a missing executable.
+// stderr lets a control require the refusal reason; Error() omits it.
+type exitError struct {
+	name, stderr string
+	code         int
+}
+
+func (e exitError) Error() string { return fmt.Sprintf("%s failed: exit status %d", e.name, e.code) }
 
 func command(name string, args, env []string, cwd string) (string, error) {
 	return commandContext(context.Background(), name, args, env, cwd)
@@ -55,7 +73,7 @@ func commandContext(parent context.Context, name string, args, env []string, cwd
 		return "", fmt.Errorf("%s failed: %w", filepath.Base(name), err)
 	}
 	if result.ExitCode != 0 {
-		return "", fmt.Errorf("%s failed: exit status %d", filepath.Base(name), result.ExitCode)
+		return "", exitError{name: filepath.Base(name), stderr: result.Stderr, code: result.ExitCode}
 	}
 	return result.Stdout, nil
 }
@@ -152,6 +170,12 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	if (system != "darwin" && system != "linux") || (arch != "amd64" && arch != "arm64") {
 		return result{}, errors.New("native platform unavailable")
 	}
+	var toolchain *tools
+	if packslipRelease(tag) {
+		if toolchain, err = verifierTools(repo, run); err != nil {
+			return result{}, err
+		}
+	}
 	if _, err := run("gh", []string{"release", "download", tag, "--repo", repository, "--dir", dir, "--pattern", "checksums.txt", "--pattern", "kae_*.tar.gz"}, nil, repo); err != nil {
 		return result{}, err
 	}
@@ -174,7 +198,10 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 		if err := verifyPackslip(filepath.Join(dir, packslipAsset), tag, commit, dir, repo, run); err != nil {
 			return result{}, err
 		}
-		packslip = "signature, source, archives and completion resources verified"
+		if err := refuseForeignSigner(filepath.Join(dir, packslipAsset), tag, commit, dir, repo, run); err != nil {
+			return result{}, err
+		}
+		packslip = "signature, source, archives and completion resources verified; foreign signer identity refused"
 	} else {
 		for _, name := range names {
 			if _, err := run("gh", []string{"attestation", "verify", filepath.Join(dir, name), "--repo", repository}, nil, repo); err != nil {
@@ -215,7 +242,7 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 			consumer += "; explicit isolated zero-age exception"
 		}
 	}
-	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture", Packslip: packslip, Consumer: consumer}, nil
+	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture", Packslip: packslip, Toolchain: toolchain, Consumer: consumer}, nil
 }
 
 // removeWorkdir restores owner access to directories a killed smoke may have

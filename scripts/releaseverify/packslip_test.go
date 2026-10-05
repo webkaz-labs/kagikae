@@ -197,3 +197,176 @@ func TestPackslipPublicationRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifierToolRange(t *testing.T) {
+	for _, c := range []struct {
+		packslip, mise string
+		ok             bool
+	}{
+		{"packslip 1.1.1", "2026.9.3 macos-arm64", true},
+		{"packslip 1.6.0\n", "2026.10.2 macos-arm64 (2026-10-04)\n", true},
+		{"packslip 1.10.0", "2027.1.0 linux-x64", true},
+		{"packslip 1.1.0", "2026.10.2", false},
+		{"packslip 0.9.9", "2026.10.2", false},
+		{"packslip 2.0.0", "2026.10.2", false},
+		{"packslip 1.6", "2026.10.2", false},
+		{"packslip 1.6.0-rc1", "2026.10.2", false},
+		{"other 1.6.0", "2026.10.2", false},
+		{"packslip 1.6.0", "2026.9.2 macos-arm64", false},
+		{"packslip 1.6.0", "mise 2026.10.2", false},
+	} {
+		got, err := verifierTools("repo", func(name string, args, env []string, cwd string) (string, error) {
+			if len(args) != 1 || args[0] != "--version" || env != nil || cwd != "repo" {
+				t.Fatalf("unexpected version probe: %s %v", name, args)
+			}
+			if name == "mise" {
+				return c.mise, nil
+			}
+			return c.packslip, nil
+		})
+		if (err == nil) != c.ok {
+			t.Fatalf("%q %q: err %v", c.packslip, c.mise, err)
+		}
+		if c.ok && ("packslip "+got.Packslip != strings.TrimSpace(c.packslip) || got.Mise != strings.Fields(c.mise)[0]) {
+			t.Fatalf("%q %q: recorded %+v", c.packslip, c.mise, got)
+		}
+	}
+}
+
+func TestUnsupportedVerifierStopsBeforeDownload(t *testing.T) {
+	for _, mise := range []string{"2026.10.2", "2026.9.2"} {
+		_, err := verify(signedTag, t.TempDir(), t.TempDir(), "darwin", "arm64", func(name string, args, env []string, cwd string) (string, error) {
+			switch name {
+			case "packslip":
+				if mise == "2026.10.2" {
+					return "packslip 2.0.0", nil
+				}
+				return "packslip 1.6.0", nil
+			case "mise":
+				return mise, nil
+			}
+			t.Fatalf("ran %s before the verifier versions were accepted", name)
+			return "", nil
+		})
+		if err == nil {
+			t.Fatal("unsupported verifier accepted")
+		}
+	}
+}
+
+func foreignRefusal(foreign string) exitError {
+	return exitError{name: "packslip", code: 1, stderr: "verification failed: bundle does not verify: Verification error: identity mismatch: expected " + foreign + ", got " + packslipIdentity(signedTag)}
+}
+
+func TestForeignSignerControl(t *testing.T) {
+	dir := t.TempDir()
+	names, _ := archivesFor(signedTag)
+	release := packslipIdentity(signedTag)
+	foreign := release[:len(release)-1]
+	want := []string{"verify", "bundle", "--identity", foreign, "--issuer", "https://token.actions.githubusercontent.com"}
+	for _, name := range names {
+		want = append(want, "--artifact", filepath.Join(dir, name))
+	}
+	for outcome, ok := range map[string]bool{"refused": true, "accepted": false, "usage": false, "launch": false, "other-expected": false} {
+		err := refuseForeignSigner("bundle", signedTag, signedCommit, dir, dir, func(name string, args, env []string, cwd string) (string, error) {
+			if name != "packslip" || !reflect.DeepEqual(args, want) || env != nil || cwd != dir {
+				t.Fatalf("control changed more than the identity: %s %v", name, args)
+			}
+			switch outcome {
+			case "refused":
+				return "", foreignRefusal(foreign)
+			case "other-expected":
+				// The release identity extends the foreign one, so an unanchored
+				// needle would accept a mismatch that names a different expectation.
+				return "", foreignRefusal(release + "-other")
+			case "usage":
+				return "", exitError{name: "packslip", code: 2, stderr: "error: unexpected argument"}
+			case "launch":
+				return "", errors.New("packslip failed: executable file not found")
+			}
+			return "", nil
+		})
+		if (err == nil) != ok {
+			t.Fatalf("%s: err %v", outcome, err)
+		}
+		if outcome == "usage" && (err == nil || !strings.Contains(err.Error(), "unexpected argument")) {
+			t.Fatalf("refusal diagnostic dropped stderr: %v", err)
+		}
+	}
+}
+
+// TestSignedVerificationOrder drives verify() through a receipt-era tag: the
+// foreign-signer control runs after the accepted signature and statement, and a
+// control that is accepted or refused for another reason stops the run before
+// the native binary executes.
+func TestSignedVerificationOrder(t *testing.T) {
+	t.Setenv("SMOKE_WHOLE_FILE", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+	release := packslipIdentity(signedTag)
+	foreign := release[:len(release)-1]
+	for _, control := range []string{"refused", "accepted", "other-reason"} {
+		t.Run(control, func(t *testing.T) {
+			dir := t.TempDir()
+			raw, err := json.Marshal(signedStatement(t, dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var steps []string
+			run := func(name string, args, env []string, cwd string) (string, error) {
+				switch {
+				case name == "packslip" && args[0] == "--version":
+					steps = append(steps, "packslip-version")
+					return "packslip 1.6.0", nil
+				case name == "mise":
+					steps = append(steps, "mise-version")
+					return "2026.10.2 macos-arm64", nil
+				case name == "gh" && args[0] == "release":
+					steps = append(steps, "download")
+					return "", nil
+				case name == "git":
+					return signedCommit + "\n", nil
+				case name == "gh" && args[0] == "attestation":
+					steps = append(steps, "source")
+					return "", nil
+				case name == "packslip" && args[0] == "verify" && args[3] == release:
+					steps = append(steps, "verify")
+					return "", nil
+				case name == "packslip" && args[0] == "show":
+					steps = append(steps, "show")
+					return string(raw), nil
+				case name == "packslip" && args[0] == "verify" && args[3] == foreign:
+					steps = append(steps, "control")
+					switch control {
+					case "refused":
+						return "", foreignRefusal(foreign)
+					case "other-reason":
+						return "", exitError{name: "packslip", code: 1, stderr: "verification failed: network unreachable"}
+					}
+					return "", nil
+				case name == "/bin/sh":
+					steps = append(steps, "native")
+					return "kae " + signedTag, nil
+				case name == "bash":
+					steps = append(steps, "smoke")
+					return "", nil
+				}
+				t.Fatalf("unexpected command %s %v", name, args)
+				return "", nil
+			}
+			got, err := verify(signedTag, dir, dir, "darwin", "arm64", run)
+			if (err == nil) != (control == "refused") {
+				t.Fatalf("control %s: got %+v err %v", control, got, err)
+			}
+			wantSteps := []string{"packslip-version", "mise-version", "download", "source", "source", "source", "source", "download", "verify", "show", "control"}
+			if control == "refused" {
+				wantSteps = append(wantSteps, "native", "smoke", "smoke")
+				if got.Toolchain == nil || got.Toolchain.Packslip != "1.6.0" || got.Toolchain.Mise != "2026.10.2" {
+					t.Fatalf("toolchain not recorded: %+v", got.Toolchain)
+				}
+			}
+			if !reflect.DeepEqual(steps, wantSteps) {
+				t.Fatalf("steps = %q; want %q", steps, wantSteps)
+			}
+		})
+	}
+}

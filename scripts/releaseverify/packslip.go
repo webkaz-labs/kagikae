@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,72 @@ func packslipRelease(tag string) bool {
 
 func packslipIdentity(tag string) string {
 	return "https://github.com/" + repository + "/.github/workflows/release.yml@refs/tags/" + tag
+}
+
+// The release/v1 format is unchanged within Packslip 1.x (upstream 1.2.0-1.6.0
+// notes), so the verifier accepts that major from the oldest version exercised.
+var minimumPackslip = [3]uint64{1, 1, 1}
+
+// verifierTools checks both floating verifiers before anything is downloaded and
+// returns the versions this run exercises.
+func verifierTools(repo string, run commandFunc) (*tools, error) {
+	out, err := run("packslip", []string{"--version"}, nil, repo)
+	if err != nil {
+		return nil, err
+	}
+	version, named := strings.CutPrefix(strings.TrimSpace(out), "packslip ")
+	got, ok := distribution.Triple(version)
+	if !named || !ok {
+		return nil, fmt.Errorf("unrecognized packslip version %q", strings.TrimSpace(out))
+	}
+	if got[0] != minimumPackslip[0] || slices.Compare(got[:], minimumPackslip[:]) < 0 {
+		return nil, fmt.Errorf("verifier requires packslip >=1.1.1,<2; found %s", strings.TrimSpace(out))
+	}
+	out, err = run("mise", []string{"--version"}, nil, repo)
+	if err != nil {
+		return nil, err
+	}
+	mise, err := distribution.MiseAtLeast(out, distribution.MinimumMise)
+	if err != nil {
+		return nil, err
+	}
+	return &tools{Packslip: version, Mise: mise}, nil
+}
+
+// refuseForeignSigner repeats the accepted verification with one change, an
+// identity that is a strict prefix of the release's, and requires Packslip's
+// identity refusal naming that identity, not merely a nonzero exit (usage errors
+// also exit nonzero). It runs only after the exact identity verified the bytes.
+func refuseForeignSigner(bundle, tag, commit, dir, repo string, run commandFunc) error {
+	spec := releaseSpec(tag, commit)
+	foreign := spec.Identity[:len(spec.Identity)-1]
+	args := []string{"verify", bundle, "--identity", foreign, "--issuer", spec.Issuer}
+	for _, a := range spec.Artifacts {
+		args = append(args, "--artifact", filepath.Join(dir, a.Name))
+	}
+	_, err := run("packslip", args, nil, repo)
+	if err == nil {
+		return errors.New("packslip accepted a foreign signer identity " + foreign)
+	}
+	var exit exitError
+	if !errors.As(err, &exit) {
+		return fmt.Errorf("foreign signer control did not complete: %w", err)
+	}
+	if !strings.Contains(exit.stderr, "identity mismatch: expected "+foreign+", got ") {
+		return fmt.Errorf("packslip refused the foreign signer identity for another reason: %v: %s", err, boundedStderr(exit.stderr))
+	}
+	return nil
+}
+
+// boundedStderr keeps a refusal diagnostic readable without letting an
+// unexpectedly long stderr into the result.
+func boundedStderr(stderr string) string {
+	const limit = 512
+	text := strings.TrimSpace(stderr)
+	if len(text) > limit {
+		return text[:limit] + "..."
+	}
+	return text
 }
 
 func preparePackslip(tag, commit, dir, repo string, run commandFunc) error {

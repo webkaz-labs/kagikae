@@ -56,7 +56,7 @@ func signedStatement(t *testing.T, dir string) map[string]any {
 }
 
 func TestSignedReleaseMetadataControls(t *testing.T) {
-	for _, defect := range []string{"", "project", "version", "source", "digest", "platform", "binary", "url", "asset", "duplicate", "resource_exec", "resource_missing", "schema"} {
+	for _, defect := range []string{"", "project", "version", "source", "digest", "platform", "libc", "binary", "url", "asset", "duplicate", "resource_exec", "resource_missing", "schema"} {
 		t.Run(defect, func(t *testing.T) {
 			dir := t.TempDir()
 			statement := signedStatement(t, dir)
@@ -71,6 +71,11 @@ func TestSignedReleaseMetadataControls(t *testing.T) {
 				statement["subject"].([]any)[0].(map[string]any)["digest"] = map[string]string{"sha256": strings.Repeat("0", 64)}
 			case "platform":
 				artifact["os"] = "windows"
+			case "libc":
+				// Packslip 1.4.0 and later omit libc for a static Linux build.
+				for _, a := range p["artifacts"].([]any) {
+					delete(a.(map[string]any), "libc")
+				}
 			case "binary":
 				artifact["bin"] = []string{"../kae"}
 			case "url":
@@ -95,6 +100,24 @@ func TestSignedReleaseMetadataControls(t *testing.T) {
 				t.Fatalf("defect %s: %v", defect, err)
 			}
 		})
+	}
+}
+
+func TestPackslipManifestStatesSpecLibc(t *testing.T) {
+	dir := t.TempDir()
+	if err := writePackslipManifest(signedTag, signedCommit, dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, packslipManifestFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ""
+	for _, arch := range []string{"amd64", "arm64"} {
+		want += "[[artifact]]\npath = \"" + filepath.Join(dir, "kae_0.21.0_linux_"+arch+".tar.gz") + "\"\nlibc = \"gnu\"\n\n"
+	}
+	if string(got) != want {
+		t.Fatalf("manifest:\n%s\nwant:\n%s", got, want)
 	}
 }
 

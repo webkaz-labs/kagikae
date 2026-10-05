@@ -85,9 +85,14 @@ jobs:
         run: go run ./scripts/releaseverify --packslip-prepare "$RELEASE_TAG" "$RELEASE_COMMIT" "$RUNNER_TEMP/kae-published"
       - name: Sign the verified archives
         id: packslip
-        uses: jdx/packslip@a0d434ad57571c62dbd0ab5095b4eff607a71fd3 # v1.1.1; release/v1 schema
+        # v1.6.0 checks the CLI archive it downloads against the digest map in
+        # this commit, so the SHA pin also pins the signing CLI.
+        uses: jdx/packslip@2af36e792faa28130987c8af509e475c7458405d # v1.6.0; release/v1 schema
         with:
           artifacts: ${{ runner.temp }}/kae-published/kae_*.tar.gz
+          # Written by --packslip-prepare from the verifier's spec: Linux stays
+          # gnu, since Packslip 1.4.0+ omits libc for a static build.
+          manifest: ${{ runner.temp }}/kae-published/release.toml
           project: github.com/webkaz-labs/kagikae
           bin: kae
           resources: |

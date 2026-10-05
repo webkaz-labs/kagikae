@@ -22,16 +22,48 @@ import (
 const runnerTemp = "${{ runner.temp }}"
 
 // signStep is the release workflow's Packslip step as written: the `uses:` pin,
-// its trailing comment and the `with:` inputs (block scalars joined by newline).
+// its line index and trailing comment, and the `with:` inputs (literal `|`
+// block scalars joined by newline).
 type signStep struct {
 	uses, comment string
+	line          int
 	with          map[string]string
 }
 
-// readReleaseWorkflow returns the Packslip step and every `run:` line of the
-// release workflow. It reads only the shapes release.yml uses, so a layout it
-// cannot read fails the test rather than passing it.
-func readReleaseWorkflow(t *testing.T) (signStep, []string) {
+// workflowRun is one single-line `run:` command and its line index.
+type workflowRun struct {
+	line int
+	text string
+}
+
+// signInputs is every Action input the release workflow sets. The tests below
+// check each one: TestSignerCLIStatesSpecLibc reproduces artifacts, manifest,
+// project, bin, resources and attest's provenance links in its create call;
+// upload and out decide only where the bundle goes, so the always-on test pins
+// their values. A new input changes what is signed and must join both.
+var signInputs = []string{"artifacts", "attest", "bin", "manifest", "out", "project", "resources", "upload"}
+
+// checkSignInputs requires exactly signInputs, with attest linking the release
+// job's attestations and upload left to --packslip-publish.
+func checkSignInputs(t *testing.T, step signStep) {
+	t.Helper()
+	keys := make([]string, 0, len(step.with))
+	for k := range step.with {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if !slices.Equal(keys, signInputs) {
+		t.Fatalf("Packslip step inputs %v, want exactly %v", keys, signInputs)
+	}
+	if step.with["attest"] != "link" || step.with["upload"] != "false" {
+		t.Fatalf("Packslip step needs attest: link and upload: false; got attest %q, upload %q", step.with["attest"], step.with["upload"])
+	}
+}
+
+// readReleaseWorkflow returns the Packslip step and every single-line `run:` of
+// the release workflow. It reads only the shapes release.yml uses, so a layout
+// it cannot read fails the test rather than passing it.
+func readReleaseWorkflow(t *testing.T) (signStep, []workflowRun) {
 	t.Helper()
 	data, err := os.ReadFile("../../.github/workflows/release.yml")
 	if err != nil {
@@ -40,11 +72,11 @@ func readReleaseWorkflow(t *testing.T) (signStep, []string) {
 	lines := strings.Split(string(data), "\n")
 	indent := func(line string) int { return len(line) - len(strings.TrimLeft(line, " ")) }
 	var step signStep
-	var runs []string
+	var runs []workflowRun
 	for i := 0; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
 		if run, ok := strings.CutPrefix(trimmed, "run: "); ok {
-			runs = append(runs, run)
+			runs = append(runs, workflowRun{i, run})
 		}
 		uses, ok := strings.CutPrefix(trimmed, "uses: jdx/packslip@")
 		if !ok {
@@ -54,6 +86,7 @@ func readReleaseWorkflow(t *testing.T) (signStep, []string) {
 			t.Fatal("release workflow has more than one Packslip step")
 		}
 		step.uses, step.comment, _ = strings.Cut(uses, " # ")
+		step.line = i
 		step.with = map[string]string{}
 		i++
 		if i >= len(lines) || strings.TrimSpace(lines[i]) != "with:" {
@@ -84,8 +117,13 @@ func readReleaseWorkflow(t *testing.T) (signStep, []string) {
 					v = strings.TrimSpace(v[:comment])
 				}
 				block = v == "|"
-				if block {
+				switch {
+				case block:
 					v = ""
+				case strings.HasPrefix(v, "|") || strings.HasPrefix(v, ">"):
+					t.Fatalf("with: %s uses block scalar %q; this reader keeps only a literal |", key, v)
+				case strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "'"):
+					t.Fatalf("with: %s is quoted (%s); write it plain so this reader sees the value YAML gives the Action", key, v)
 				}
 				step.with[key] = v
 			}
@@ -104,11 +142,18 @@ func TestReleaseWorkflowMatchesVerifier(t *testing.T) {
 	const staging = "$RUNNER_TEMP/kae-published"
 	prepare := `--packslip-prepare "$RELEASE_TAG" "$RELEASE_COMMIT" "` + staging + `"`
 	publish := `--packslip-publish "$RELEASE_TAG" "$RELEASE_COMMIT" "` + staging + `" "$BUNDLE"`
-	for _, want := range []string{prepare, publish} {
-		if !slices.ContainsFunc(runs, func(run string) bool { return strings.HasSuffix(run, want) }) {
+	lineOf := func(want string) int {
+		i := slices.IndexFunc(runs, func(run workflowRun) bool { return strings.HasSuffix(run.text, want) })
+		if i < 0 {
 			t.Fatalf("release workflow does not run releaseverify %s", want)
 		}
+		return runs[i].line
 	}
+	// The Action signs what prepare staged, and publish checks what it signed.
+	if p, q := lineOf(prepare), lineOf(publish); p >= step.line || step.line >= q {
+		t.Fatalf("step order: prepare line %d, Packslip line %d, publish line %d", p+1, step.line+1, q+1)
+	}
+	checkSignInputs(t, step)
 	dir := runnerTemp + "/kae-published"
 	if got := step.with["manifest"]; got != dir+"/"+packslipManifestFile {
 		t.Fatalf("manifest input %q is not the file --packslip-prepare writes", got)
@@ -164,11 +209,11 @@ func TestPreparePackslipWritesManifestAfterSource(t *testing.T) {
 	}
 }
 
-// TestSignerCLIStatesSpecLibc signs static Linux and darwin archives with a real
-// Packslip CLI the way the release workflow's Action does (inputs read from
-// release.yml, key signing in place of OIDC) and checks the statement against
-// releaseSpec. Without the manifest, a signer from 1.4.0 must lose libc, which
-// is what the manifest exists to prevent.
+// TestSignerCLIStatesSpecLibc signs static Linux and CGO-free darwin archives
+// with a real Packslip CLI the way the release workflow's Action does (the
+// signInputs read from release.yml, key signing in place of OIDC) and checks
+// the statement against releaseSpec. Without the manifest, a signer from 1.4.0
+// must lose libc, which is what the manifest exists to prevent.
 func TestSignerCLIStatesSpecLibc(t *testing.T) {
 	packslip := os.Getenv("PACKSLIP_BIN")
 	if packslip == "" {
@@ -185,9 +230,7 @@ func TestSignerCLIStatesSpecLibc(t *testing.T) {
 	}
 	infersLibc := slices.Compare(got[:], []uint64{1, 4, 0}) >= 0
 	step, _ := readReleaseWorkflow(t)
-	if step.with["attest"] != "link" || step.with["bin"] == "" || step.with["project"] == "" {
-		t.Fatalf("test mirrors attest: link with bin and project inputs; workflow has %v", step.with)
-	}
+	checkSignInputs(t, step)
 	const tag, commit = "v0.24.0", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	archives := staticArchives(t, tag)
 	for _, withManifest := range []bool{true, false} {
@@ -256,8 +299,9 @@ func TestSignerCLIStatesSpecLibc(t *testing.T) {
 	}
 }
 
-// staticArchives builds a CGO_ENABLED=0 stub per release platform and packs it
-// with the release's archive members, so Packslip reads a static ELF on Linux.
+// staticArchives builds a CGO_ENABLED=0 stub per release platform (static on
+// Linux, CGO-free darwin binaries still link libSystem) and packs it with the
+// release's archive members, so Packslip reads a static ELF on Linux.
 func staticArchives(t *testing.T, tag string) map[string][]byte {
 	t.Helper()
 	src := t.TempDir()

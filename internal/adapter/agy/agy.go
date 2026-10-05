@@ -44,14 +44,14 @@ var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_cre
 // not treat the keychain as unconditional on macOS — its auth package holds a
 // keyring store *and* a file store behind one chooser, which can pick the file — so
 // this list exists to warn where kae's keychain switch may not reach the tool.
-// Binary-read through 1.2.10; the mechanism, what each build showed and what nothing has
+// Binary-read through 1.2.12; the mechanism, what each build showed and what nothing has
 // observed are docs/VALIDATION.md § Upstream Behaviour Assumptions.
 //
 // Why exactly this set: it is the whole of that chooser kae can see in the
-// environment. The container detector reads files, the dbus one reads nothing the
-// fingerprint rows for `DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS`
-// find, and the WSL pair cannot fire on darwin but stays here because the detector
-// set is one upstream decision.
+// environment. The container detector reads files, the dbus one returns false on
+// darwin without reading the variable its fingerprint row counts, and the WSL pair
+// cannot fire on darwin but stays here because the detector set is one upstream
+// decision.
 //
 // kae warns rather than modelling the file store: the fallback file's path is not
 // derivable from the binary, so adding a guessed artifact would write where nothing
@@ -82,10 +82,10 @@ func (Agy) Binary() string { return "agy" }
 
 // VerifiedVersion is the Antigravity CLI release last checked by binary inspection.
 // Login-gated observations retain their own versions in docs/VALIDATION.md.
-func (Agy) VerifiedVersion() string { return "1.2.10" }
+func (Agy) VerifiedVersion() string { return "1.2.12" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Agy) VerifiedOn() string { return "2026-09-29" }
+func (Agy) VerifiedOn() string { return "2026-10-05" }
 
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).

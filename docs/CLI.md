@@ -305,7 +305,8 @@ A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
 `codex app-server daemon restart`. `absent` and `matches` print nothing. A socket
 upstream has moved also reads `absent`, so the switch is silent about it;
-`resident_drift` in `kae doctor` is what reports that case.
+`resident_drift`'s `daemon version` half reports that case once it is enabled, and
+until then kae does not report it.
 
 The ChatGPT app's `outcome` by condition, for a run where the app is running and
 this command changed codex's account:
@@ -2489,7 +2490,8 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   `kae add --no-login <tool> <account>`).
 - `resident_drift`: codex's managed daemon for the real codex home holds an account
   other than the live credential's, kae cannot read which account it holds, or
-  kae cannot find it where the adapter says it is (§ kae use Semantics,
+  kae cannot find it where the adapter says it is (once the `daemon version` half
+  is enabled; § kae use Semantics,
   **Resident processes (codex)**). It is a **local probe**, not an offline
   comparison, in two halves, and kae makes no network call for either:
   - kae connects to the daemon's socket and sends the read-only requests

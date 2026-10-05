@@ -52,6 +52,14 @@ both versions, and the machine's own mise is 2026.10.2. The first runs failed on
 GitHub's unauthenticated API rate limit at the consumer's release lookup, and the run
 after the limit reset passed. No live login was part of this check.
 
+Re-run on 2026-10-05 (JST) with the minimum tested mise, 2026.9.3, and Packslip 1.6.0 (each
+fetched into a temporary directory after its GitHub attestation verified),
+`go run ./scripts/releaseverify v0.23.0` returned `status: success` with
+`KAE_RELEASE_VERIFY_FRESH=1`, and its `toolchain` field recorded Packslip 1.6.0 and mise
+2026.9.3. The foreign-signer refusals and the native mise consumer passed. This
+is again an explicit isolated zero-age exception, not a pass under the default
+age policy.
+
 The direct local installation used the published v0.23.0 archive and checksum
 through `scripts/install.sh --version v0.23.0`, after `gh attestation verify` passed
 for the darwin/arm64 archive. PATH resolved `~/.local/bin/kae`, which reported

@@ -37,25 +37,19 @@ func packslipIdentity(tag string) string {
 
 // The release/v1 format is unchanged within Packslip 1.x (upstream 1.2.0-1.6.0
 // notes), so the verifier accepts that major from the oldest version exercised.
-var (
-	minimumPackslip = [3]uint64{1, 1, 1}
-	packslipVersion = regexp.MustCompile(`^packslip ([0-9]+)\.([0-9]+)\.([0-9]+)$`)
-)
+var minimumPackslip = [3]uint64{1, 1, 1}
 
+// verifierTools checks both floating verifiers before anything is downloaded and
+// returns the versions this run exercises.
 func verifierTools(repo string, run commandFunc) (*tools, error) {
 	out, err := run("packslip", []string{"--version"}, nil, repo)
 	if err != nil {
 		return nil, err
 	}
-	match := packslipVersion.FindStringSubmatch(strings.TrimSpace(out))
-	if match == nil {
+	version, named := strings.CutPrefix(strings.TrimSpace(out), "packslip ")
+	got, ok := distribution.Triple(version)
+	if !named || !ok {
 		return nil, fmt.Errorf("unrecognized packslip version %q", strings.TrimSpace(out))
-	}
-	var got [3]uint64
-	for i := range got {
-		if got[i], err = strconv.ParseUint(match[i+1], 10, 64); err != nil {
-			return nil, err
-		}
 	}
 	if got[0] != minimumPackslip[0] || slices.Compare(got[:], minimumPackslip[:]) < 0 {
 		return nil, fmt.Errorf("verifier requires packslip >=1.1.1,<2; found %s", strings.TrimSpace(out))
@@ -64,28 +58,34 @@ func verifierTools(repo string, run commandFunc) (*tools, error) {
 	if err != nil {
 		return nil, err
 	}
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return nil, errors.New("mise --version printed no version")
+	mise, err := distribution.MiseAtLeast(out, distribution.MinimumMise)
+	if err != nil {
+		return nil, err
 	}
-	return &tools{Packslip: strings.Join(match[1:], "."), Mise: fields[0]}, nil
+	return &tools{Packslip: version, Mise: mise}, nil
 }
 
 // refuseForeignSigner repeats the accepted verification with one change, an
 // identity that is a strict prefix of the release's, and requires Packslip's
-// identity refusal, not merely a nonzero exit (usage errors also exit nonzero).
-// It runs only after the exact identity verified the same bytes.
+// identity refusal naming that identity, not merely a nonzero exit (usage errors
+// also exit nonzero). It runs only after the exact identity verified the bytes.
 func refuseForeignSigner(bundle, tag, commit, dir, repo string, run commandFunc) error {
 	spec := releaseSpec(tag, commit)
-	foreign := strings.TrimSuffix(spec.Identity, tag) + tag[:len(tag)-1]
+	foreign := spec.Identity[:len(spec.Identity)-1]
 	args := []string{"verify", bundle, "--identity", foreign, "--issuer", spec.Issuer}
 	for _, a := range spec.Artifacts {
 		args = append(args, "--artifact", filepath.Join(dir, a.Name))
 	}
 	_, err := run("packslip", args, nil, repo)
+	if err == nil {
+		return errors.New("packslip accepted a foreign signer identity " + foreign)
+	}
 	var exit exitError
-	if !errors.As(err, &exit) || !strings.Contains(exit.stderr, "identity mismatch: expected "+foreign) {
-		return fmt.Errorf("packslip did not refuse a foreign signer identity: %v", err)
+	if !errors.As(err, &exit) {
+		return fmt.Errorf("foreign signer control did not complete: %w", err)
+	}
+	if !strings.Contains(exit.stderr, "identity mismatch: expected "+foreign+", got ") {
+		return fmt.Errorf("packslip refused the foreign signer identity for another reason: %v: %s", err, strings.TrimSpace(exit.stderr))
 	}
 	return nil
 }

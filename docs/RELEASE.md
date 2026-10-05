@@ -49,12 +49,15 @@ by hand — the tag does it.
    manifest, archive contents and provenance attestations, then checks the native
    version and installer in isolated environments. For v0.21.0 onward, it also
    requires the local tag, a Packslip verifier `>=1.1.1,<2`, mise 2026.9.3 or
-   later and Go; validates the exact GitHub OIDC signer, source commit, archive
-   metadata and static resources, and requires `packslip verify` to refuse the
-   same bundle under a foreign workflow identity; then installs the published
-   version through the real native mise consumer with production trust settings,
-   after requiring that consumer, in separate HOME/XDG roots, to refuse the same
-   version under a foreign identity. Verifier versions are lower bounds, not exact
+   later and Go, checking both versions before downloading; validates the exact
+   GitHub OIDC signer, source commit, archive metadata and static resources, and
+   requires `packslip verify` to refuse the same bundle under a workflow identity
+   that is a strict prefix of the release's; then installs the published version
+   through the real native mise consumer with production trust settings, after
+   requiring that consumer, in separate HOME/XDG roots, to refuse the same version
+   under an identity that is a strict prefix of the release's and under one that
+   extends it. Each refusal must be the identity mismatch naming the configured
+   identity, not merely a nonzero exit. Verifier versions are lower bounds, not exact
    pins: the JSON `toolchain` field records the Packslip and mise versions the run
    exercised, and those refusal controls are the evidence that a newer release
    still checks the signer. Upstream's 1.2.0 through 1.6.0 release notes state

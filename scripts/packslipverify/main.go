@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 const (
@@ -157,51 +157,12 @@ func newScenario(ctx context.Context) (*scenario, error) {
 		return nil, err
 	}
 	s := &scenario{ctx: ctx, home: home, repo: repo, mise: mise, env: smokeEnvironment()}
-	version, err := miseAtLeast(s.run(home, mise, "--version"), minimumMise)
+	version, err := distribution.MiseAtLeast(s.run(home, mise, "--version"), distribution.MinimumMise)
 	if s.err == nil && err != nil {
 		s.err = err
 	}
 	s.miseVersion = version
 	return s, s.err
-}
-
-// minimumMise is the oldest mise this consumer has passed. Newer releases are
-// accepted; the fixture's refusal controls and each result's recorded version
-// are the compatibility evidence, not a reviewed version list.
-const minimumMise = "2026.9.3"
-
-// miseAtLeast parses the leading YYYY.M.P of `mise --version` and fails closed
-// on anything it cannot compare numerically.
-func miseAtLeast(output, minimum string) (string, error) {
-	fields := strings.Fields(output)
-	if len(fields) == 0 {
-		return "", errors.New("mise --version printed no version")
-	}
-	got, ok := calver(fields[0])
-	want, wantOK := calver(minimum)
-	if !ok || !wantOK {
-		return "", fmt.Errorf("unrecognized mise version %q", fields[0])
-	}
-	if slices.Compare(got[:], want[:]) < 0 {
-		return "", fmt.Errorf("consumer requires mise %s or later; found %s", minimum, fields[0])
-	}
-	return fields[0], nil
-}
-
-func calver(text string) ([3]uint64, bool) {
-	var parts [3]uint64
-	fields := strings.Split(text, ".")
-	if len(fields) != len(parts) {
-		return parts, false
-	}
-	for i, field := range fields {
-		value, err := strconv.ParseUint(field, 10, 64)
-		if err != nil {
-			return parts, false
-		}
-		parts[i] = value
-	}
-	return parts, true
 }
 
 func mainResult(ctx context.Context, args []string) (any, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -98,9 +99,15 @@ func (s *scenario) lifecycle(root, global, key string, backend *fixtureServer, d
 
 	reasons := map[string]string{"key": "signature does not verify with the pinned key", "project": "the packslip is for", "digest": "document says", "platform": "no artifact for", "missing": "404 Not Found"}
 	for index, defect := range defects {
-		s.request(fmt.Sprintf("0.21.%d", index+2), recipe, key, true)
+		version := fmt.Sprintf("0.21.%d", index+2)
+		s.request(version, recipe, key, true)
 		failure := s.command(s.home, "", nil, true, s.mise, "install")
-		s.require(strings.Contains(failure, reasons[defect]), "wrong rejection for "+defect+": "+failure)
+		refused := strings.Contains(failure, reasons[defect])
+		if defect == "missing" {
+			// Name the archive so the discovery-file 404 cannot satisfy this control.
+			refused = refused && strings.Contains(failure, fmt.Sprintf("/releases/download/v%s/kae_%s_%s_%s.tar.gz", version, version, runtime.GOOS, runtime.GOARCH))
+		}
+		s.require(refused, "wrong rejection for "+defect+": "+failure)
 		s.checks = append(s.checks, "refused "+defect)
 	}
 	s.require(backend.requests.Load() > 0, "backend did not contact fixture service")

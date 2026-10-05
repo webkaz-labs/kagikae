@@ -20,6 +20,9 @@ says which part of it each runs) and the Packslip signing test, which the local 
 skips without `PACKSLIP_BIN` and CI runs on linux/amd64 (§ Packslip consumer smoke):
 `.github/workflows/check.yml`'s own steps are the one copy of which of those steps
 run there, and everything else is enforced on a developer's machine only.
+`check.yml` runs on linux/amd64; `.github/workflows/platforms.yml` runs a smaller
+subset (build, vet and `go test ./...`) on darwin/arm64 and linux/arm64
+(§ Check retention and CI admission).
 [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions; the workflow steps
 own their environment constraints.
 
@@ -148,6 +151,59 @@ stub builds may run with a cold cache, because `actions/setup-go` saves its cach
 when the key misses. The step time on a GitHub runner is not measured: the first CI
 run of the step is its acceptance; a recorded run link and step time replace this
 statement once that run exists.
+
+**arm64 platform jobs.** `platforms.yml`, called from `ci.yml` beside `check.yml`,
+runs build, vet and `go test ./...` on `macos-latest` (darwin/arm64) and
+`ubuntu-24.04-arm` (linux/arm64). `release.yml` gates the tag on `check.yml` alone,
+so these jobs are not part of that workflow's gate; the release procedure requires
+them green on the commit before it is tagged, because it requires `ci.yml` green
+([RELEASE.md](RELEASE.md) § Release procedure). Intel macOS (darwin/amd64) is not a CI
+platform.
+
+- **Admitted for detection.** `check.yml` compiles and tests only linux/amd64, so it
+  does not see a broken darwin-only file (a `_darwin.go` file or `//go:build darwin`
+  code that no longer compiles or vets), a darwin-only test failure, or an
+  arm64-only failure. The `Confirm platform` step fails when a runner label stops
+  resolving to the platform its job is named for.
+- **Excluded.** The formatter, picker PTY suite, Node, docs checks, module verify and
+  every other local-gate step stay where they are. Linux installs zsh, which the
+  completion and shell-function tests skip without; fish stays skipped on both, and
+  bash is the runner's own (3.2 on macOS passes locally).
+- **Cache.** Within this workflow only, build, vet and test run in that order in one
+  job and share one `GOCACHE`, so vet and test reuse what build compiled.
+  `actions/setup-go` v6 (`src/cache-restore.ts`) builds its key as
+  `setup-go-${platform}-${arch}-${linuxVersion}go-${versionSpec}-${fileHash}`: runner
+  OS, architecture, the Linux image, the version spec read from `go.mod` (not the
+  resolved toolchain) and the `go.sum` hash, with no restore keys. The platforms
+  therefore do not restore each other's cache, and its restored module cache serves
+  module resolution. On one darwin/arm64 machine with 10 CPUs and a warm module cache
+  (2026-10-05), build, vet and test took 8.3 s, 2.9 s and 27.7 s from an empty shared
+  `GOCACHE`, against 7.7 s, 9.3 s and 36.2 s with an empty cache per step, and 0.3 s,
+  0.4 s and 5.3 s warm. This does not change `check.yml`'s cache or the deferral of
+  shared-cache work across workflows.
+- **Runner cost: unmeasured.** No run of `platforms.yml` exists yet. The measurement
+  is per platform: queue time, job time, per-step time, `setup-go`'s cache hit or
+  miss and the CPU count `Confirm platform` prints, for a cold run and a warm run on
+  an unchanged `go.sum`, recorded in this paragraph.
+- **Real-home risk on macOS.** Only `internal/cmd`'s `TestMain` installs fail-loud
+  runner defaults. Tests in `internal/keychain`, `internal/secret`, `internal/artifact`
+  and the adapters rely on each test stubbing the runner, and some codex tests inject
+  `GOOS: "darwin"`: a missed stub there finds no `security` on Linux but reaches the
+  real one on macOS. `TestAppTerminalSeam` calls `newApp("")`, which resolves the
+  real home and reads its config file without writing. The macOS job therefore puts
+  a recording `security` shim first on `PATH`, checks before the tests that it
+  resolves, refuses and records, and fails after the tests if anything invoked it.
+  The log path is written into the shim, so a subprocess started with an emptied
+  environment that keeps `PATH` still records. A test that gives a subprocess its
+  own `PATH` bypasses the shim. Inspected on 2026-10-05, four tests give one a `PATH`
+  containing `/usr/bin` (`scripts/releaseverify/lifecycle_test.go`,
+  `tools/devtools/cmd/distributionverify/main_test.go`,
+  `tools/devtools/distribution/distribution_test.go` and
+  `tools/devtools/commandrun/command_test.go`), and none of those subprocesses ran
+  credential code then. On 2026-10-05 a local `go test ./...` with `HOME`,
+  `TMPDIR` and the XDG and tool-home variables pointed at temporary directories and
+  the same shim first on `PATH` passed with no `security` invocation; the temporary
+  `HOME` received only Go's own telemetry files.
 
 ## Picker PTY suite
 

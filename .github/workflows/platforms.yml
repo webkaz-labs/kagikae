@@ -1,0 +1,143 @@
+name: Platforms
+
+# Called by ci.yml beside check.yml. Build, vet and test on the arm64 platforms the
+# ubuntu-latest check job does not run; everything else in check.yml stays
+# amd64-only. What this admits and excludes, and its cost record, are in
+# docs/VALIDATION.md § Check retention and CI admission.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  platform:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    # On a pull request, one run per ref and platform: a newer push cancels the older
+    # run, so a stale run does not hold a macOS runner, which has the smaller free
+    # concurrency allowance. Elsewhere the group is the commit, so a later push to
+    # main neither cancels nor queues behind an earlier push's run.
+    concurrency:
+      group: platforms-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ matrix.platform }}
+      cancel-in-progress: true
+    strategy:
+      # Each platform's result stands on its own: an arm64 Linux failure must not
+      # hide whether darwin passed.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # setup-go v6 (src/cache-restore.ts) keys its cache as
+      # `setup-go-${platform}-${arch}-${linuxVersion}go-${versionSpec}-${fileHash}`:
+      # runner OS, architecture, the Linux image, the go.mod version spec and the
+      # go.sum hash, with no restore keys. The two platforms therefore never restore
+      # each other's build or module cache, and the restored module cache is what the
+      # build below resolves from.
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Fails when a runner label stops meaning the platform this job is named for.
+      # go's -p defaults to the CPU count, which this prints for the cost record.
+      - name: Confirm platform
+        run: |
+          got="$(go env GOOS)/$(go env GOARCH)"
+          echo "platform $got, $(getconf _NPROCESSORS_ONLN) CPUs"
+          if [ "$got" != "${{ matrix.goos }}/${{ matrix.goarch }}" ]; then
+            echo "runner ${{ matrix.runner }} is $got, want ${{ matrix.goos }}/${{ matrix.goarch }}" >&2
+            exit 1
+          fi
+
+      # Completion and shell-function tests skip zsh when it is absent. macOS ships
+      # it; the arm64 Ubuntu image may not. Refresh the package lists only when the
+      # image's own are too stale to install from.
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: |
+          if command -v zsh >/dev/null; then exit 0; fi
+          sudo apt-get install -y --no-install-recommends zsh ||
+            { sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh; }
+
+      # Tests outside internal/cmd have no fail-loud runner guard, and a missed stub
+      # would reach the runner's real keychain through `security`. Put a recording
+      # shim first on PATH. The log path is written into the shim, so a subprocess
+      # started with an emptied environment that keeps PATH still records.
+      - name: Install security shim
+        id: security-shim
+        if: runner.os == 'macOS'
+        run: |
+          shim="$RUNNER_TEMP/security-shim"
+          log="$RUNNER_TEMP/security-shim.log"
+          mkdir -p "$shim"
+          cat > "$shim/security" <<EOF
+          #!/bin/sh
+          echo "security \$1" >> '$log'
+          echo "security shim: unstubbed security call refused" >&2
+          exit 1
+          EOF
+          chmod +x "$shim/security"
+          echo "$shim" >> "$GITHUB_PATH"
+
+      # Positive control, before any test: `security` must resolve to the shim, fail,
+      # and leave its line in the log. The log is then emptied for the tests.
+      - name: Probe security shim
+        id: security-probe
+        if: steps.security-shim.outcome == 'success'
+        run: |
+          log="$RUNNER_TEMP/security-shim.log"
+          if [ "$(command -v security)" != "$RUNNER_TEMP/security-shim/security" ]; then
+            echo "security resolves to $(command -v security), not the shim" >&2
+            exit 1
+          fi
+          if security probe 2>/dev/null; then
+            echo "the security shim exited 0" >&2
+            exit 1
+          fi
+          if [ "$(cat "$log")" != "security probe" ]; then
+            echo "the security shim did not record the probe" >&2
+            exit 1
+          fi
+          : > "$log"
+
+      # build, vet, then test, in one job and one GOCACHE: each step reuses the
+      # packages the previous one compiled. Executables stay in runner temp.
+      - name: Build
+        run: |
+          mkdir -p "$RUNNER_TEMP/kae-build"
+          go build -o "$RUNNER_TEMP/kae-build/" ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Runs after a failed test step too, so a keychain call is reported either way,
+      # but not after a cancel or when the shim never passed its probe. Only the
+      # subcommand is logged, never its arguments.
+      - name: Check security shim
+        if: ${{ !cancelled() && steps.security-probe.outcome == 'success' }}
+        run: |
+          log="$RUNNER_TEMP/security-shim.log"
+          if [ -s "$log" ]; then
+            echo "tests invoked security:" >&2
+            sort "$log" | uniq -c >&2
+            exit 1
+          fi

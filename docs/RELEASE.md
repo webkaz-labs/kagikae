@@ -34,7 +34,9 @@ by hand — the tag does it.
    `mise run check`, and that file is where a result is recorded. Follow its
    § Optional account-combination checks for the release classification of checks
    that require additional account combinations.
-3. Merge to `main` and push; CI (`ci.yml`) must be green.
+3. Merge to `main` and push; CI (`ci.yml`) must be green on that commit, both the
+   `check.yml` job and the arm64 `platforms.yml` jobs. The release workflow re-runs
+   only `check.yml`, so this step is where the platform jobs gate a release.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
    `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`
    CI runs — a **subset** of `mise run check`, and that workflow's own steps are

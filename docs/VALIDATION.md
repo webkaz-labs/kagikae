@@ -185,17 +185,22 @@ platform.
   `GOCACHE`, against 7.7 s, 9.3 s and 36.2 s with an empty cache per step, and 0.3 s,
   0.4 s and 5.3 s warm. This does not change `check.yml`'s cache or the deferral of
   shared-cache work across workflows.
-- **Runner cost: cold run measured, warm run not.** The first run of `platforms.yml`
+- **Runner cost: cold and warm runs measured.** The first run of `platforms.yml`
   is [run 37323992190](https://github.com/webkaz-labs/kagikae/actions/runs/37323992190)
   (a push of `4dc7f68` on 2026-10-05). On both platforms `setup-go` found no cache
   and saved one, so this is the cold case. linux/arm64: queued 5 s, job 57 s,
   4 CPUs; Setup Go 6 s, Install zsh 9 s, Build 13 s, Vet 4 s, Test 18 s.
   darwin/arm64: queued 11 s, job 2m16s, 3 CPUs; Setup Go 27 s, Build 33 s, Vet 9 s,
   Test 49 s, and the security shim's install, probe and check steps succeeded in
-  1 s or less each (the step timestamps have one-second resolution). A warm run on
-  an unchanged `go.sum` is not measured; it is measured the same way, per platform:
-  queue time, job time, per-step time, `setup-go`'s cache hit or miss and the CPU
-  count `Confirm platform` prints.
+  1 s or less each (the step timestamps have one-second resolution). The next run,
+  [run 37334790337](https://github.com/webkaz-labs/kagikae/actions/runs/37334790337)
+  (a push of `8d4d727`, the same `go.sum`), is the warm case: `setup-go` reported a
+  cache hit on the primary key and restored it on both platforms. linux/arm64: queued
+  5 s, job 42 s; Setup Go 11 s, Build 3 s, Vet under 1 s, Test 16 s. darwin/arm64:
+  queued 10 s, job 1m24s; Setup Go 29 s, Build 5 s, Vet 3 s, Test 36 s. Against the
+  cold run, Build and Vet nearly vanish (the shared `GOCACHE` is reused) and Test
+  shortens to 16 s and 36 s. `check.yml`'s job took 1m50s cold and 1m39s warm; its Go
+  cache was already restored in the first run.
 - **Real-home risk on macOS.** Only `internal/cmd`'s `TestMain` installs fail-loud
   runner defaults. Tests in `internal/keychain`, `internal/secret`, `internal/artifact`
   and the adapters rely on each test stubbing the runner, and some codex tests inject

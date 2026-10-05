@@ -193,9 +193,27 @@ func check() error {
 	if err := run("v0.21.0-invalid", 2); err != nil {
 		return err
 	}
+	// Under a faked uname, v0.24.0 still installs on linux/amd64 and darwin/arm64,
+	// so the Intel macOS guard refuses neither by architecture nor by OS alone.
+	// The archive is a shell script, so any host runs it.
+	fakeUname := func(system, machine string) error {
+		return write(filepath.Join(shim, "uname"), "#!/bin/sh\ncase \"$1\" in -s) echo "+system+";; -m) echo "+machine+";; *) exit 90;; esac\n", 0o700)
+	}
+	for _, host := range [][3]string{{"Linux", "x86_64", "linux_amd64"}, {"Darwin", "arm64", "darwin_arm64"}} {
+		if err := fakeUname(host[0], host[1]); err != nil {
+			return err
+		}
+		platform = host[2]
+		if err := archive(assetDir, "v0.24.0", platform); err != nil {
+			return err
+		}
+		if err := run("v0.24.0", 37); err != nil {
+			return fmt.Errorf("%s: %w", platform, err)
+		}
+	}
 	// Intel macOS: tags before v0.24.0 still install their darwin/amd64 archive;
 	// later tags are refused by name before any download.
-	if err := write(filepath.Join(shim, "uname"), "#!/bin/sh\ncase \"$1\" in -s) echo Darwin;; -m) echo x86_64;; *) exit 90;; esac\n", 0o700); err != nil {
+	if err := fakeUname("Darwin", "x86_64"); err != nil {
 		return err
 	}
 	platform = "darwin_amd64"
@@ -208,7 +226,7 @@ func check() error {
 	if err := run("v0.24.0", 1); err != nil {
 		return err
 	}
-	if !strings.Contains(stderr, "Intel macOS (darwin/amd64) is unsupported from v0.24.0") {
+	if !strings.Contains(stderr, "Intel macOS (darwin/amd64) is unsupported from v0.24.0; v0.24.0 has no darwin/amd64 archive (--version v0.23.0 installs the last one)") {
 		return fmt.Errorf("darwin/amd64 v0.24.0 refused for another reason: %s", stderr)
 	}
 	if err := os.Remove(filepath.Join(shim, "uname")); err != nil {

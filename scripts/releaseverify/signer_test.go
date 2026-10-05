@@ -173,13 +173,115 @@ func TestReleaseWorkflowMatchesVerifier(t *testing.T) {
 	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(step.uses) {
 		t.Fatalf("Packslip Action is not pinned to a full commit: %q", step.uses)
 	}
+	if signer := fixtureSigner(t); !strings.HasPrefix(step.comment, "v"+signer+";") {
+		t.Fatalf("Action pin comment %q does not name the fixture signer %q", step.comment, signer)
+	}
+}
+
+// fixtureSigner returns signerPackslip, the exact signer version the fixture and
+// the release workflow's Action pin share.
+func fixtureSigner(t *testing.T) string {
+	t.Helper()
 	fixture, err := os.ReadFile("../packslipverify/fixtures.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile(`signerPackslip = "([0-9.]+)"`).FindSubmatch(fixture)
-	if m == nil || !strings.HasPrefix(step.comment, "v"+string(m[1])+";") {
-		t.Fatalf("Action pin comment %q does not name the fixture signer %q", step.comment, m)
+	if m == nil {
+		t.Fatal("packslipverify has no signerPackslip constant")
+	}
+	return string(m[1])
+}
+
+// signingStepRun is every non-comment line of check.yml's Signing test `run:`
+// block, without its indentation. The step must hold exactly these lines, so a
+// neutralized command (`|| true`, a `true #` prefix) or a changed URL, digest
+// target, provenance policy or pass check fails the guard below.
+var signingStepRun = []string{
+	`set -euo pipefail`,
+	`dir="$RUNNER_TEMP/packslip"`,
+	`name="packslip-v${PACKSLIP_VERSION}-linux-x64"`,
+	`archive="$dir/$name.tar.xz"`,
+	`mkdir -p "$dir"`,
+	`curl -fsSL --retry 3 -o "$archive" "https://github.com/jdx/packslip/releases/download/v${PACKSLIP_VERSION}/$name.tar.xz"`,
+	`echo "$PACKSLIP_SHA256  $archive" | sha256sum -c -`,
+	`for attempt in 1 2 3; do`,
+	`  if gh attestation verify "$archive" --repo jdx/packslip --source-ref refs/heads/release-plz --source-digest "$PACKSLIP_SOURCE_COMMIT" --signer-workflow jdx/packslip/.github/workflows/release.yml --signer-digest "$PACKSLIP_SOURCE_COMMIT" --deny-self-hosted-runners; then`,
+	`    break`,
+	`  fi`,
+	`  if [ "$attempt" = 3 ]; then`,
+	`    exit 1`,
+	`  fi`,
+	`  sleep 10`,
+	`done`,
+	`tar -xJf "$archive" -C "$dir"`,
+	`env -u GH_TOKEN PACKSLIP_BIN="$dir/$name/packslip" go test -count=1 -v -run '^TestSignerCLIStatesSpecLibc$' ./scripts/releaseverify 2>&1 | tee "$dir/test.log"`,
+	`if ! grep -q -- '--- PASS: TestSignerCLIStatesSpecLibc ' "$dir/test.log"; then`,
+	`  echo "TestSignerCLIStatesSpecLibc did not run and pass" >&2`,
+	`  exit 1`,
+	`fi`,
+}
+
+// TestCheckWorkflowSignsWithReleaseSigner requires the CI signing step to hold
+// only env and run, to sign with the release signer's version under a pinned
+// digest and source commit, and to run exactly signingStepRun, so a signer bump
+// cannot leave CI testing the old CLI and the step cannot be quietly disabled.
+func TestCheckWorkflowSignsWithReleaseSigner(t *testing.T) {
+	data, err := os.ReadFile("../../.github/workflows/check.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, step, found := strings.Cut(string(data), "\n      - name: Signing test\n")
+	if !found {
+		t.Fatal("check workflow has no Signing test step")
+	}
+	if next := strings.Index(step, "\n      - "); next >= 0 {
+		step = step[:next]
+	}
+	const keyIndent, bodyIndent = "        ", "          "
+	env := map[string]string{}
+	var keys, run []string
+	section := ""
+	for _, line := range strings.Split(step, "\n") {
+		switch body, inBody := strings.CutPrefix(line, bodyIndent); {
+		case strings.TrimSpace(line) == "":
+		case inBody && section == "env":
+			k, v, ok := strings.Cut(body, ": ")
+			if !ok || strings.HasPrefix(body, " ") {
+				t.Fatalf("unreadable env line %q", line)
+			}
+			env[k] = v
+		case inBody && section == "run":
+			if !strings.HasPrefix(strings.TrimSpace(body), "#") {
+				run = append(run, body)
+			}
+		case strings.HasPrefix(line, keyIndent) && !strings.HasPrefix(line, bodyIndent):
+			key := strings.TrimPrefix(line, keyIndent)
+			keys = append(keys, key)
+			section = map[string]string{"env:": "env", "run: |": "run"}[key]
+		default:
+			t.Fatalf("unreadable Signing test line %q", line)
+		}
+	}
+	if !slices.Equal(keys, []string{"env:", "run: |"}) {
+		t.Fatalf("Signing test step keys %q, want exactly env: and run: |", keys)
+	}
+	want := map[string]*regexp.Regexp{
+		"GH_TOKEN":               regexp.MustCompile(`^\$\{\{ github\.token \}\}$`),
+		"PACKSLIP_VERSION":       regexp.MustCompile(`^` + regexp.QuoteMeta(fixtureSigner(t)) + `$`),
+		"PACKSLIP_SHA256":        regexp.MustCompile(`^[0-9a-f]{64}$`),
+		"PACKSLIP_SOURCE_COMMIT": regexp.MustCompile(`^[0-9a-f]{40}$`),
+	}
+	if len(env) != len(want) {
+		t.Fatalf("Signing test env %v, want exactly %d keys", env, len(want))
+	}
+	for k, re := range want {
+		if !re.MatchString(env[k]) {
+			t.Fatalf("Signing test env %s = %q, want %s (PACKSLIP_VERSION is signerPackslip)", k, env[k], re)
+		}
+	}
+	if !slices.Equal(run, signingStepRun) {
+		t.Fatalf("Signing test run block:\n%s\nwant:\n%s", strings.Join(run, "\n"), strings.Join(signingStepRun, "\n"))
 	}
 }
 

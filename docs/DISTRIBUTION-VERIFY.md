@@ -78,8 +78,8 @@ Both real shells are required. Bash currently expects the exact registration
 `complete -F FUNCTION TOOL`; registration options require another adapter. Zsh
 checks registration separately and captures only `compadd -- CANDIDATES`; other
 option forms fail explicitly, even if the completion function ignores that failure.
-This observes candidates without driving a terminal editor. Fish runtime remains
-unverified. Scripts can execute programs from `binary_dir` inside the fresh HOME;
+This observes candidates without driving a terminal editor. Fish runtime behavior
+is not verified. Scripts can execute programs from `binary_dir` inside the fresh HOME;
 they must be trusted.
 
 The shared same-shell mise lifecycle additionally checks static resource version,

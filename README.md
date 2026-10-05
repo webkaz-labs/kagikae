@@ -93,8 +93,9 @@ eval "$(mise completion bash --tool kae)"
 For fish use `mise completion fish --tool kae | source`. These manual commands
 load a snapshot: repeat them after changing the selected version. Dynamic
 candidates call `kae` on PATH, so activate mise's selected environment as well.
-The isolated acceptance runs exercise Bash and Zsh registration and switching;
-fish coverage is resource retrieval, without a fish runtime check.
+The isolated acceptance runs exercise Bash and Zsh registration and switching.
+For fish they check only that its completion resource is retrieved; fish runtime
+behavior is not verified.
 
 ### Mise lifecycle
 

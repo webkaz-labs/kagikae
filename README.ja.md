@@ -74,8 +74,8 @@ Packslip の補完ローダーが選択中の版に追従します。このロ�
 `eval "$(mise completion bash --tool kae)"`（zsh は `bash` を `zsh` に変更）、
 fish で `mise completion fish --tool kae | source` を使い、版変更後に再実行します。
 動的候補も選択中の `kae` を使うよう、mise の環境を有効化してください。
-隔離検証では Bash・Zsh の登録と版切り替えを実行しています。fish は資材取得までで、
-実シェルでの検証は未実施です。
+隔離検証では Bash・Zsh の登録と版切り替えを実行しています。fish は補完資材の取得だけを
+確認し、実シェルでの動作は検証しません。
 
 macOS と Linux の amd64/arm64 向けバイナリ、チェックサム、ビルド来歴の証明は
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases) にあります。

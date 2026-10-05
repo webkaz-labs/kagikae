@@ -14,7 +14,8 @@ here are part of the command contract.
   with the mapping and retention conditions in [CLI.md](CLI.md) § kae preservation Semantics.
 - Hold the applicable locks for the read-modify-write window: per-tool locks
   for global transactions, and pin plus preservation locks for original-store
-  restore ([ARCHITECTURE.md](ARCHITECTURE.md) § Locking).
+  restore ([ARCHITECTURE.md](ARCHITECTURE.md) § Locking). Restarting a resident
+  process is not part of that window (§ Resident processes).
 - All file writes are atomic (temp file + rename, same directory) and set
   mode `0600` for credential files.
 - Validate structure before writing; refuse with `unsafe_refused` (exit 10)
@@ -161,7 +162,10 @@ child could rotate the live credential unseen — a cached value would be stale.
 - The `identity_drift` doctor check compares the stored identity payload against
   the live one. It is **offline** — a comparison of state already on the
   machine, no probe and no network call — so nothing about the login is
-  transmitted. Neither value reaches the output: an identity is PII (an email
+  transmitted. `resident_drift` is the one doctor check that probes something: a
+  **local IPC probe** of codex's managed daemon under the rules of § Resident
+  processes. kae makes no network call for it; whether the daemon contacts the
+  network to answer is not established (§ Resident processes). Neither value reaches the output: an identity is PII (an email
   address), so a finding names only the tool, the account, and the artifact or the
   bound directory it is about. The check has two frames and both obey that rule:
   the active account's live state, and a bound directory's own store.
@@ -215,6 +219,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   pins that. Claude's request uses the `User-Agent` of the verified Claude Code
   release because that endpoint throttles other agents before it returns the
   windows; the header is not a claim that kae is Claude Code.
+- `codex app-server daemon restart` (the managed daemon's own lifecycle command),
+  `osascript` and `open -b` (the ChatGPT app on macOS) run through
+  `internal/runner` with argv arrays and no shell, under the limits of
+  § Resident processes: the restart through `runner.RunWithEnv`, `osascript`
+  through `runner.Run`, and `open -b` through `runner.Launch`.
 
 ## File Permissions
 
@@ -299,6 +308,60 @@ The latter stays held during explicit restore but not during interactive login.
 These locks do not stop a sibling directory or upstream process from changing a shared
 credential store; stop sessions using that credential before relogin or restore.
 Preservation records are not a guarantee that a copied rotating token remains usable.
+
+## Resident processes
+
+Some upstream processes outlive a switch and keep the account they started with:
+codex's managed daemon (`codex app-server daemon`), the codex server embedded in
+the ChatGPT desktop app, and long-running codex sessions. [CLI.md](CLI.md)
+§ kae use Semantics owns when kae acts on them and what it reports; this section
+owns the limits on how.
+
+**kae sends no signal to a resident process and never identifies a process by
+name, argv or pid.** It does not enumerate processes and does not read another
+process's argv. It reaches a resident process through exactly two paths:
+
+1. **The owner's lifecycle command.** `codex app-server daemon restart`, run with
+   `CODEX_HOME` set explicitly to the codex home kae switched. Inheriting
+   `CODEX_HOME` from a bound directory's environment would restart a different
+   daemon, so the variable is always set, never inherited. The argv and the
+   environment come from the adapter (`ResidentDaemon`), not from the command line.
+2. **Apple Events to the adapter's fixed bundle-id allowlist** (`DesktopApps`,
+   today `com.openai.codex`), macOS only, and only with consent ([CLI.md](CLI.md)
+   § kae use Semantics): `quit`, wrapped in an `is running` test so that the request
+   cannot launch an app that is not running, and `open -b <bundle id>` to relaunch
+   it once the quit has been observed. A quit that is not observed within the wait
+   is reported, never escalated.
+
+**Observing the daemon** is a read-only local IPC probe, and every limit below is
+part of the contract:
+
+- kae connects only to the socket of the codex home it switched, and only after
+  checking that the socket's resolved path is owned by the current uid.
+- kae sends a fixed request sequence and nothing else: `initialize`, the
+  `initialized` notification, and `account/read` with `refreshToken: false`. The
+  sequence is a constant the command layer cannot change. Methods that change auth
+  state — `account/logout`, `account/login/*`, `refreshToken: true` — and
+  `getAuthStatus`, which can return a token, are never sent. kae answers no request
+  the server sends.
+- The answer's email, account id and plan are PII. kae compares the account id in
+  memory and writes none of the three to stdout, stderr, logs, JSON reports, caches
+  or error messages. A finding names the tool, the daemon or app, and the command
+  to run.
+- kae makes no network call for the probe. Whether the daemon itself contacts the
+  network to answer `account/read` with `refreshToken: false` has not been
+  measured ([VALIDATION.md](VALIDATION.md) § codex resident processes).
+
+**The restart runs outside the per-tool locks.** The locks serialize kae's own
+read-modify-write of the credential store (§ Mutation Safety Rules); restarting the
+daemon is not part of that read-modify-write, and codex does not take kae's locks,
+so holding them would only turn the restart's seconds into `lock_busy` for other kae
+commands. The restart therefore follows the transaction, after state is saved and
+the locks are released: a restart before the state save would, if the save failed,
+leave the backup restored on disk while the daemon ran the new account. A failed
+restart does not roll the switch back. That is not the mixed-state rule of
+§ Mutation Safety Rules, which governs files kae writes; the daemon's memory is not
+one of them.
 
 ## Isolation Safety
 
@@ -426,3 +489,6 @@ credential it holds, and a mislabelled token is undetectable afterwards
 | `security` (macOS) | keychain read/write | output of `-w` is secret |
 | `secret-tool` (Linux) | libsecret read/write | stdin used for store; output of lookup is secret |
 | upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |
+| `codex app-server daemon restart` | restart codex's managed daemon after a switch changed the account it holds | argv and environment from the adapter; `CODEX_HOME` set to the switched home, never inherited; no credential in argv or environment (§ Resident processes) |
+| `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; only stdout `true` with exit 0 means running; stderr is localized, so the only thing read from it is the Apple Events error number `-1743` (automation not permitted) (§ Resident processes) |
+| `open -b` (macOS) | relaunch the ChatGPT app after its quit was observed | allowlisted bundle id only, through `runner.Launch` |

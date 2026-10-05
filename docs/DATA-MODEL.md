@@ -581,6 +581,8 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `explicit`; claude project `applies` `settings`, `local-settings`,
   `skills-agents`, `instructions` (the `Place*` blocks; rows in [CLI.md](CLI.md)
   § `kae ls --json`)
+- resident processes in a switch report's `residents`: `kind`, `observed` and
+  `outcome` tokens, listed in [CLI.md](CLI.md) § `kae use ... --json` (the switch report)
 - backup reasons: the `BackupReason*` block in `internal/constants` (five today, and one of them records a state kae *declined*, not one it is about to change — see § Backups)
 
 ## Env Profiles

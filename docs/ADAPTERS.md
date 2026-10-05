@@ -376,6 +376,48 @@ Also confirmed in the same file: after a successful keyring write codex
 **deletes its `auth.json` fallback**, so a plaintext copy left beside a live item
 is a credential nothing reads.
 
+### Resident processes
+
+codex reads its credential when a process starts and does not watch `auth.json`.
+A running codex re-reads the file only to recover its own login, and it discards
+what it read when the account id on disk differs from the one it holds, so a
+switch never reaches a process that was already running. What that leaves running,
+and how kae reaches each one:
+
+| Process | What kae does |
+|---|---|
+| managed daemon (`codex app-server --managed-daemon`, controlled by `codex app-server daemon`) | probes the account it holds and restarts it when that differs ([CLI.md](CLI.md) § kae use Semantics) |
+| the codex server embedded in the ChatGPT desktop app (macOS) | quits and relaunches the app with consent; it speaks stdio to the app, so kae cannot ask it which account it holds |
+| a long-running codex session not connected to the daemon (an open TUI, `codex resume`) | a fixed warning only; kae does not look for one |
+
+The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
+§ Adapter Interface) and declares:
+
+- **socket** `<CODEX_HOME>/app-server-control/app-server-control.sock`, one per
+  codex home, with `CODEX_HOME` canonicalized by the same symlink resolution as the
+  keyring item's store key (§ Keyring item contract). On macOS it is a symlink to a
+  socket under a per-uid temporary directory. kae follows that symlink rather than
+  re-deriving the target's name.
+- **protocol** JSON-RPC over a WebSocket on that Unix socket (`GET /` with
+  `Upgrade: websocket`). kae sends `initialize`, the `initialized` notification and
+  `account/read` with `refreshToken: false`, and reads the account id from the
+  answer (`ParseDaemonAccount`); [SECURITY.md](SECURITY.md) § Resident processes
+  owns the limits.
+- **account key** the credential's account id from either store
+  (`CredentialAccount`), compared with the daemon's. The key is opaque and never
+  printed.
+- **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
+  switched home.
+- **desktop app** bundle id `com.openai.codex`, darwin only.
+
+None of this is a documented upstream interface. The socket path, the protocol
+and the answer's shape were observed on 0.160.0, and a change to any of them makes
+the probe answer `unknown` rather than a guess: no socket is `absent`, a refused or
+unreadable exchange is `unknown`, and kae restarts only on a readable `differs`.
+[VALIDATION.md](VALIDATION.md) § codex resident processes records the observations
+and what is still unverified. `VerifiedVersion()` does not move for these rows
+until that acceptance runs.
+
 ### Preserved
 
 ```text

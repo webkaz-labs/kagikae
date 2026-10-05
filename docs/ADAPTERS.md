@@ -403,10 +403,10 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 - **protocol** JSON-RPC over a WebSocket on that Unix socket (`GET /` with
   `Upgrade: websocket`). kae sends `initialize`, the `initialized` notification and
   `account/read` with `refreshToken: false`, and reads the account id from the
-  answer (`ParseDaemonAccount`); [SECURITY.md](SECURITY.md) § Resident processes
+  answer's `result.workspaceRouting.chatgptAccountId` (`ParseDaemonAccount`); [SECURITY.md](SECURITY.md) § Resident processes
   owns the limits.
-- **account key** the credential's account id from either store
-  (`CredentialAccount`), compared with the daemon's. The key is opaque and never
+- **account key** the credential's account id, `tokens.account_id` in either
+  store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
   printed.
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
   switched home.

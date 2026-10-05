@@ -49,6 +49,7 @@ kagikae/
     desktopapp/           # darwin desktop-app quit/relaunch by bundle id through runner
     testutil/runnertest/  # shared canned-response runner fake for tests
     testutil/l10ntest/    # English pin for TestMain, explicit Japanese for one test
+    testutil/wsrpctest/   # fake WebSocket peer on a real Unix socket (wsrpc and the probe)
   tools/devtools/         # common commands, shell entrypoints and libraries; same module
     cmd/                  # docrefs, docscan, distributionverify, completionverify
     commandrun/           # bounded subprocess ownership

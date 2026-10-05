@@ -26,6 +26,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/textui"
+	"github.com/webkaz-labs/kagikae/internal/wsrpc"
 )
 
 // App bundles the resolved environment every command needs. Tests construct
@@ -58,6 +59,17 @@ type App struct {
 	// pick replaces the interactive picker in tests, which have no terminal to
 	// drive; it is handed exactly what the picker would show. Nil in production.
 	pick func(ctx context.Context, items []picker.Item, opts picker.Options) (string, bool, error)
+	// dialUnix connects the resident-daemon probe to its Unix socket; nil means
+	// net.Dialer.DialContext (unixDialer). Tests leave it nil and serve a fake
+	// daemon on a real socket, so the WebSocket framing is exercised.
+	dialUnix wsrpc.Dialer
+	// residentProbeTimeout bounds one daemon probe; zero means the default
+	// (residentProbeLimit). Tests shorten it so a silent daemon costs little.
+	residentProbeTimeout time.Duration
+	// euidForTest replaces os.Geteuid for the probe's socket-owner check, which a
+	// test cannot otherwise fail without a file owned by another user. Nil in
+	// production.
+	euidForTest func() int
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.

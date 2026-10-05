@@ -279,6 +279,17 @@ const (
 	UsageOriginRemote = "remote"
 )
 
+// What the probe of a resident daemon observed, the `observed` field of a
+// switch report's `residents` entry for the `daemon` kind (docs/CLI.md
+// § kae use Semantics, **Resident processes (codex)**): no socket, the daemon
+// holds the compared account, it holds another one, or kae could not read it.
+const (
+	ResidentObservedAbsent  = "absent"
+	ResidentObservedMatches = "matches"
+	ResidentObservedDiffers = "differs"
+	ResidentObservedUnknown = "unknown"
+)
+
 // Backup reasons, the `reason` field of a backup's metadata and of every
 // `kae backup list --json` row. They are a JSON contract vocabulary, so they live
 // here rather than as literals at the five createBackup call sites — where they

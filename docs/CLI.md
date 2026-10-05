@@ -252,7 +252,8 @@ them as follows; tools without resident processes are unaffected.
 1. **Probe, before anything is written.** Without a lock, kae asks the daemon of the
    real codex home which account it holds, compares it with the account the switch
    will leave live, and reads `absent` (no daemon socket), `matches`, `differs` or
-   `unknown` (the socket exists but kae could not read an account from it). It also
+   `unknown` (the socket exists but kae could not read an account from it, or the
+   credential it is compared with names none, as an API-key login does). It also
    asks whether the ChatGPT app is running (macOS only) and whether this command
    changes codex's account at all. The probe only reads, so `--dry-run` runs it
    too.
@@ -2866,7 +2867,8 @@ composed, those built in packages below the command layer included. A message th
 reaches a JSON field or a generated file renders English there (VALIDATION
 § Output language in tests). An error kae never shows a person is not a message
 and stays English: one a command replaces with its own message without printing it
-(the preservation store's errors, which may carry credential material), and a
+(the preservation store's errors, which may carry credential material, and the
+daemon probe's WebSocket errors, which it reduces to `unknown`), and a
 programmer error that panics at start-up.
 
 **The `flag` package.** The usage block it prints (`Usage of`, `(default ...)`) is

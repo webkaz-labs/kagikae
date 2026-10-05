@@ -335,11 +335,23 @@ func TestProbeResidentDaemonStaleSocketIsUnknown(t *testing.T) {
 	}
 }
 
+// A JSON-RPC response may carry "error": null beside its result; that is no error.
+func TestProbeResidentDaemonNullErrorIsNoError(t *testing.T) {
+	app, ad, h := probeFixture(t, probeAccount)
+	answer := `{"jsonrpc":"2.0","id":2,"error":null,"result":{"workspaceRouting":{"chatgptAccountId":"` + probeOtherAcct + `"}}}`
+	d := startFakeDaemon(t, answer)
+	linkSocket(t, app, h, d.socket)
+	if got := probe(t, app, ad, h); got != constants.ResidentObservedDiffers {
+		t.Errorf("probe = %q, want differs", got)
+	}
+}
+
 func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 	for name, answer := range map[string]string{
 		"not JSON":       `account`,
 		"JSON-RPC error": `{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"` + probeEmail + `"}}`,
 		"no result":      `{"jsonrpc":"2.0","id":2}`,
+		"null result":    `{"jsonrpc":"2.0","id":2,"result":null}`,
 		"error beside result": `{"jsonrpc":"2.0","id":2,"error":{"code":-1,"message":"x"},"result":` +
 			`{"workspaceRouting":{"chatgptAccountId":"` + probeAccount + `"}}}`,
 		"no workspaceRouting": `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"` + probeEmail + `"}}}`,

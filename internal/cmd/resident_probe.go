@@ -86,7 +86,8 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 		Result json.RawMessage `json:"result"`
 		Error  json.RawMessage `json:"error"`
 	}
-	if json.Unmarshal(msg, &reply) != nil || len(reply.Error) != 0 || len(reply.Result) == 0 {
+	// A member present as null is absent (encoding/json keeps the literal).
+	if json.Unmarshal(msg, &reply) != nil || jsonMember(reply.Error) || !jsonMember(reply.Result) {
 		return constants.ResidentObservedUnknown
 	}
 	got, ok := h.ParseDaemonAccount(reply.Result)
@@ -97,6 +98,11 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 		return constants.ResidentObservedMatches
 	}
 	return constants.ResidentObservedDiffers
+}
+
+// jsonMember reports whether a raw JSON-RPC member is present and not null.
+func jsonMember(raw json.RawMessage) bool {
+	return len(raw) != 0 && string(raw) != "null"
 }
 
 // ownedSocket reports whether path is a Unix socket owned by uid.

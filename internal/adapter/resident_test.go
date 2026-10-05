@@ -21,25 +21,35 @@ func TestResidentAccountNeverPrintsTheID(t *testing.T) {
 		t.Fatal("NewResidentAccount refused a non-empty id")
 	}
 	wrapped := struct{ Key adapter.ResidentAccount }{key}
+	// fmt cannot call Format on a value in an unexported field and prints its
+	// fields raw instead, so the key must not hold the id at all.
+	hidden := struct {
+		want adapter.ResidentAccount
+		Got  adapter.ResidentAccount
+	}{key, key}
 	jsonOut, err := json.Marshal(wrapped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	outputs := map[string]string{
-		"String": key.String(),
-		"%v":     fmt.Sprintf("%v", key),
-		"%+v":    fmt.Sprintf("%+v", key),
-		"%#v":    fmt.Sprintf("%#v", key),
-		"%s":     fmt.Sprintf("%s", key),
-		"%q":     fmt.Sprintf("%q", key),
-		"%x":     fmt.Sprintf("%x", key),
-		"%X":     fmt.Sprintf("%X", key),
-		"%d":     fmt.Sprintf("%d", key),
-		"struct": fmt.Sprintf("%+v %#v", wrapped, wrapped),
-		"ptr":    fmt.Sprintf("%v", &key),
-		"error":  fmt.Errorf("probe: %v", key).Error(),
-		"wrap":   fmt.Errorf("probe: %w", errors.New(fmt.Sprint(key))).Error(),
-		"json":   string(jsonOut),
+		"String":     key.String(),
+		"%v":         fmt.Sprintf("%v", key),
+		"%+v":        fmt.Sprintf("%+v", key),
+		"%#v":        fmt.Sprintf("%#v", key),
+		"%s":         fmt.Sprintf("%s", key),
+		"%q":         fmt.Sprintf("%q", key),
+		"%x":         fmt.Sprintf("%x", key),
+		"%X":         fmt.Sprintf("%X", key),
+		"%d":         fmt.Sprintf("%d", key),
+		"struct":     fmt.Sprintf("%+v %#v", wrapped, wrapped),
+		"ptr":        fmt.Sprintf("%v", &key),
+		"error":      fmt.Errorf("probe: %v", key).Error(),
+		"wrap":       fmt.Errorf("probe: %w", errors.New(fmt.Sprint(key))).Error(),
+		"json":       string(jsonOut),
+		"hidden %v":  fmt.Sprintf("%v", hidden),
+		"hidden %+v": fmt.Sprintf("%+v", hidden),
+		"hidden %#v": fmt.Sprintf("%#v", hidden),
+		"hidden ptr": fmt.Sprintf("%+v", &hidden),
 	}
 	for name, out := range outputs {
 		if strings.Contains(out, fakeAccountID) || strings.Contains(out, "acct-fixture") {

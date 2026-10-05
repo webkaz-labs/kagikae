@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 )
@@ -42,22 +43,29 @@ type DaemonSpec struct {
 }
 
 // ResidentAccount is an opaque account key, compared and never printed: the
-// value behind it is an account id, which is personal data. Every fmt verb
-// prints a placeholder, and encoding/json sees no exported field.
-type ResidentAccount struct{ id string }
+// value behind it is an account id, which is personal data. It keeps only a
+// SHA-256 digest of the id, never the id itself, because fmt cannot reach the
+// Format method of a value held in another struct's unexported field and then
+// prints the fields raw. Printed directly, every fmt verb shows a placeholder;
+// printed inside another value, at most the digest shows; encoding/json sees
+// no exported field.
+type ResidentAccount struct {
+	digest [sha256.Size]byte
+	ok     bool
+}
 
-// NewResidentAccount wraps a non-empty account id; ok is false for "".
+// NewResidentAccount keys a non-empty account id; ok is false for "".
 func NewResidentAccount(id string) (ResidentAccount, bool) {
 	if id == "" {
 		return ResidentAccount{}, false
 	}
-	return ResidentAccount{id: id}, true
+	return ResidentAccount{digest: sha256.Sum256([]byte(id)), ok: true}, true
 }
 
 // Same reports whether two keys name the same account. A zero key matches
 // nothing, itself included.
 func (a ResidentAccount) Same(b ResidentAccount) bool {
-	return a.id != "" && a.id == b.id
+	return a.ok && b.ok && a.digest == b.digest
 }
 
 const residentAccountPlaceholder = "[redacted]"

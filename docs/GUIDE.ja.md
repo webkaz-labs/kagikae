@@ -36,7 +36,7 @@ kae ls
 上限そのものは変えません。ターミナルの幅が表より狭いときは、行ごとに項目を縦に並べて
 表示します。
 
-前回の記録は古いことがあります。`--full`（`-f`）を付けると、利用枠の末尾にその記録を
+利用枠の記録は古いことがあります。`--full`（`-f`）を付けると、利用枠の末尾にその記録を
 取ってからの経過時間が 1 回だけ出ます（例: `5h 16% (2h13m) · 7d 95% (3d4h) · 22h13m 前`）。
 記録が無い `-` には何も付きません。古いかどうかの判定や色分けはしません。`--json` は
 `--full` で変わらず、記録の時刻は `observed_at` にあります。
@@ -339,12 +339,12 @@ kae pin main
 | 元のストアに保全した認証を戻したい | `kae preservation list` の記録を確認し、`kae preservation restore <id>` |
 
 codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`）、長時間のセッションが
-常駐して認証をメモリに持ちます。`kae add` で取り込み直す前に、これらを終了するか
-`codex app-server daemon restart` で再起動してください。再ログイン直後に「logged out or
-signed in to another account」と出た場合は、常駐プロセスを再起動してください。2026-10-05 に、
-`kae add` の直後にこの表示で失敗し、アプリとデーモンを再起動すると直りました。通常の
-`kae use` の切替は、常駐したままで 2 回とも通りました。確かめたのは再起動で直ったことだけで、
-常駐プロセスがどう影響するかは確かめていません。
+ログイン後も常駐し、以前のログインを保持している可能性があります。`kae add` で取り込み
+直す前に、アプリと長時間のセッションを終了し、デーモンを再起動してください
+（`codex app-server daemon restart`）。再ログイン直後に「Your access token could not be
+refreshed because you have since logged out or signed in to another account. Please sign
+in again.」と出た場合は、同じプロセスを終了・再起動してください。2026-10-05 に、`kae add`
+の直後に出たこの表示は、アプリとデーモンの再起動で消えました。仕組みは確かめていません。
 
 `relogin` は固定先のストアを選択します。対応フローと拒否条件は
 [CLI.md](CLI.md#kae-relogin-semantics) を参照してください。手動で固定先にログインする

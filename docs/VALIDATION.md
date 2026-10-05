@@ -154,7 +154,7 @@ when the key misses. The first CI run of the step,
 (14:22:47Z to 14:22:57Z) and 1m50s for the whole `check` job (14:21:10Z to
 14:23:00Z), which restored `setup-go`'s Go cache (a hit). That run was a push
 event, so verifying the attestation with a fork pull request's `github.token` is
-not yet observed.
+not observed.
 
 **arm64 platform jobs.** `platforms.yml`, called from `ci.yml` beside `check.yml`,
 runs build, vet and `go test ./...` on `macos-latest` (darwin/arm64) and

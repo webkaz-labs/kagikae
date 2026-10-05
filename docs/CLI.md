@@ -472,14 +472,14 @@ verify both in the tool and its environment before login or capture.
 | Tool has no kae-driven login | For global recovery, log into that account through the tool first, then verify the global store and capture with `--no-login`. Before manual bound-directory login, verify mise activation, trust and the effective tool environment select the bound store; changing directory alone is insufficient. See § kae add Semantics and § kae relogin Semantics for supported flows. |
 
 codex's resident processes — the ChatGPT app, the managing daemon
-(`codex app-server daemon`) and long-running codex sessions — keep running and
-hold authentication in memory. Before re-capturing a codex login with `kae add`,
-quit them or run `codex app-server daemon restart`; if codex says it is logged out
-or signed in to another account right after the login, restart them. Observed on
-2026-10-05: one `kae add` failed with that message until the app and the daemon
-were restarted, while two ordinary `kae use` switches passed with them running.
-Only the restart's effect was observed; how the resident processes interfere was
-not established.
+(`codex app-server daemon`) and long-running codex sessions — keep running after a
+login and may still hold the previous login. Before re-capturing a codex login with
+`kae add`, quit the app and the long-running sessions and restart the daemon
+(`codex app-server daemon restart`). If codex says "Your access token could not be
+refreshed because you have since logged out or signed in to another account.
+Please sign in again." right after the login, quit and restart the same processes.
+Observed on 2026-10-05: that message after a `kae add` cleared once the app and the
+daemon were restarted; the mechanism was not established.
 
 `kae backup list` supports choosing an explicit global rollback target;
 `kae preservation list` supports choosing an explicit original-store restore.
@@ -1720,8 +1720,7 @@ in the same transaction.
 - The account tables print their default columns unless `--full` (`-f`) adds
   the rest (§ Human Text lists the tables and both column sets). This holds
   whether or not stdout is a terminal and in the stacked layout below; the
-  omitted columns are left out before the width is measured. `--full` also adds
-  each `Limit` reading's age (§ Subscription windows in listings). `--json` is
+  omitted columns are left out before the width is measured. `--json` is
   unchanged by `--full`. `kae ls` accepts `--full` for its other tables without
   effect.
 - Human tables fit the terminal. When stdout is a terminal narrower than the
@@ -1879,8 +1878,10 @@ comes from one reading with one `observed_at`, so the age appears once, after th
 last window, joined by the same ` · `. It uses the countdown's format, truncated
 to the two largest units; under a minute, or an `observed_at` that is not in the
 past, reads `1m ago`. It is dim, like the countdown. `-` gets no age, and neither
-does a reading without `observed_at`. The age shows that a remembered reading
-may be old; kae does not judge it stale or color it. Without `--full` the cell
+does a reading without `observed_at`. A codex local reading's `observed_at` is
+the session rollout file's modification time, so an event the tool appends after
+its last `rate_limits` makes the age shorter than the reading's. The age shows
+that a reading may be old; kae does not judge it stale or color it. Without `--full` the cell
 is unchanged, and `--json` is unchanged by `--full`: `observed_at` already
 carries the instant.
 

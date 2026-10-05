@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -78,6 +79,24 @@ func commandContext(parent context.Context, name string, args, env []string, cwd
 	return result.Stdout, nil
 }
 
+// intelMacDropped is the first release without a darwin/amd64 (Intel macOS)
+// archive; earlier tags keep the four archives they were published with. It
+// assumes the release after v0.23.0 is v0.24.0; adjust it before tagging if not.
+var intelMacDropped = [3]uint64{0, 24, 0}
+
+// releaseFrom reports whether an explicit vX.Y.Z tag is at or after from.
+func releaseFrom(tag string, from [3]uint64) bool {
+	if !tagPattern.MatchString(tag) {
+		return false
+	}
+	got, ok := distribution.Triple(tag[1:])
+	return ok && slices.Compare(got[:], from[:]) >= 0
+}
+
+func archiveName(tag, system, arch string) string {
+	return fmt.Sprintf("kae_%s_%s_%s.tar.gz", tag[1:], system, arch)
+}
+
 func archivesFor(tag string) ([]string, error) {
 	if !tagPattern.MatchString(tag) {
 		return nil, errors.New("expected explicit vX.Y.Z tag")
@@ -85,7 +104,10 @@ func archivesFor(tag string) ([]string, error) {
 	var names []string
 	for _, system := range []string{"darwin", "linux"} {
 		for _, arch := range []string{"amd64", "arm64"} {
-			names = append(names, fmt.Sprintf("kae_%s_%s_%s.tar.gz", tag[1:], system, arch))
+			if system == "darwin" && arch == "amd64" && releaseFrom(tag, intelMacDropped) {
+				continue
+			}
+			names = append(names, archiveName(tag, system, arch))
 		}
 	}
 	sort.Strings(names)
@@ -166,8 +188,8 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	if err != nil {
 		return result{}, err
 	}
-	native := fmt.Sprintf("kae_%s_%s_%s.tar.gz", tag[1:], system, arch)
-	if (system != "darwin" && system != "linux") || (arch != "amd64" && arch != "arm64") {
+	native := archiveName(tag, system, arch)
+	if !slices.Contains(names, native) {
 		return result{}, errors.New("native platform unavailable")
 	}
 	var toolchain *tools
@@ -271,10 +293,11 @@ func mainResult(ctx context.Context) (got result, code int) {
 		return result{Status: "failed", Reason: "usage: releaseverify vX.Y.Z (from repository root)"}, 1
 	}
 	tag := os.Args[1]
-	if _, err := archivesFor(tag); err != nil {
+	names, err := archivesFor(tag)
+	if err != nil {
 		return result{Status: "failed", Reason: err.Error()}, 1
 	}
-	if (runtime.GOOS != "darwin" && runtime.GOOS != "linux") || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
+	if !slices.Contains(names, archiveName(tag, runtime.GOOS, runtime.GOARCH)) {
 		return result{Status: "unavailable", Reason: "native platform unavailable"}, 2
 	}
 	requiredTools := []string{"gh", "bash", "git"}

@@ -245,6 +245,49 @@ func TestPreconditions(t *testing.T) {
 	}
 }
 
+// TestArchiveEras pins each era's shipped set: tags before intelMacDropped keep
+// the darwin/amd64 archive they were published with, later tags have none, and
+// the signed spec and native-platform gate follow the same set.
+func TestArchiveEras(t *testing.T) {
+	set := func(version string, systems ...string) []string {
+		names := []string{}
+		for _, system := range systems {
+			names = append(names, "kae_"+version+"_"+system+".tar.gz")
+		}
+		return names
+	}
+	for tag, want := range map[string][]string{
+		"v0.20.3":  set("0.20.3", "darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"),
+		"v0.21.0":  set("0.21.0", "darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"),
+		"v0.23.0":  set("0.23.0", "darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"),
+		"v0.23.12": set("0.23.12", "darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"),
+		"v0.24.0":  set("0.24.0", "darwin_arm64", "linux_amd64", "linux_arm64"),
+		"v1.0.0":   set("1.0.0", "darwin_arm64", "linux_amd64", "linux_arm64"),
+	} {
+		got, err := archivesFor(tag)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("archivesFor(%s) = %q, %v; want %q", tag, got, err, want)
+		}
+		if packslipRelease(tag) {
+			spec := []string{}
+			for _, a := range releaseSpec(tag, signedCommit).Artifacts {
+				spec = append(spec, a.Name)
+			}
+			if !reflect.DeepEqual(spec, want) {
+				t.Fatalf("releaseSpec(%s) artifacts = %q; want %q", tag, spec, want)
+			}
+		}
+		called := false
+		_, err = verify(tag, t.TempDir(), t.TempDir(), "darwin", "amd64", func(string, []string, []string, string) (string, error) {
+			called = true
+			return "", errors.New("stop after the platform gate")
+		})
+		if shipped := len(want) == 4; called != shipped || err == nil {
+			t.Fatalf("%s on darwin/amd64: reached commands = %v, want %v (err %v)", tag, called, shipped, err)
+		}
+	}
+}
+
 func TestCurlFixtureRejectsUnknownURL(t *testing.T) {
 	dir := t.TempDir()
 	native := "archive.tar.gz"

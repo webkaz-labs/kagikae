@@ -28,6 +28,11 @@ builds:
     goarch:
       - amd64
       - arm64
+    # Intel macOS is unsupported from v0.24.0 (docs/PRODUCT.md § Current State);
+    # scripts/releaseverify keeps darwin/amd64 only for earlier tags.
+    ignore:
+      - goos: darwin
+        goarch: amd64
 
 archives:
   - id: kae

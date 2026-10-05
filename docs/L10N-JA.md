@@ -99,8 +99,8 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | secret backend | シークレットストア | 決定 | secret store と同一視する |
 | cancel | キャンセル | 確定 | |
 | resident process | 常駐プロセス | 提案 | 切替の後も起動時のアカウントを使い続ける上流のプロセス。子プロセスと混ぜない |
-| managed daemon | 管理デーモン | 提案 | 初出は「管理デーモン（`codex app-server daemon`）」と併記する。GUIDE.ja.md の既存の書き方に合わせる |
-| ChatGPT desktop app | ChatGPT アプリ | 提案 | 製品名 ChatGPT は訳さない |
+| managed daemon | 管理デーモン | 確定 | GUIDE.ja.md が既に使っている。初出は「管理デーモン（`codex app-server daemon`）」と併記する |
+| ChatGPT desktop app | ChatGPT アプリ | 確定 | GUIDE.ja.md が既に使っている。製品名 ChatGPT は訳さない |
 
 ### 型と記号
 
@@ -110,6 +110,10 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | 確認プロンプト | 「続行する場合は y を入力してください [y/N]」 | 決定 | 受け付ける答えが言語で変わらないことは [CLI.md](CLI.md) § Localization が持つ。それ以外の疑問文は作らない |
 | 対処コマンドの囲み | バッククォートで囲まない | 決定 | 端末出力は Markdown ではない |
 | 利用枠のセルの区切り `·`（U+00B7） | 変えない | 決定 | 「使える記号」の節を参照 |
+
+英語の確認が疑問文でも、日本語は確認プロンプトの型に訳します。理由や影響を先に敬体の文で書き、最後を「〜場合は y を入力してください [y/N]: 」で終えます。既存の例は doctor の確認（`internal/l10n/ja_reports.go`）です。ChatGPT アプリの確認（[CLI.md](CLI.md) § kae use Semantics）は次の形にします。
+
+「ChatGPT アプリは起動時の codex アカウントを使い続けます。アプリで実行中のタスクは中断されます。いま終了して再起動する場合は y を入力してください [y/N]: 」
 
 ### 訳さないもの
 

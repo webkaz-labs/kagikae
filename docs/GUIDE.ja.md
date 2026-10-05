@@ -344,16 +344,19 @@ codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`�
 結果を標準エラー出力に表示します。この表示は `--quiet` でも消えず、終了コードも変えません。
 ChatGPT アプリが起動中で、そのコマンドが codex のアカウントを変えた場合は、終了して
 再起動するかを端末で確認します（既定は No）。アプリで実行中のタスクは中断されます。
-長時間のセッションは自分で開き直してください。
+長時間のセッションは自分で開き直してください。デーモンの再起動が、接続中のセッションの作業を
+どこまで中断するかは確かめていません。
 
 - `--no-restart` を付けると、デーモンもアプリもそのままにして、警告だけを出します。
-- mise の enter フック（`kae use --auto --quiet`）と `--dry-run` は、再起動も終了もせず警告だけを出します。
+- `--auto` を付けた実行（mise の enter フックの `kae use --auto --quiet`）と `--dry-run` は、
+  `--yes` があっても再起動も終了もせず警告だけを出します。`--quiet` は表示を変えるだけなので、
+  `--auto` なしで手で打った `kae use` や `kae use --quiet` は再起動の対象です。
 - `--yes` は確認への同意として扱われ、確認なしでアプリを終了・再起動します。`--yes` を付けて
   `kae use` を呼ぶスクリプトでは、起動中のアプリが終了します。
 - 端末がない実行と `--json` では、`--yes` が無ければ確認せず警告だけを出します。
 
-kae を使わずにログインした場合、`--no-restart` やフックで切り替えた場合、再起動の失敗が
-表示された場合は、アプリと長時間のセッションを終了し、`codex app-server daemon restart` を
+kae を使わずにログインした場合、`--no-restart` やフックで切り替えた場合、再起動の失敗や
+再起動後の確認ができなかったこと（未確認）が表示された場合は、アプリと長時間のセッションを終了し、`codex app-server daemon restart` を
 実行してください。切替やログインの直後に「Your access token could not be refreshed because
 you have since logged out or signed in to another account. Please sign in again.」と出た
 場合も、同じプロセスを終了・再起動してください。2026-10-05 に、`kae add` の直後に出た

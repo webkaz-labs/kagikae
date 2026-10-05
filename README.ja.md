@@ -131,8 +131,9 @@ kae profile set main codex main
 
 codex の管理デーモンは切替の後も起動時のアカウントを使い続けるので、`kae use`、
 `kae add`、`kae rollback` はアカウントが食い違うデーモンを切替の後に自動で再起動します。
-起動中の ChatGPT アプリは、確認してから終了・再起動します。`--no-restart` を付けると
-警告だけになります。`--yes` はこの確認への同意になるので、`--yes` 付きで `kae use` を
+起動中の ChatGPT アプリは、確認してから終了・再起動します。`--no-restart` を付けた
+場合と、mise の enter フック（`kae use --auto`）では警告だけになります。それ以外では
+`--yes` がこの確認への同意になるので、`--yes` 付きで `kae use` を
 呼ぶスクリプトでは起動中のアプリが終了します。詳細は
 [復旧ガイド](docs/GUIDE.ja.md#認証の復旧)にあります。
 

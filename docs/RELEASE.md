@@ -21,7 +21,11 @@ by hand — the tag does it.
 
 1. Bump `toolVersion` in `internal/cmd/cmd.go` to the new `vX.Y.Z` (the binary's
    reported version is hardcoded, not injected; it must match the tag) and the
-   `TestBuildVersionReport` expectation.
+   `TestBuildVersionReport` expectation. While `.goreleaser.yaml` excludes
+   darwin/amd64 unconditionally, that tag is v0.24.0 or later, including a patch
+   tag released after a failed signer change (below); otherwise first move
+   `intelMacDropped` in `scripts/releaseverify` and the `scripts/install.sh`
+   boundary to it.
 2. Follow [VALIDATION.md](VALIDATION.md) § Standard Suite: run its commit gate and
    **every slower release-time check it names**, including `release-evidence`, before
    the tag. Update the docs (ROADMAP/VALIDATION and any behavior docs). Work the

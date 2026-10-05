@@ -181,11 +181,20 @@ five refusal controls (key, project, digest, platform, missing asset) are what s
 that a newer mise still verifies. On 2026-10-05, signing with Packslip 1.6.0, the
 fixture passed with mise 2026.9.3 and with 2026.10.2. It signs an archive for the
 host platform without the release manifest, so on Linux its artifact's `libc`
-comes from Packslip's inference, not the release's `gnu`; `scripts/releaseverify`
-checks the release's Linux `libc` against its spec instead. The fixture runner builds temporary application versions and
-uses ephemeral key/unlogged trust only inside the smoke HOME. Its HTTP server does
-not forward requests. This checks the actual mise backend; production publication
-also needs `mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.
+comes from Packslip's inference, not the release's `gnu`. The release's signing
+inputs are checked instead by `PACKSLIP_BIN=/absolute/packslip go test -count=1
+-run TestSignerCLIStatesSpecLibc ./scripts/releaseverify`, which signs static
+darwin and Linux stub archives with the workflow's Action inputs and the
+`--packslip-prepare` manifest, using key signing in place of OIDC, and requires
+the verifier's spec to accept the statement. Its control signs without the
+manifest: from Packslip 1.4.0 the statement must then fail on `libc`. On
+2026-10-05 it passed with Packslip 1.6.0 (the control lost `libc`) and with
+1.1.1, the rollback signer, whose statement keeps `gnu` either way. It does not
+run the Action's shell wrapper or OIDC signing. The fixture runner builds
+temporary application versions and uses ephemeral key/unlogged trust only inside
+the smoke HOME. Its HTTP server does not forward requests. This checks the
+actual mise backend; production publication also needs
+`mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.
 
 ```bash
 go run ./scripts/packslipverify fixture

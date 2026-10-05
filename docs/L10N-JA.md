@@ -91,6 +91,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | Notes / Current / Source / Applies / Level / Kind / Root（見出し） | 備考 / 現在 / 取得元 / 適用先 / レベル / 種別 / ルート | 決定 | |
 | present / absent | あり / なし | 決定 | 人向けのセル語。JSON は bool |
 | re-login now / N day(s) left | 今すぐ再ログイン / 残り N 日 | 決定 | |
+| N ago（利用枠の記録の経過時間） | N 前 | 提案 | N は `22h13m` の形のまま。例: `22h13m 前` |
 | keychain item / keyring | キーチェーン項目 / キーリング | 決定 | |
 | codex home | codex ホーム | 決定 | |
 | file driver | ファイルドライバー | 決定 | |

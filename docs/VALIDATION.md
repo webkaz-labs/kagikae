@@ -148,9 +148,13 @@ a wrong source commit failed all three provenance tries, and a renamed or skippi
 14.7 s and 17.3 s with a warm Go build cache and 81.8 s and 130.9 s with an empty one;
 fetching and verifying the archive alone took 6.6 s. On CI the test's cross-platform
 stub builds may run with a cold cache, because `actions/setup-go` saves its cache only
-when the key misses. The step time on a GitHub runner is not measured: the first CI
-run of the step is its acceptance; a recorded run link and step time replace this
-statement once that run exists.
+when the key misses. The first CI run of the step,
+[run 37323992190](https://github.com/webkaz-labs/kagikae/actions/runs/37323992190)
+(a push of `4dc7f68` on 2026-10-05, every job successful), took 10 s for the step
+(14:22:47Z to 14:22:57Z) and 1m50s for the whole `check` job (14:21:10Z to
+14:23:00Z), which restored `setup-go`'s Go cache (a hit). That run was a push
+event, so verifying the attestation with a fork pull request's `github.token` is
+not observed.
 
 **arm64 platform jobs.** `platforms.yml`, called from `ci.yml` beside `check.yml`,
 runs build, vet and `go test ./...` on `macos-latest` (darwin/arm64) and
@@ -181,10 +185,17 @@ platform.
   `GOCACHE`, against 7.7 s, 9.3 s and 36.2 s with an empty cache per step, and 0.3 s,
   0.4 s and 5.3 s warm. This does not change `check.yml`'s cache or the deferral of
   shared-cache work across workflows.
-- **Runner cost: unmeasured.** No run of `platforms.yml` exists yet. The measurement
-  is per platform: queue time, job time, per-step time, `setup-go`'s cache hit or
-  miss and the CPU count `Confirm platform` prints, for a cold run and a warm run on
-  an unchanged `go.sum`, recorded in this paragraph.
+- **Runner cost: cold run measured, warm run not.** The first run of `platforms.yml`
+  is [run 37323992190](https://github.com/webkaz-labs/kagikae/actions/runs/37323992190)
+  (a push of `4dc7f68` on 2026-10-05). On both platforms `setup-go` found no cache
+  and saved one, so this is the cold case. linux/arm64: queued 5 s, job 57 s,
+  4 CPUs; Setup Go 6 s, Install zsh 9 s, Build 13 s, Vet 4 s, Test 18 s.
+  darwin/arm64: queued 11 s, job 2m16s, 3 CPUs; Setup Go 27 s, Build 33 s, Vet 9 s,
+  Test 49 s, and the security shim's install, probe and check steps succeeded in
+  1 s or less each (the step timestamps have one-second resolution). A warm run on
+  an unchanged `go.sum` is not measured; it is measured the same way, per platform:
+  queue time, job time, per-step time, `setup-go`'s cache hit or miss and the CPU
+  count `Confirm platform` prints.
 - **Real-home risk on macOS.** Only `internal/cmd`'s `TestMain` installs fail-loud
   runner defaults. Tests in `internal/keychain`, `internal/secret`, `internal/artifact`
   and the adapters rely on each test stubbing the runner, and some codex tests inject

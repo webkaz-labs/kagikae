@@ -367,7 +367,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if ts.Credential == constants.CredentialStale || ts.Credential == constants.CredentialExpiring {
 			cred = paint(constants.StatusWarn, cred, color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color), notes})
+		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color, opts.Full), notes})
 	}
 	printAccountTable([]column{colTool, colAccount, colIdentity, colDriver, colAuth, colCredential, colLimit, colNotes}, rows, opts.Full, color)
 	warned := false
@@ -459,7 +459,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		rows = append(rows, []string{
 			item.Tool, item.Account, orDash(item.Identity), active, item.Driver,
 			credentialCell(item.Credential, item.ReloginBy, now),
-			limitCell(item.Usage, now, color), item.CapturedAt,
+			limitCell(item.Usage, now, color, opts.Full), item.CapturedAt,
 		})
 	}
 	printAccountTable([]column{colTool, colAccount, colIdentity, colActive, colDriver, colCredential, colLimit, colCaptured}, rows, opts.Full, color)
@@ -481,7 +481,12 @@ func orDash(s string) string {
 // (3d4h)"). With color, each window's percent carries its own state — green,
 // then warning at 80%, error at 100% — and the countdown is dim. A missing
 // reading is the same "-" as every other unknown cell.
-func limitCell(usage *usageJSON, now time.Time, color bool) string {
+//
+// With full, the cell ends with the reading's age ("· 22h13m ago"), once,
+// because every window in it shares one observed_at. It is parsed back from
+// the report's own field, like credentialCell, so the table and --json cannot
+// disagree; a reading without one gets no age.
+func limitCell(usage *usageJSON, now time.Time, color, full bool) string {
 	if usage == nil {
 		return "-"
 	}
@@ -503,6 +508,11 @@ func limitCell(usage *usageJSON, now time.Time, color bool) string {
 			func(s string) string { return paint(status, s, color) },
 			countdown,
 		)
+	}
+	if full {
+		if observed, err := time.Parse(time.RFC3339, usage.ObservedAt); err == nil {
+			texts = append(texts, dim(l10n.Sprintf("%s ago", usagelimit.CompactDuration(now.Sub(observed))), color))
+		}
 	}
 	return strings.Join(texts, usagelimit.Separator)
 }

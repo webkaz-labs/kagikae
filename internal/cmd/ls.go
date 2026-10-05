@@ -288,7 +288,7 @@ func printAccountItems(app *App, items []accountItem, addHint string, opts commo
 		rows = append(rows, []string{
 			item.Tool, item.Account, item.Identity, active, item.Driver,
 			credentialCell(item.Credential, item.ReloginBy, now),
-			limitCell(item.Usage, now, color),
+			limitCell(item.Usage, now, color, opts.Full),
 		})
 	}
 	printAccountTable([]column{colTool, colAccount, colIdentity, colActive, colDriver, colCredential, colLimit}, rows, opts.Full, color)

@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
@@ -69,14 +70,18 @@ func TestUsageStaysWithTheAccountThatWroteTheFile(t *testing.T) {
 	}
 }
 
-func TestLsAndStatusShowLocalUsage(t *testing.T) {
-	// bare ls resolves places from cwd; keep it off the real checkout.
+// seedActiveClaudeMain captures claude/main and records it active, from a
+// temporary working directory: bare ls resolves places from cwd, so a listing
+// test must stay off the real checkout.
+func seedActiveClaudeMain(t *testing.T) (*App, context.Context) {
+	t.Helper()
 	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
-	opts := commonOpts{Format: formatText, NoColor: true}
 	seedClaude(t, app, mainToken, "main-uuid")
-	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText, NoColor: true}, "claude", "main")
+	}); code != constants.ExitOK {
 		t.Fatalf("capture: %s", out)
 	}
 	st := state.New()
@@ -84,6 +89,12 @@ func TestLsAndStatusShowLocalUsage(t *testing.T) {
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
 		t.Fatal(err)
 	}
+	return app, ctx
+}
+
+func TestLsAndStatusShowLocalUsage(t *testing.T) {
+	app, ctx := seedActiveClaudeMain(t)
+	opts := commonOpts{Format: formatText, NoColor: true}
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "usage-exact.json"),
 		`{"schemaVersion":2,"fiveHour":{"usedPercent":16,"resetsAt":1800000000},"sevenDay":{"usedPercent":95,"resetsAt":1800003600}}`)
 	_, text := captureStdout(t, func() int { return runLs(ctx, app, opts) })
@@ -100,6 +111,73 @@ func TestLsAndStatusShowLocalUsage(t *testing.T) {
 	_, status := captureStdout(t, func() int { return runStatus(ctx, app, opts) })
 	if !strings.Contains(status, "5h 16%") || !strings.Contains(status, "7d 95%") {
 		t.Fatalf("status missing windows:\n%s", status)
+	}
+}
+
+// A remembered reading (the usage cache in the shape the listing writes it,
+// observed_at with nanoseconds) shows its age only under --full, and --json
+// is byte-identical with and without it.
+func TestFullListingsShowTheRememberedReadingAge(t *testing.T) {
+	app, ctx := seedActiveClaudeMain(t)
+	// app.Now() is 2026-06-11T01:23:45Z. The report truncates observed_at to
+	// seconds, so the reading is 22h13m30s old; the five-hour window has
+	// already reset and the seven-day one resets in 4d8h36m.
+	writeFile(t, app.Paths.UsageCacheFile(), `{
+  "schema_version": 1,
+  "entries": [
+    {
+      "tool": "claude",
+      "account": "main",
+      "origin": "local",
+      "source_path": "`+filepath.Join(app.Env.Home, ".claude", "usage-exact.json")+`",
+      "mod_time_unix": 1781061015123456789,
+      "observed_at": "2026-06-10T03:10:15.123456789Z",
+      "windows": [
+        {"id": "five_hour", "used_percent": 90, "resets_at": "2026-06-10T05:00:00Z", "minutes": 300},
+        {"id": "seven_day", "used_percent": 23, "resets_at": "2026-06-15T10:00:00Z", "minutes": 10080}
+      ]
+    }
+  ]
+}
+`)
+	text := func(full bool) commonOpts { return commonOpts{Format: formatText, NoColor: true, Full: full} }
+	const plain, aged = "7d 23% (4d8h)", "7d 23% (4d8h) · 22h13m ago"
+	listings := map[string]func(commonOpts) int{
+		"ls":       func(o commonOpts) int { return runLs(ctx, app, o) },
+		"accounts": func(o commonOpts) int { return runAccounts(ctx, app, o) },
+		"status":   func(o commonOpts) int { return runStatus(ctx, app, o) },
+	}
+	for name, run := range listings {
+		code, out := captureStdout(t, func() int { return run(text(false)) })
+		mustExit(t, constants.ExitOK, code, out)
+		if !strings.Contains(out, plain) || strings.Contains(out, " ago") || strings.Contains(out, "5h ") {
+			t.Fatalf("%s without --full:\n%s", name, out)
+		}
+		code, out = captureStdout(t, func() int { return run(text(true)) })
+		mustExit(t, constants.ExitOK, code, out)
+		if !strings.Contains(out, aged) || strings.Count(out, " ago") != 1 || strings.Contains(out, "5h ") {
+			t.Fatalf("%s --full:\n%s", name, out)
+		}
+	}
+
+	for name, run := range listings {
+		code, plainJSON := captureStdout(t, func() int { return run(commonOpts{Format: formatJSON}) })
+		mustExit(t, constants.ExitOK, code, plainJSON)
+		code, fullJSON := captureStdout(t, func() int { return run(commonOpts{Format: formatJSON, Full: true}) })
+		mustExit(t, constants.ExitOK, code, fullJSON)
+		if plainJSON != fullJSON {
+			t.Fatalf("%s --json changed under --full:\n%s\n---\n%s", name, plainJSON, fullJSON)
+		}
+		if !strings.Contains(plainJSON, `"observed_at": "2026-06-10T03:10:15Z"`) || strings.Contains(plainJSON, "ago") {
+			t.Fatalf("%s --json:\n%s", name, plainJSON)
+		}
+	}
+
+	l10ntest.UseJapanese(t)
+	code, out := captureStdout(t, func() int { return runLs(ctx, app, text(true)) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "7d 23% (4d8h) · 22h13m 前") {
+		t.Fatalf("ja ls --full:\n%s", out)
 	}
 }
 

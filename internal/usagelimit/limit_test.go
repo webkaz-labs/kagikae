@@ -51,11 +51,12 @@ func TestFormatAtShowsTheTimeLeftUntilEachReset(t *testing.T) {
 	}
 }
 
-func TestRemainingKeepsTheTwoLargestUnits(t *testing.T) {
+func TestCompactDurationKeepsTheTwoLargestUnits(t *testing.T) {
 	for _, tc := range []struct {
 		d    time.Duration
 		want string
 	}{
+		{-time.Hour, "1m"},
 		{20 * time.Second, "1m"},
 		{45 * time.Minute, "45m"},
 		{time.Hour, "1h0m"},
@@ -63,8 +64,8 @@ func TestRemainingKeepsTheTwoLargestUnits(t *testing.T) {
 		{24 * time.Hour, "1d0h"},
 		{6*24*time.Hour + 23*time.Hour + 59*time.Minute, "6d23h"},
 	} {
-		if got := Remaining(tc.d); got != tc.want {
-			t.Errorf("Remaining(%s) = %q, want %q", tc.d, got, tc.want)
+		if got := CompactDuration(tc.d); got != tc.want {
+			t.Errorf("CompactDuration(%s) = %q, want %q", tc.d, got, tc.want)
 		}
 	}
 }

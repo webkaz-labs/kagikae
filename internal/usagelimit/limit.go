@@ -128,7 +128,7 @@ func Parts(windows []Window, now time.Time) []Part {
 	for _, w := range Normalize(windows) {
 		part := Part{Label: label(w), Percent: percent(w.UsedPercent), Level: w.Level()}
 		if !now.IsZero() && w.ResetsAt.After(now) {
-			part.Reset = Remaining(w.ResetsAt.Sub(now))
+			part.Reset = CompactDuration(w.ResetsAt.Sub(now))
 		}
 		parts = append(parts, part)
 	}
@@ -155,10 +155,12 @@ func FormatAt(windows []Window, now time.Time) string {
 // Separator joins the parts of a compact cell.
 const Separator = " · "
 
-// Remaining renders a positive duration in the two largest units: "3d4h",
-// "2h13m", or "45m". It truncates like a countdown; a remainder under a
-// minute reads "1m", because a zero would look already reset.
-func Remaining(d time.Duration) string {
+// CompactDuration renders a duration in the two largest units: "3d4h",
+// "2h13m", or "45m", truncated. It is both a window's countdown and a
+// reading's age. Anything under a minute, a negative duration included,
+// reads "1m": a zero countdown would look already reset, and a zero or
+// negative age would claim a reading newer than kae can know it is.
+func CompactDuration(d time.Duration) string {
 	minutes := int(d / time.Minute)
 	switch {
 	case minutes < 1:

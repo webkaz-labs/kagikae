@@ -70,15 +70,15 @@ var fingerprintArtifacts = map[string]fingerprintArtifact{
 	// Resolve the selected agy file rather than walking its install directory: the
 	// previous build can sit beside it, and a directory walk would add that build's
 	// literals to every count. agy may replace itself without renaming the containing
-	// install directory. The 1.2.10 digest is the selected file, read on
-	// 2026-09-29 and not executed. The install path names that version; this
+	// install directory. The 1.2.12 digest is the selected file, read on
+	// 2026-10-05 and not executed. The install path names that version; this
 	// pass did not re-fetch an official archive checksum. Binding the digest
 	// to the version still detects a stale PATH and an in-place replacement.
 	constants.ToolAgy: {
 		binary:            "agy",
 		commandIsArtifact: true,
-		sha256:            "1e43262d55f69e20bf4ba4f087252d65dd4ed37c0a980fae50a6bd5bc3637650",
-		sha256Version:     "1.2.10",
+		sha256:            "6f4785c17acc4b8b539e055e926ddc65cc83279581d24357a3b6e051a2337ae3",
+		sha256Version:     "1.2.12",
 	},
 }
 

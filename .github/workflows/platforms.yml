@@ -1,0 +1,119 @@
+name: Platforms
+
+# Called by ci.yml beside check.yml. Build, vet and test on the arm64 platforms the
+# ubuntu-latest check job does not run; everything else in check.yml stays
+# amd64-only. What this admits and excludes, and its cost record, are in
+# docs/VALIDATION.md § Check retention and CI admission.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  platform:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    # One run per ref and platform; a newer push to a pull request cancels the older
+    # run, while main keeps every push's result. macOS runners have the smaller free
+    # concurrency allowance, so a stale run must not hold one.
+    concurrency:
+      group: platforms-${{ github.ref }}-${{ matrix.platform }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      # Each platform's result stands on its own: an arm64 Linux failure must not
+      # hide whether darwin passed.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # setup-go keys its cache on runner OS, architecture, Go version and go.sum,
+      # so the two platforms never restore each other's build or module cache. The
+      # module cache it restores is what the build below resolves from.
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Fails when a runner label stops meaning the platform this job is named for.
+      # go's -p defaults to the CPU count, which this prints for the cost record.
+      - name: Confirm platform
+        run: |
+          got="$(go env GOOS)/$(go env GOARCH)"
+          echo "platform $got, $(getconf _NPROCESSORS_ONLN) CPUs"
+          if [ "$got" != "${{ matrix.goos }}/${{ matrix.goarch }}" ]; then
+            echo "runner ${{ matrix.runner }} is $got, want ${{ matrix.goos }}/${{ matrix.goarch }}" >&2
+            exit 1
+          fi
+
+      # Completion and shell-function tests skip zsh when it is absent. macOS ships
+      # it; the arm64 Ubuntu image may not. Refresh the package lists only when the
+      # image's own are too stale to install from.
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: |
+          if command -v zsh >/dev/null; then exit 0; fi
+          sudo apt-get install -y --no-install-recommends zsh ||
+            { sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh; }
+
+      # Tests outside internal/cmd have no fail-loud runner guard, and a missed stub
+      # would reach the runner's real keychain through `security`. Put a recording
+      # shim first on PATH; the step after the tests fails if anything called it.
+      - name: Install security shim
+        if: runner.os == 'macOS'
+        run: |
+          shim="$RUNNER_TEMP/security-shim"
+          mkdir -p "$shim"
+          cat > "$shim/security" <<'EOF'
+          #!/bin/sh
+          echo "security $1" >> "$KAE_SECURITY_SHIM_LOG"
+          echo "security shim: unstubbed security call refused" >&2
+          exit 1
+          EOF
+          chmod +x "$shim/security"
+          echo "$shim" >> "$GITHUB_PATH"
+          echo "KAE_SECURITY_SHIM_LOG=$RUNNER_TEMP/security-shim.log" >> "$GITHUB_ENV"
+
+      # build, vet, then test, in one job and one GOCACHE: each step reuses the
+      # packages the previous one compiled. Executables stay in runner temp.
+      - name: Build
+        run: |
+          mkdir -p "$RUNNER_TEMP/kae-build"
+          go build -o "$RUNNER_TEMP/kae-build/" ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Runs after a failed test step too, so a keychain call is reported either way.
+      # Only the subcommand is logged, never its arguments. The PATH comparison is the
+      # positive control: a shim that did not resolve first proved nothing.
+      - name: Check security shim
+        if: ${{ always() && runner.os == 'macOS' }}
+        run: |
+          if [ "$(command -v security)" != "$RUNNER_TEMP/security-shim/security" ]; then
+            echo "security resolves to $(command -v security), not the shim" >&2
+            exit 1
+          fi
+          if [ -s "$KAE_SECURITY_SHIM_LOG" ]; then
+            echo "tests invoked security:" >&2
+            sort "$KAE_SECURITY_SHIM_LOG" | uniq -c >&2
+            exit 1
+          fi

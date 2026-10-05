@@ -126,17 +126,27 @@ admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
 
 The signing test's admission is also for detection. Its `Signing test` step fetches
 the release signer's linux-x64 archive, checks the sha256 recorded in the step, verifies
-its build provenance and runs `TestSignerCLIStatesSpecLibc` with it;
-`TestCheckWorkflowSignsWithReleaseSigner` fails when that step's version differs from
-`signerPackslip` or when it drops the digest check, the provenance check or the test.
+its build provenance under the policy the pinned Packslip Action's installer applies
+(repository, source ref, source and signer digest, signer workflow, no self-hosted
+runner; three tries 10 s apart), runs `TestSignerCLIStatesSpecLibc` with it without
+`GH_TOKEN`, and fails unless that test's log line reports a pass, so a renamed or
+skipped test fails the step. `TestCheckWorkflowSignsWithReleaseSigner` fails when the
+step's version differs from `signerPackslip`, when its environment or keys differ
+from the expected set, or when any non-comment line of its `run:` block differs from
+the expected list; it does not check that the recorded digest and source commit are
+the Action's, which a reviewer compares with `action/release.json` at the pin.
 On 2026-10-05, in an Ubuntu 24.04 linux/amd64 container (emulated on an arm64 Mac),
 the step's commands, run as written, detected a release-workflow mutation the always-on
 suite passes: renaming the fish completion resource's archive member in `release.yml`
 left `go test ./scripts/releaseverify` passing and failed the step with `packslip
-completion resource mismatch`. A wrong recorded digest failed the step at `sha256sum`.
-The step took 14.7 s with a warm Go build cache and 81.8 s with an empty one;
-fetching and verifying the archive alone took 6.6 s. Those times are from that emulated
-container, not a GitHub runner, whose step time is not yet measured.
+completion resource mismatch`. A wrong recorded digest failed the step at `sha256sum`,
+a wrong source commit failed all three provenance tries, and a renamed or skipping
+`TestSignerCLIStatesSpecLibc` failed the pass check. In that container the step took
+14.7 s and 17.3 s with a warm Go build cache and 81.8 s and 130.9 s with an empty one;
+fetching and verifying the archive alone took 6.6 s. On CI the test's cross-platform
+stub builds may run with a cold cache, because `actions/setup-go` saves its cache only
+when the key misses. The step time on a GitHub runner is not measured: the first CI
+run of the step is its acceptance, and its run link and step time are recorded here.
 
 ## Picker PTY suite
 

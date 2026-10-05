@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
-	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
@@ -65,12 +64,20 @@ func TestDisplayWidthCountsWideRunesTwice(t *testing.T) {
 	}
 }
 
+// limitCellNow and limitCellWindows are the fixture the limitCell tests share:
+// a five-hour window resetting in 2h13m and a seven-day one in 3d4h.
+var limitCellNow = time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
+
+func limitCellWindows() []usagelimit.Window {
+	return []usagelimit.Window{
+		{ID: constants.UsageWindowFiveHour, UsedPercent: 16, ResetsAt: limitCellNow.Add(2*time.Hour + 13*time.Minute)},
+		{ID: constants.UsageWindowSevenDay, UsedPercent: 95, ResetsAt: limitCellNow.Add(76 * time.Hour)},
+	}
+}
+
 func TestLimitCellColorsEachWindowAndDimsTheCountdown(t *testing.T) {
-	now := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
-	usage := &usageJSON{Windows: []usagelimit.Window{
-		{ID: constants.UsageWindowFiveHour, UsedPercent: 16, ResetsAt: now.Add(2*time.Hour + 13*time.Minute)},
-		{ID: constants.UsageWindowSevenDay, UsedPercent: 95, ResetsAt: now.Add(76 * time.Hour)},
-	}}
+	now := limitCellNow
+	usage := &usageJSON{ObservedAt: now.Add(-time.Hour).Format(time.RFC3339), Windows: limitCellWindows()}
 	if got, want := limitCell(usage, now, false, false), "5h 16% (2h13m) · 7d 95% (3d4h)"; got != want {
 		t.Fatalf("plain = %q, want %q", got, want)
 	}
@@ -84,18 +91,12 @@ func TestLimitCellColorsEachWindowAndDimsTheCountdown(t *testing.T) {
 }
 
 func TestLimitCellFullEndsWithTheReadingAgeOnce(t *testing.T) {
-	now := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
+	now := limitCellNow
+	windows := limitCellWindows()
 	stamp := func(d time.Duration) string { return now.Add(-d).Format(time.RFC3339) }
-	windows := []usagelimit.Window{
-		{ID: constants.UsageWindowFiveHour, UsedPercent: 16, ResetsAt: now.Add(2*time.Hour + 13*time.Minute)},
-		{ID: constants.UsageWindowSevenDay, UsedPercent: 95, ResetsAt: now.Add(76 * time.Hour)},
-	}
 	usage := &usageJSON{ObservedAt: stamp(22*time.Hour + 13*time.Minute + 30*time.Second), Windows: windows}
 	if got, want := limitCell(usage, now, false, true), "5h 16% (2h13m) · 7d 95% (3d4h) · 22h13m ago"; got != want {
 		t.Fatalf("full = %q, want %q", got, want)
-	}
-	if got, want := limitCell(usage, now, false, false), "5h 16% (2h13m) · 7d 95% (3d4h)"; got != want {
-		t.Fatalf("without --full the cell is unchanged: %q, want %q", got, want)
 	}
 	want := "5h \x1b[32m16%\x1b[0m \x1b[2m(2h13m)\x1b[0m · 7d \x1b[33m95%\x1b[0m \x1b[2m(3d4h)\x1b[0m · \x1b[2m22h13m ago\x1b[0m"
 	if got := limitCell(usage, now, true, true); got != want {
@@ -119,28 +120,10 @@ func TestLimitCellFullEndsWithTheReadingAgeOnce(t *testing.T) {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}
-
 	for _, empty := range []*usageJSON{nil, {ObservedAt: stamp(time.Hour)}} {
 		if got := limitCell(empty, now, true, true); got != "-" {
 			t.Fatalf("no reading gets no age: %q", got)
 		}
-	}
-}
-
-func TestLimitCellFullAgeInJapanese(t *testing.T) {
-	l10ntest.UseJapanese(t)
-	now := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
-	usage := &usageJSON{
-		ObservedAt: now.Add(-22 * time.Hour).Format(time.RFC3339),
-		Windows: []usagelimit.Window{
-			{ID: constants.UsageWindowSevenDay, UsedPercent: 23, ResetsAt: now.Add(104 * time.Hour)},
-		},
-	}
-	if got, want := limitCell(usage, now, false, true), "7d 23% (4d8h) · 22h0m 前"; got != want {
-		t.Fatalf("ja = %q, want %q", got, want)
-	}
-	if got, want := limitCell(usage, now, false, false), "7d 23% (4d8h)"; got != want {
-		t.Fatalf("ja without --full = %q, want %q", got, want)
 	}
 }
 

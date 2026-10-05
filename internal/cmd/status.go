@@ -511,7 +511,7 @@ func limitCell(usage *usageJSON, now time.Time, color, full bool) string {
 	}
 	if full {
 		if observed, err := time.Parse(time.RFC3339, usage.ObservedAt); err == nil {
-			texts = append(texts, dim(l10n.Sprintf("%s ago", usagelimit.Remaining(now.Sub(observed))), color))
+			texts = append(texts, dim(l10n.Sprintf("%s ago", usagelimit.CompactDuration(now.Sub(observed))), color))
 		}
 	}
 	return strings.Join(texts, usagelimit.Separator)

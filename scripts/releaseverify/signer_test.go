@@ -173,13 +173,66 @@ func TestReleaseWorkflowMatchesVerifier(t *testing.T) {
 	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(step.uses) {
 		t.Fatalf("Packslip Action is not pinned to a full commit: %q", step.uses)
 	}
+	if signer := fixtureSigner(t); !strings.HasPrefix(step.comment, "v"+signer+";") {
+		t.Fatalf("Action pin comment %q does not name the fixture signer %q", step.comment, signer)
+	}
+}
+
+// fixtureSigner returns signerPackslip, the exact signer version the fixture and
+// the release workflow's Action pin share.
+func fixtureSigner(t *testing.T) string {
+	t.Helper()
 	fixture, err := os.ReadFile("../packslipverify/fixtures.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile(`signerPackslip = "([0-9.]+)"`).FindSubmatch(fixture)
-	if m == nil || !strings.HasPrefix(step.comment, "v"+string(m[1])+";") {
-		t.Fatalf("Action pin comment %q does not name the fixture signer %q", step.comment, m)
+	if m == nil {
+		t.Fatal("packslipverify has no signerPackslip constant")
+	}
+	return string(m[1])
+}
+
+// TestCheckWorkflowSignsWithReleaseSigner requires the CI signing step to run
+// TestSignerCLIStatesSpecLibc with the release signer's version, a pinned digest
+// and verified provenance, so a signer bump cannot leave CI testing the old CLI.
+func TestCheckWorkflowSignsWithReleaseSigner(t *testing.T) {
+	data, err := os.ReadFile("../../.github/workflows/check.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, step, found := strings.Cut(string(data), "\n      - name: Signing test\n")
+	if !found {
+		t.Fatal("check workflow has no Signing test step")
+	}
+	if next := strings.Index(step, "\n      - "); next >= 0 {
+		step = step[:next]
+	}
+	env := func(key string) string {
+		m := regexp.MustCompile(`(?m)^ {10}` + key + `: (\S+)$`).FindStringSubmatch(step)
+		if m == nil {
+			t.Fatalf("Signing test step sets no plain %s", key)
+		}
+		return m[1]
+	}
+	if got, want := env("PACKSLIP_VERSION"), fixtureSigner(t); got != want {
+		t.Fatalf("CI signs with Packslip %s, release signer is %s", got, want)
+	}
+	if digest := env("PACKSLIP_SHA256"); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(digest) {
+		t.Fatalf("PACKSLIP_SHA256 %q is not a sha256 digest", digest)
+	}
+	for _, want := range []string{
+		`sha256sum -c -`,
+		`gh attestation verify "$dir/$name.tar.xz" --repo jdx/packslip --source-ref refs/heads/release-plz`,
+		`PACKSLIP_BIN="$dir/$name/packslip" go test -count=1 -v -run '^TestSignerCLIStatesSpecLibc$' ./scripts/releaseverify`,
+	} {
+		if !strings.Contains(step, want) {
+			t.Fatalf("Signing test step does not run %s", want)
+		}
+	}
+	verify, run := strings.Index(step, "gh attestation verify"), strings.Index(step, "PACKSLIP_BIN=")
+	if check := strings.Index(step, "sha256sum -c"); check > verify || verify > run {
+		t.Fatal("Signing test step must check the digest, then provenance, before signing")
 	}
 }
 

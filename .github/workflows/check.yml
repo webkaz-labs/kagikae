@@ -85,3 +85,25 @@ jobs:
           GOCACHE: ${{ runner.temp }}/docs-selftest-gocache
           GOMODCACHE: ${{ runner.temp }}/docs-selftest-modcache
           GOPROXY: off
+
+      # TestSignerCLIStatesSpecLibc with the release workflow's signer CLI
+      # (docs/VALIDATION.md § Packslip consumer smoke). The version and digest are
+      # the linux-x64 archive's entry in action/release.json at release.yml's
+      # Packslip Action pin; TestCheckWorkflowSignsWithReleaseSigner keeps the
+      # version equal to that pin. github.token only reads public attestations.
+      - name: Signing test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKSLIP_VERSION: 1.6.0
+          PACKSLIP_SHA256: b57bc18667039138fd23ada4a6b650a6e1d8c4b8c3a6e3695dafc010f8e25537
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/packslip"
+          name="packslip-v${PACKSLIP_VERSION}-linux-x64"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$name.tar.xz" "https://github.com/jdx/packslip/releases/download/v${PACKSLIP_VERSION}/$name.tar.xz"
+          echo "$PACKSLIP_SHA256  $dir/$name.tar.xz" | sha256sum -c -
+          # 1.6.0's provenance names this branch, not the tag (docs/RELEASE.md).
+          gh attestation verify "$dir/$name.tar.xz" --repo jdx/packslip --source-ref refs/heads/release-plz
+          tar -xJf "$dir/$name.tar.xz" -C "$dir"
+          PACKSLIP_BIN="$dir/$name/packslip" go test -count=1 -v -run '^TestSignerCLIStatesSpecLibc$' ./scripts/releaseverify

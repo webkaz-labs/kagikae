@@ -303,9 +303,8 @@ alternative exists (`secret-tool`).
   and a decision about cache and runner writes. The
   [validation rationale](VALIDATION.md#check-retention-and-ci-admission) covers
   formatter, docs-selftest, build and signing-test admission and the arm64 build/vet/test jobs.
-  Those decisions do not admit the remaining local checks. The arm64 jobs' cold
-  runner cost is recorded there; a warm run is unmeasured, and the same section
-  names what to measure. Within
+  Those decisions do not admit the remaining local checks. The arm64 jobs'
+  cold and warm runner costs are recorded there. Within
   `platforms.yml`, build, vet and test share one job's `GOCACHE` by operator
   direction (2026-10-05), backed by a local same-condition comparison. Shared
   build-cache changes elsewhere — `check.yml`'s cache and any cache shared between

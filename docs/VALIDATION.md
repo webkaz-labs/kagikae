@@ -184,13 +184,16 @@ host platform without the release manifest, so on Linux its artifact's `libc`
 comes from Packslip's inference, not the release's `gnu`. The release's signing
 inputs are checked instead by `PACKSLIP_BIN=/absolute/packslip go test -count=1
 -run TestSignerCLIStatesSpecLibc ./scripts/releaseverify`, which signs static
-darwin and Linux stub archives with the workflow's Action inputs and the
-`--packslip-prepare` manifest, using key signing in place of OIDC, and requires
-the verifier's spec to accept the statement. Its control signs without the
-manifest: from Packslip 1.4.0 the statement must then fail on `libc`. On
-2026-10-05 it passed with Packslip 1.6.0 (the control lost `libc`) and with
-1.1.1, the rollback signer, whose statement keeps `gnu` either way. It does not
-run the Action's shell wrapper or OIDC signing. The fixture runner builds
+Linux and CGO-free darwin stub archives the way the Action's create step does
+with the workflow's artifacts, manifest, project, bin, resources and attest
+inputs, using key signing in place of OIDC, and requires the verifier's spec to
+accept the statement. The always-on `TestReleaseWorkflowMatchesVerifier` fails
+when the workflow sets any other input, so an input the signing test does not
+reproduce cannot be added silently. The signing test's control signs without
+the manifest: from Packslip 1.4.0 the statement must then fail on `libc`. On
+2026-10-05 the signing test passed with Packslip 1.6.0 (the control lost
+`libc`) and with 1.1.1, the rollback signer, whose statement keeps `gnu` either
+way. It does not run the Action's shell wrapper or OIDC signing. The fixture runner builds
 temporary application versions and uses ephemeral key/unlogged trust only inside
 the smoke HOME. Its HTTP server does not forward requests. This checks the
 actual mise backend; production publication also needs

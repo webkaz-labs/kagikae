@@ -193,8 +193,8 @@ reproduce cannot be added silently. The signing test's control signs without
 the manifest: from Packslip 1.4.0 the statement must then fail on `libc`. On
 2026-10-05 the signing test passed with Packslip 1.6.0 (the control lost
 `libc`) and with 1.1.1, the rollback signer, whose statement keeps `gnu` either
-way. It does not run the Action's shell wrapper or OIDC signing. The fixture runner builds
-temporary application versions and uses ephemeral key/unlogged trust only inside
+way. It does not run the Action's shell wrapper or OIDC signing. The fixture runner
+builds temporary application versions and uses ephemeral key/unlogged trust only inside
 the smoke HOME. Its HTTP server does not forward requests. This checks the
 actual mise backend; production publication also needs
 `mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.

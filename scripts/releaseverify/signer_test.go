@@ -39,8 +39,9 @@ type workflowRun struct {
 // signInputs is every Action input the release workflow sets. The tests below
 // check each one: TestSignerCLIStatesSpecLibc reproduces artifacts, manifest,
 // project, bin, resources and attest's provenance links in its create call;
-// upload and out decide only where the bundle goes, so the always-on test pins
-// their values. A new input changes what is signed and must join both.
+// upload decides only whether the bundle is uploaded, so the always-on test pins
+// its value; out is not pinned. A new input joins this list only after deciding
+// whether the signing test must reproduce it.
 var signInputs = []string{"artifacts", "attest", "bin", "manifest", "out", "project", "resources", "upload"}
 
 // checkSignInputs requires exactly signInputs, with attest linking the release

@@ -144,7 +144,11 @@ func writePackslipManifest(tag, commit, dir string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(&b, "[[artifact]]\npath = %s\nlibc = %q\n\n", path, a.Libc)
+		libc, err := json.Marshal(a.Libc)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "[[artifact]]\npath = %s\nlibc = %s\n\n", path, libc)
 	}
 	return os.WriteFile(filepath.Join(dir, packslipManifestFile), []byte(b.String()), 0o600)
 }

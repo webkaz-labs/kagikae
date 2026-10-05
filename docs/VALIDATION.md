@@ -146,7 +146,8 @@ a wrong source commit failed all three provenance tries, and a renamed or skippi
 fetching and verifying the archive alone took 6.6 s. On CI the test's cross-platform
 stub builds may run with a cold cache, because `actions/setup-go` saves its cache only
 when the key misses. The step time on a GitHub runner is not measured: the first CI
-run of the step is its acceptance, and its run link and step time are recorded here.
+run of the step is its acceptance; a recorded run link and step time replace this
+statement once that run exists.
 
 ## Picker PTY suite
 

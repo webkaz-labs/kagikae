@@ -647,7 +647,7 @@ func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.F
 func registerCommonFlags(fs *flag.FlagSet, opts *commonOpts, withDryRun bool) *bool {
 	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
 	jsonFlag := fs.Bool("json", false, "shorthand for --format json")
-	fs.BoolVar(&opts.Yes, "yes", false, "non-interactive confirmation (reserved)")
+	fs.BoolVar(&opts.Yes, "yes", false, "answer confirmations yes without asking")
 	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
 	fs.StringVar(&opts.ConfigPath, "config", "", "explicit config file path")
 	if withDryRun {

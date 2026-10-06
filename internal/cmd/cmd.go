@@ -321,7 +321,7 @@ const helpFlags = `Flags (structured commands):
   --json                shorthand for --format json
   --format text|json    output format
   --dry-run             preview without writing (add --no-login/use/rollback)
-  --yes                 non-interactive confirmation (reserved)
+  --yes                 answer confirmations yes without asking
   --no-color            disable color
   --config <path>       explicit config file path
 `

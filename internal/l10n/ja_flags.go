@@ -7,7 +7,7 @@ var jaFlags = map[string]string{
 	// Common flags (internal/cmd/app.go).
 	"output format: text or json":             "出力形式: text または json",
 	"shorthand for --format json":             "--format json の短縮形",
-	"non-interactive confirmation (reserved)": "非対話の確認（予約済み）",
+	"answer confirmations yes without asking": "確認を求めずに yes と回答",
 	"disable color in human text output":      "人向けテキスト出力の色の無効化",
 	"explicit config file path":               "明示する設定ファイルのパス",
 	"print planned actions without writing":   "書き込まずに変更予定を表示",

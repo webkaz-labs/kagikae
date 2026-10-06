@@ -164,14 +164,14 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   --json                shorthand for --format json
   --format text|json    output format
   --dry-run             preview without writing (add --no-login/use/rollback)
-  --yes                 non-interactive confirmation (reserved)
+  --yes                 answer confirmations yes without asking
   --no-color            disable color
   --config <path>       explicit config file path
 `: `フラグ（構造化出力に対応するコマンド）:
   --json                --format json の短縮形
   --format text|json    出力形式
   --dry-run             書き込まずに確認（add --no-login/use/rollback）
-  --yes                 非対話の確認（予約済み）
+  --yes                 確認を求めずに yes と回答
   --no-color            色の無効化
   --config <path>       明示する設定ファイルのパス
 `,

@@ -220,6 +220,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// backup puts back. The restart a real run owes rides in the report and runs in
 	// runRollback, once the deferred releaseLocks below has run.
 	mode := residentModeOf(opts)
+	mode.op = residentOpRollback
 	for i := range report.Restored {
 		app.residentsBeforeSwitch(ctx, report.Restored[i].Tool, backupCredential(be, meta, report.Restored[i].Tool),
 			&report.Restored[i].residentSlot, mode)

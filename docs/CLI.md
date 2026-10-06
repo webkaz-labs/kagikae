@@ -124,7 +124,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app — unless `--no-restart`, `--dry-run` or the hook shape (`--auto`) is also given, each of which wins over `--yes` |
-| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon or quit the ChatGPT app after the switch; warn instead (§ kae use Semantics) |
+| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon or quit the ChatGPT app when it holds another account; warn instead (§ kae use Semantics) |
 | `--no-color` | all | disable color in human text output |
 | `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules) and each `Limit` reading's age (§ Subscription windows in listings); `--json` is unchanged |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
@@ -562,7 +562,9 @@ reconcile nothing. `kae add --no-login` leaves the live login as it is, so it
 restarts and quits nothing and gives no session warning; it only warns, with
 `doctor`'s `resident_drift` finding, when the daemon holds another account than the
 live login or kae cannot read which one it holds, and `--dry-run` probes and warns
-the same way. `--no-restart` and `--yes` mean what they mean for `kae use`.
+the same way. `--no-restart` and `--yes` mean what they mean for `kae use`. The
+notices of `kae add` and `kae rollback` name the command they come from rather than
+a switch.
 
 **Account name auto-detection.** The account name is optional. With it omitted
 (`kae add <tool>`), kae derives a default from the live login identity: the

@@ -28,6 +28,19 @@ const (
 	warnCaptureDiffersJA = "kae: warning: codex の管理デーモンは現在の認証情報とは別のアカウントを使っているため、デーモンに接続したセッションはそのアカウントを使い続けます。現在のアカウントを使わせるには codex app-server daemon restart を実行してください。"
 	// Any line about the daemon contains this.
 	daemonMention = "managed daemon"
+	// The kae add (login flow) and kae rollback renderings of the switch's lines.
+	addNoticeRestart = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live; kae restarts it now"
+	addWarnOptedOut  = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
+	addWarnSession   = "kae: warning: codex sessions started before this kae add that are not connected to the managed daemon keep the previous account until they are restarted"
+	addNoteRestarted = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae add left live"
+	addWarnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
+	rbNoticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back; kae restarts it after the rollback"
+	rbNoticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback would put back; the rollback would restart it"
+	rbWarnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
+	rbWarnSession    = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon keep the previous account until they are restarted"
+	rbWarnSessionDry = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon would keep the previous account until they are restarted"
+	rbNoteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae rollback put back"
+	rbWarnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
 )
 
 // loginAs replaces the interactive login flow with one that writes payload to the
@@ -80,7 +93,7 @@ func TestAddRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	if !call.lockFree {
 		t.Error("the restart ran while the add's codex lock was held")
 	}
-	for _, line := range []string{noticeRestart, warnSession, noteRestarted} {
+	for _, line := range []string{addNoticeRestart, addWarnSession, addNoteRestarted} {
 		if !strings.Contains(stderr, line+"\n") {
 			t.Errorf("stderr lacks %q:\n%s", line, stderr)
 		}
@@ -114,13 +127,13 @@ func TestAddRestoreComparesWithTheRestoredLogin(t *testing.T) {
 			if !f.restarts[0].lockFree {
 				t.Error("the restart ran while the add's codex lock was held")
 			}
-			if !strings.Contains(stderr, noteRestarted+"\n") {
+			if !strings.Contains(stderr, addNoteRestarted+"\n") {
 				t.Errorf("stderr lacks the restart:\n%s", stderr)
 			}
 		} else if strings.Contains(stderr, daemonMention) {
 			t.Errorf("a daemon on the restored account printed a line:\n%s", stderr)
 		}
-		if strings.Contains(stderr, warnSession) {
+		if strings.Contains(stderr, addWarnSession) {
 			t.Errorf("--restore left the account unchanged but warned about sessions:\n%s", stderr)
 		}
 		assertNoResidentPII(t, stdout, stderr)
@@ -152,7 +165,7 @@ func TestAddWithoutASuccessfulCaptureDoesNotReconcile(t *testing.T) {
 			if f.restartCount() != 0 {
 				t.Error("restarted")
 			}
-			for _, banned := range []string{daemonMention, warnSession} {
+			for _, banned := range []string{daemonMention, addWarnSession} {
 				if strings.Contains(stderr, banned) {
 					t.Errorf("stderr carries %q:\n%s", banned, stderr)
 				}
@@ -172,7 +185,7 @@ func TestAddNoRestart(t *testing.T) {
 	if f.restartCount() != 0 {
 		t.Error("restarted under --no-restart")
 	}
-	for _, line := range []string{warnOptedOut, warnSession} {
+	for _, line := range []string{addWarnOptedOut, addWarnSession} {
 		if !strings.Contains(stderr, line+"\n") {
 			t.Errorf("stderr lacks %q:\n%s", line, stderr)
 		}
@@ -189,9 +202,9 @@ func TestAddResidentsInJapanese(t *testing.T) {
 	code, stdout, stderr := f.add(t, commonOpts{Format: formatText}, false)
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
 	for _, line := range []string{
-		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
-		"kae: warning: この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
-		"kae: note: codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",
+		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントとは別のアカウントを使っています。kae が再起動します。",
+		"kae: warning: この kae add より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
+		"kae: note: codex: 管理デーモン（codex app-server daemon）を再起動しました。この kae add の後に有効なアカウントを使っています。",
 	} {
 		if !strings.Contains(stderr, line+"\n") {
 			t.Errorf("stderr lacks %q:\n%s", line, stderr)
@@ -235,7 +248,7 @@ func TestAddNoLoginOnlyWarns(t *testing.T) {
 				if !tc.warn && strings.Contains(stderr, daemonMention) {
 					t.Errorf("%s: printed a daemon line:\n%s", format, stderr)
 				}
-				if strings.Contains(stderr, warnSession) || strings.Contains(stderr, warnSessionDry) {
+				if strings.Contains(stderr, "codex sessions started before") {
 					t.Errorf("%s: warned about sessions though the account is unchanged:\n%s", format, stderr)
 				}
 				assertNoResidentPII(t, stdout, stderr)
@@ -325,12 +338,12 @@ func TestRollbackRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	if !f.restarts[0].lockFree {
 		t.Error("the restart ran while the rollback's codex lock was held")
 	}
-	for _, line := range []string{noticeRestart, warnSession, noteRestarted} {
+	for _, line := range []string{rbNoticeRestart, rbWarnSession, rbNoteRestarted} {
 		if !strings.Contains(stderr, line+"\n") {
 			t.Errorf("stderr lacks %q:\n%s", line, stderr)
 		}
 	}
-	if strings.Index(stderr, noticeRestart) > strings.Index(stderr, noteRestarted) {
+	if strings.Index(stderr, rbNoticeRestart) > strings.Index(stderr, rbNoteRestarted) {
 		t.Errorf("the outcome precedes the notice:\n%s", stderr)
 	}
 	assertNoResidentPII(t, stdout, stderr)
@@ -364,8 +377,8 @@ func TestRollbackSuppressesTheRestart(t *testing.T) {
 		session string
 		live    string
 	}{
-		{"dry-run", commonOpts{DryRun: true, Yes: true}, constants.ResidentOutcomePlanned, noticePlanned, warnSessionDry, residentMain},
-		{"no-restart", commonOpts{NoRestart: true, Yes: true}, constants.ResidentOutcomeOptedOut, warnOptedOut, warnSession, residentSide},
+		{"dry-run", commonOpts{DryRun: true, Yes: true}, constants.ResidentOutcomePlanned, rbNoticePlanned, rbWarnSessionDry, residentMain},
+		{"no-restart", commonOpts{NoRestart: true, Yes: true}, constants.ResidentOutcomeOptedOut, rbWarnOptedOut, rbWarnSession, residentSide},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newRollbackFixture(t)
@@ -414,10 +427,10 @@ func TestFailedRollbackDoesNotRestart(t *testing.T) {
 	if f.restartCount() != 0 {
 		t.Error("restarted after a failed restore")
 	}
-	if !strings.Contains(stderr, noticeRestart+"\n") {
+	if !strings.Contains(stderr, rbNoticeRestart+"\n") {
 		t.Errorf("the notice did not precede the write:\n%s", stderr)
 	}
-	if strings.Contains(stderr, noteRestarted) {
+	if strings.Contains(stderr, rbNoteRestarted) {
 		t.Errorf("reported a restart:\n%s", stderr)
 	}
 }
@@ -429,7 +442,7 @@ func TestRollbackResidentsInJapanese(t *testing.T) {
 	l10ntest.UseJapanese(t)
 	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatText, NoRestart: true})
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	line := "kae: warning: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、codex app-server daemon restart を実行してください。"
+	line := "kae: warning: codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。そのアカウントに切り替えるには、codex app-server daemon restart を実行してください。"
 	if !strings.Contains(stderr, line+"\n") {
 		t.Errorf("stderr lacks %q:\n%s", line, stderr)
 	}

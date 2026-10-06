@@ -41,9 +41,11 @@ type residentSlot struct {
 }
 
 // residentMode is what suppresses a restart: --dry-run, --no-restart and the
-// hook shape (--auto). --yes and --quiet change none of it.
+// hook shape (--auto). --yes and --quiet change none of it. op is the command the
+// notices name.
 type residentMode struct {
 	dryRun, noRestart, hook bool
+	op                      residentOp
 }
 
 func residentModeOf(opts commonOpts) residentMode {
@@ -55,6 +57,7 @@ func residentModeOf(opts commonOpts) residentMode {
 // every call, for the re-probes.
 type pendingRestart struct {
 	entry  *residentEntry
+	op     residentOp
 	holder adapter.ResidentHolder
 	spec   adapter.DaemonSpec
 	live   credentialReader
@@ -82,6 +85,7 @@ func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target c
 // before the flow, for whether the command changed the tool's account.
 func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) {
 	var slot residentSlot
+	mode.op = residentOpLogin
 	app.planResidents(ctx, tool, nil, before, &slot, mode)
 	app.reconcileSlot(ctx, &slot)
 }
@@ -116,24 +120,20 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	live := readOnce(previous)
 	observed := app.probeResidentDaemon(ctx, holder, spec, target)
 	outcome, owed := daemonOutcomeBefore(observed, mode)
-	noticeBeforeSwitch(observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
+	noticeBeforeSwitch(mode.op, observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
 	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome}}
 	if accountChanges(ctx, holder, live, target) {
 		residents = append(residents, residentEntry{
 			Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
 			Outcome: constants.ResidentOutcomeWarned,
 		})
-		if mode.dryRun {
-			warnf("codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted")
-		} else {
-			warnf("codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted")
-		}
+		warnMessage(mode.op.session(mode.dryRun))
 	}
 	// The array is complete before entry points into it.
 	slot.Residents = residents
 	if owed {
 		slot.restart = &pendingRestart{
-			entry: &slot.Residents[0], holder: holder, spec: spec, live: liveCredential(ad, app.Env),
+			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec, live: liveCredential(ad, app.Env),
 		}
 	}
 }
@@ -175,10 +175,10 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 	return constants.ResidentOutcomeNone, false
 }
 
-// noticeBeforeSwitch is step 2's stderr line for one daemon; manual builds the
-// manual step the warnings name (residentRestartCommand). absent and matches
-// print nothing.
-func noticeBeforeSwitch(observed, outcome string, owed bool, manual func() string) {
+// noticeBeforeSwitch is step 2's stderr line for one daemon, in op's words;
+// manual builds the manual step the warnings name (residentRestartCommand).
+// absent and matches print nothing.
+func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
 		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", manual())
 		return
@@ -188,12 +188,13 @@ func noticeBeforeSwitch(observed, outcome string, owed bool, manual func() strin
 	}
 	switch {
 	case owed:
-		notef("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch")
+		noteMessage(op.restartAhead())
 	case outcome == constants.ResidentOutcomePlanned:
-		notef("codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it")
+		noteMessage(op.restartPlanned())
 	case outcome == constants.ResidentOutcomeOptedOut:
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", manual())
+		warnMessage(op.optedOut(manual()))
 	case outcome == constants.ResidentOutcomeWarned:
+		// Only a switch has the hook shape.
 		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
 	}
 }
@@ -337,13 +338,13 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	switch {
 	case code == 0 && err == nil:
 	case timedOut:
-		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual())
+		warnMessage(p.op.restartTimedOut(limit, manual()))
 		return constants.ResidentOutcomeRestartFailed
 	case err != nil:
-		warnf("codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", err, manual())
+		warnMessage(p.op.restartNotRun(err, manual()))
 		return constants.ResidentOutcomeRestartFailed
 	default:
-		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual())
+		warnMessage(p.op.restartExited(code, manual()))
 		return constants.ResidentOutcomeRestartFailed
 	}
 	deadline := app.Now().Add(residentRecheckLimit)
@@ -356,7 +357,7 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, p.live)
 		cancel()
 		if observed == constants.ResidentObservedMatches {
-			notef("codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live")
+			noteMessage(p.op.restarted())
 			return constants.ResidentOutcomeRestarted
 		}
 		app.sleep(ctx, residentRecheckInterval)

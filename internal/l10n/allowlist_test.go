@@ -34,5 +34,6 @@ var notLocalized = map[string]string{
 		"programmer error in the companion registry",
 	"internal/runner/runner.go": "its one sentinel, ErrStillRunning, is matched by cmd's daemon restart with " +
 		"errors.Is, which then says restart_pending in a warning of its own and prints the error nowhere; " +
-		"drop this entry if cmd ever shows it",
+		"drop this entry if cmd ever shows it; an error added to runner.go later is not covered by this reason " +
+		"and needs one of its own or a message",
 }

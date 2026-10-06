@@ -141,12 +141,13 @@ func TestLaunchWithEnv(t *testing.T) {
 func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
 	for _, shell := range []string{"/bin/sh", "/bin/dash"} {
 		t.Run(filepath.Base(shell), func(t *testing.T) {
+			t.Parallel() // no global is swapped: LaunchWithEnv itself is not stubbed here
 			if _, err := os.Stat(shell); err != nil {
 				t.Skipf("no %s", shell)
 			}
 			dir := t.TempDir()
 			pidFile, marker := filepath.Join(dir, "pid"), filepath.Join(dir, "done")
-			script := `echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; sleep 1; echo done > "$2"`
+			script := `echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; sleep 1; echo done > "$2.tmp" && mv "$2.tmp" "$2"`
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 			start := time.Now()
@@ -197,6 +198,8 @@ func TestLaunchWithEnvStartsNothingOnAnEndedContext(t *testing.T) {
 }
 
 // waitForFile polls for path to appear, for at most 5 s, and returns its content.
+// The programs write path through a temporary name and rename it, so it never
+// appears partly written.
 func waitForFile(t *testing.T, path string) string {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {

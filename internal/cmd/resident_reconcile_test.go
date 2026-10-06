@@ -942,7 +942,9 @@ func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
 	f.app.residentRestartTimeout = 300 * time.Millisecond
-	standInCodex(t, "#!/bin/sh\nsleep 10 &\nexit 0\n")
+	// The background sleep outlasts the 3 s bound below, so a kae that waited for
+	// it would fail the bound.
+	standInCodex(t, "#!/bin/sh\nsleep 5 &\nexit 0\n")
 	start := time.Now()
 	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	elapsed := time.Since(start)
@@ -966,11 +968,19 @@ func TestRestartStillRunningAtTheLimitKeepsRunning(t *testing.T) {
 			f.withDaemon(t, residentSide)
 			f.app.residentRestartTimeout = 100 * time.Millisecond
 			marker := filepath.Join(t.TempDir(), "restarted")
-			standInCodex(t, fmt.Sprintf("#!%s\nsleep 1\necho done > '%s'\n", shell, marker))
-			start := time.Now()
+			standInCodex(t, fmt.Sprintf("#!%s\nsleep 2\necho done > '%s'\n", shell, marker))
+			// Time the restart alone, not the whole switch, so a loaded machine's
+			// slower transaction does not count against the limit.
+			var waited time.Duration
+			launch := runner.LaunchWithEnv
+			runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+				start := time.Now()
+				defer func() { waited = time.Since(start) }()
+				return launch(ctx, env, name, args...)
+			}
 			stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			if elapsed := time.Since(start); elapsed > 900*time.Millisecond {
-				t.Errorf("the switch took %v: it waited for the restart past the 100ms limit", elapsed)
+			if waited <= 0 || waited > 1500*time.Millisecond {
+				t.Errorf("kae waited %v for the restart, want about the 100ms limit", waited)
 			}
 			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
 			if _, err := os.Stat(marker); err == nil {

@@ -25,8 +25,9 @@ const (
 // TestMain closes two process-wide holes that a per-test fixture cannot close:
 // t.TempDir must never land inside a repository whose info/exclude a pin can
 // append to, and every subprocess seam starts fail-loud until a test opts in.
-// osLaunchWithEnv is runner.LaunchWithEnv before TestMain stubs it, for the one
-// test that runs a stand-in program through it (TestRestartDoesNotWaitForWhatItLeavesRunning).
+// osLaunchWithEnv is runner.LaunchWithEnv before TestMain stubs it, for the tests
+// that run a stand-in codex or no codex at all through it (standInCodex and
+// TestRestartThatCannotStart).
 var osLaunchWithEnv = runner.LaunchWithEnv
 
 func TestMain(m *testing.M) {

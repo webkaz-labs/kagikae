@@ -64,11 +64,10 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code for what slices 4 to 8 below still have to do. Slice 3, the reconcile in
+the code that slices 4 to 8 below still have to write. Slice 3, the reconcile in
 `kae use`, is the first slice users can see; the contract and the work done on the
 integration branch `feat/resident-reconcile` land on main together, not one before
-the others. The
-feature then ships stage by stage, so a release cut between slices
+the others. The feature then ships stage by stage, so a release cut between slices
 ships only part of what the contract describes: the release notes of each release
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
 GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
@@ -86,9 +85,9 @@ commit and review:
    emit no `desktop_app` entry and do nothing to the app.
 6. `doctor resident_drift`. Its socket half is done and runs by default. Its
    moved-socket half (`codex app-server daemon version`) is not built; it ships
-   disabled and stays disabled until the
-   acceptance records that the command starts no daemon when none runs and makes no
-   network call; once that is recorded it is enabled by default. `daemon version`
+   disabled and stays disabled until the acceptance records that the command
+   starts no daemon when none runs and makes no network call; once that is
+   recorded it is enabled by default. `daemon version`
    is read, so it needs the capturing `runner.RunWithEnv`, which a daemon the
    command starts would hold open; enabling it needs `WaitDelay` or a seam of its
    own first. Its findings name the manual restart through the helper the switch's

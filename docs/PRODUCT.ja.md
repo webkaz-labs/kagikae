@@ -66,8 +66,9 @@ Intel Mac（darwin/amd64）は v0.24.0 から対象外で、リリースバイ�
 プロセスによるトークン更新の影響を受けます。復元は保存済みの内容を戻す操作で、
 上流サービス側で失効したログインを有効にし直すものではありません。
 
-`kae use`、`kae add`、`kae rollback` の後、kae は codex の管理デーモンを再起動することがあります。これは
-ファイルではなくプロセスへの操作なので、バックアップと `kae rollback` の対象外です。
+`kae use`、`kae add`、`kae rollback` の後、kae は codex の管理デーモンを再起動することが
+あります。これはファイルではなくプロセスへの操作なので、バックアップと `kae rollback` の
+対象外です。
 kae はプロセスにシグナルを送りません。`--no-restart` で止められます
 （[SECURITY.md](SECURITY.md) § Resident processes）。
 

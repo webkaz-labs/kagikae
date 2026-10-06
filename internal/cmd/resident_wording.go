@@ -127,3 +127,18 @@ func (op residentOp) appPlanned() message {
 	}
 	return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; the switch would quit and relaunch it with your consent")
 }
+
+// desktopCannotAskMessage is the warning of a run that cannot ask, without --yes.
+func desktopCannotAskMessage() message {
+	return msgf("codex: the ChatGPT app keeps the codex account it started with, and kae cannot ask here whether to quit it (no terminal, or --json); to use the codex account now live, quit and reopen it, or pass --yes to let kae do it")
+}
+
+// desktopQuitFailedMessage is the warning of a quit request that failed.
+func desktopQuitFailedMessage() message {
+	return msgf("codex: could not ask the ChatGPT app to quit; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again")
+}
+
+// desktopUnknownMessage is the warning when kae cannot tell whether the app runs.
+func desktopUnknownMessage() message {
+	return msgf("codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to use the codex account now live")
+}

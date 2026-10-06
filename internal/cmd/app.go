@@ -75,13 +75,17 @@ type App struct {
 	// default (residentRestartLimit). Tests shorten it to reach the timeout.
 	residentRestartTimeout time.Duration
 	// desktopApps lists a resident holder's desktop apps for the ChatGPT app
-	// handling (docs/CLI.md § kae use Semantics, step 5). Nil in tests means
-	// none, so no test reaches a real app; production sets it to DesktopApps.
+	// handling (docs/CLI.md § kae use Semantics, step 5); production sets it to
+	// DesktopApps. Nil (none) on an App a test builds directly; tests through
+	// Cmd* get the production seam and rely on TestMain's osascript/open guard.
 	desktopApps func(adapter.ResidentHolder) []string
 	// desktopGOOS overrides the platform the desktop-app controller acts on
 	// (desktopapp.Controller.GOOS), so a test reaches the darwin path anywhere.
 	// Empty in production.
 	desktopGOOS string
+	// desktopQueryTimeout bounds one `is running` query; zero means the default
+	// (desktopQueryLimit). Tests shorten it to reach the timeout.
+	desktopQueryTimeout time.Duration
 	// terminalIOForTest is read and written in place of the terminal's file
 	// when openTerminal returns the file-less stand-in. Nil in production.
 	terminalIOForTest io.ReadWriter

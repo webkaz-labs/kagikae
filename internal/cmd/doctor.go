@@ -107,12 +107,18 @@ func stdinIsTTY() bool {
 func promptTokenDriftCheck() bool {
 	promptf("Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return isYes(line)
+}
+
+// isYes reports whether a confirmation's answer line is yes: `y` or `yes` in
+// any case, around spaces. Anything else, the empty answer included, is no. The
+// accepted answers do not depend on the language (docs/CLI.md § Localization).
+func isYes(line string) bool {
 	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "y", "yes":
 		return true
-	default:
-		return false
 	}
+	return false
 }
 
 func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDrift bool) *doctorReport {

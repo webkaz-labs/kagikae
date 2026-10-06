@@ -133,8 +133,10 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	// that does not leaves them on the account they hold, so they are not asked
 	// about and get no entry.
 	var apps []desktopEntry
+	appBase := 0
 	if accountChanges(ctx, holder, live, target) {
 		apps = app.planDesktopApps(ctx, holder, mode)
+		appBase = len(residents)
 		for _, a := range apps {
 			residents = append(residents, a.entry)
 		}
@@ -154,7 +156,7 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	for i, a := range apps {
 		if a.plan.owed() {
 			slot.quits = append(slot.quits, pendingQuit{
-				entry: &slot.Residents[1+i], bundleID: a.bundleID, ask: a.plan == desktopAsk,
+				entry: &slot.Residents[appBase+i], bundleID: a.bundleID, plan: a.plan,
 			})
 		}
 	}
@@ -324,7 +326,7 @@ func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
 	quits := slot.quits
 	slot.quits = nil
 	for _, q := range quits {
-		q.entry.Outcome = app.quitDesktopApp(ctx, q)
+		app.quitDesktopApp(ctx, q)
 	}
 }
 

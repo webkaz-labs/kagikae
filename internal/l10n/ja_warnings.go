@@ -320,6 +320,8 @@ var jaWarnings = map[string]string{
 
 	"codex: quit and relaunched the ChatGPT app, so it uses the codex account now live": "codex: ChatGPT アプリを終了して再起動しました。現在有効な codex アカウントを使います。",
 
+	"codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it": "codex: ChatGPT アプリはもう起動していないため、閉じたままにします。次に起動すると、現在有効な codex アカウントを使います。",
+
 	"codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself": "codex: ChatGPT アプリは終了しましたが、kae は起動し直せませんでした（open -b %s）。アプリを手動で起動してください。",
 
 	"codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it": "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。終了して起動し直すまで、起動時の codex アカウントを使い続けます。",

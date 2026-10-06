@@ -18,8 +18,6 @@ type bareUseReport struct {
 	BackupID      string               `json:"backup_id,omitempty"`
 	Results       []switchResult       `json:"results"`
 	Preserved     []preservedSelection `json:"preserved"`
-	// pending is the switch's owed daemon restarts (switchReport.pending).
-	pending []pendingRestart
 }
 
 // CmdApply is a removed-command pointer: `apply` folded into bare `kae use` in
@@ -49,7 +47,7 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 		return finish(opts, err)
 	}
 	// After teardownSynced (in buildUseBare) and the switch's lock release.
-	app.reconcileResidents(ctx, report.Results, report.pending)
+	app.reconcileResidents(ctx, report.Results)
 	// --quiet suppresses the human success report (for enter hooks); the JSON
 	// report still emits so a script can read `changed`.
 	if opts.Format == formatJSON {
@@ -106,7 +104,6 @@ func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName st
 	report.Profile = sw.Profile
 	report.BackupID = sw.BackupID
 	report.Results = sw.Results
-	report.pending = sw.pending
 	return report, nil
 }
 

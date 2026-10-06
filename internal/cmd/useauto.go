@@ -27,10 +27,6 @@ func runUseAuto(ctx context.Context, app *App, opts commonOpts, profile string, 
 	if err != nil {
 		return finish(opts, err)
 	}
-	// After buildUseAuto has released its isolation-lifecycle readers. The hook
-	// shape owes no restart, so this reconciles nothing today; it stays here so
-	// the position does not depend on that.
-	app.reconcileResidents(ctx, report.Results, report.pending)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -128,6 +124,6 @@ func buildUseAuto(ctx context.Context, app *App, opts commonOpts, profile string
 		return nil, err
 	}
 	report.Changed = true
-	report.BackupID, report.Results, report.pending = sw.BackupID, sw.Results, sw.pending
+	report.BackupID, report.Results = sw.BackupID, sw.Results
 	return report, nil
 }

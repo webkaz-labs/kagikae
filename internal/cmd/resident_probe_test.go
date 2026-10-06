@@ -33,11 +33,14 @@ func accountReadReply(accountID string) string {
 
 // fakeDaemon is a codex managed daemon on a real Unix socket (wsrpctest): it
 // completes the WebSocket upgrade, records every client message, and answers
-// the third one with answer, after a notification as the real daemon sends.
-// An empty answer keeps it silent until the client hangs up.
+// the third one with its current answer, after a notification as the real
+// daemon sends. The answer can change while it runs, as a restart changes the
+// account a daemon holds; an empty answer keeps it silent until the client
+// hangs up.
 type fakeDaemon struct {
 	socket   string // the short path it listens on
 	accepted *atomic.Int32
+	answer   atomic.Pointer[string]
 	mu       sync.Mutex
 	messages []string
 }
@@ -48,12 +51,19 @@ func (d *fakeDaemon) received() []string {
 	return append([]string(nil), d.messages...)
 }
 
+// answers sets the reply to account/read from now on.
+func (d *fakeDaemon) answers(reply string) { d.answer.Store(&reply) }
+
+// holds makes the daemon answer that it holds accountID.
+func (d *fakeDaemon) holds(accountID string) { d.answers(accountReadReply(accountID)) }
+
 // startFakeDaemon listens in a short directory under /tmp, beyond the sun_path
 // limit's reach; the declared socket under the codex home links there the way
 // codex's own does.
 func startFakeDaemon(t *testing.T, answer string) *fakeDaemon {
 	t.Helper()
 	d := &fakeDaemon{}
+	d.answers(answer)
 	d.socket, d.accepted = wsrpctest.ServeEach(t, func(p *wsrpctest.Peer) {
 		if p.Upgrade() != nil {
 			return
@@ -66,7 +76,7 @@ func startFakeDaemon(t *testing.T, answer string) *fakeDaemon {
 			d.mu.Lock()
 			d.messages = append(d.messages, string(f.Payload))
 			d.mu.Unlock()
-			if i == 2 && answer != "" {
+			if answer := *d.answer.Load(); i == 2 && answer != "" {
 				_ = p.Send(wsrpctest.Text(`{"jsonrpc":"2.0","method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}}`),
 					wsrpctest.Text(answer))
 			}

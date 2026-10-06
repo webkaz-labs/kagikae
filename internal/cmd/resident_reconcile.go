@@ -22,18 +22,21 @@ const (
 	defaultResidentRestartTimeout = 30 * time.Second
 )
 
-// residentOutcomeOwed marks a daemon entry whose restart is owed after the
-// transaction; reconcileResidents replaces it with the restart's outcome. It is
-// not a token: a report that still carried it would show the defect as an
-// empty outcome rather than as a restart that never ran.
-const residentOutcomeOwed = ""
-
 // residentEntry is one item of a switch result's `residents` array. It carries
 // tokens only: no account, email or plan (docs/SECURITY.md § Resident processes).
 type residentEntry struct {
 	Kind     string `json:"kind"`
 	Observed string `json:"observed"`
 	Outcome  string `json:"outcome"`
+}
+
+// residentSlot is what a report keeps per tool for the reconcile: the
+// `residents` array it prints, and the restart owed once the transaction has
+// succeeded. A report's result embeds it, so the owed restart travels with the
+// result wherever the result is copied.
+type residentSlot struct {
+	Residents []residentEntry `json:"residents"`
+	restart   *pendingRestart
 }
 
 // residentMode is what suppresses a restart: --dry-run, --no-restart and the
@@ -46,114 +49,124 @@ func residentModeOf(opts commonOpts) residentMode {
 	return residentMode{dryRun: opts.DryRun, noRestart: opts.NoRestart, hook: opts.ResidentHook}
 }
 
-// pendingRestart is a daemon restart a switch owes once its transaction has
-// succeeded and its locks are released. entry indexes the `daemon` item of
-// result's residents, whose outcome the restart fills in.
+// pendingRestart is a daemon restart a switch owes. entry is the `daemon` item
+// whose outcome the restart settles; live reads the live credential afresh on
+// every call, for the re-probes.
 type pendingRestart struct {
-	result, entry int
-	ad            adapter.Adapter
-	holder        adapter.ResidentHolder
-	spec          adapter.DaemonSpec
+	entry  *residentEntry
+	holder adapter.ResidentHolder
+	spec   adapter.DaemonSpec
+	live   credentialReader
 }
 
-// probeResidentsBeforeSwitch is steps 1 and 2 of the reconcile, run before
-// anything is written and without a lock: for every result whose tool keeps
-// resident processes, it probes the daemon of the real home once against the
-// credential the switch will leave live (the target snapshot's), decides whether
-// this command changes the tool's account, records both in the result's
-// residents, and gives the notice on stderr. It returns the restarts owed after
-// the transaction; under --dry-run, --no-restart and the hook shape there are
-// none.
-//
-// be is nil when the secret backend could not be resolved (a dry-run still
-// plans then); the target payload then reads as unknown.
-func (app *App) probeResidentsBeforeSwitch(ctx context.Context, be secret.Backend, plans []toolPlan,
-	results []switchResult, mode residentMode,
-) []pendingRestart {
-	var pending []pendingRestart
-	for i, plan := range plans {
-		ad, err := adapter.ForTool(plan.Tool)
-		if err != nil {
-			continue
-		}
-		holder, ok := ad.(adapter.ResidentHolder)
-		if !ok {
-			continue
-		}
-		// One spec for the probe and the restart, so the two cannot resolve the
-		// home differently. app.Env is already global-scoped (pinnedGlobalScope):
-		// a bound directory's CODEX_HOME does not reach it.
-		spec := holder.ResidentDaemon(app.Env)
-		target := snapshotCredential(be, plan)
-		observed := app.probeResidentDaemon(ctx, holder, spec, target)
-		outcome := daemonOutcomeBefore(observed, mode)
-		results[i].Residents = append(results[i].Residents,
-			residentEntry{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome})
-		noticeBeforeSwitch(observed, outcome, app.residentRestartCommand(holder, spec))
-		if outcome == residentOutcomeOwed {
-			pending = append(pending, pendingRestart{
-				result: i, entry: len(results[i].Residents) - 1, ad: ad, holder: holder, spec: spec,
-			})
-		}
-		if accountChanges(ctx, holder, liveCredential(ad, app.Env), target) {
-			results[i].Residents = append(results[i].Residents, residentEntry{
-				Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
-				Outcome: constants.ResidentOutcomeWarned,
-			})
-			if mode.dryRun {
-				warnf("codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted")
-			} else {
-				warnf("codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted")
-			}
+// residentsBeforeSwitch is steps 1 and 2 of the reconcile for one tool, run
+// before anything is written and without a lock. When the tool keeps resident
+// processes, it probes the daemon of the real home once against target — the
+// credential the switch will leave live — decides whether this command changes
+// the tool's account, fills slot's residents, gives the notice on stderr, and
+// records in slot the restart owed after the transaction (none under --dry-run,
+// --no-restart or the hook shape). A tool without resident processes keeps an
+// empty array.
+func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target credentialReader,
+	slot *residentSlot, mode residentMode,
+) {
+	slot.Residents = []residentEntry{}
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return
+	}
+	holder, ok := ad.(adapter.ResidentHolder)
+	if !ok {
+		return
+	}
+	// One spec for the probe and the restart, so the two cannot resolve the home
+	// differently. app.Env is already global-scoped (pinnedGlobalScope): a bound
+	// directory's CODEX_HOME does not reach it.
+	spec := holder.ResidentDaemon(app.Env)
+	// The probe and accountChanges share one read of each credential.
+	target = readOnce(target)
+	live := readOnce(liveCredential(ad, app.Env))
+	observed := app.probeResidentDaemon(ctx, holder, spec, target)
+	outcome, owed := daemonOutcomeBefore(observed, mode)
+	noticeBeforeSwitch(observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
+	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome}}
+	if accountChanges(ctx, holder, live, target) {
+		residents = append(residents, residentEntry{
+			Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
+			Outcome: constants.ResidentOutcomeWarned,
+		})
+		if mode.dryRun {
+			warnf("codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted")
+		} else {
+			warnf("codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted")
 		}
 	}
-	return pending
+	// The array is complete before entry points into it.
+	slot.Residents = residents
+	if owed {
+		slot.restart = &pendingRestart{
+			entry: &slot.Residents[0], holder: holder, spec: spec, live: liveCredential(ad, app.Env),
+		}
+	}
+}
+
+// readOnce returns a reader that calls r once and replays its answer.
+func readOnce(r credentialReader) credentialReader {
+	var payload []byte
+	var ok, read bool
+	return func(ctx context.Context) ([]byte, bool) {
+		if !read {
+			payload, ok = r(ctx)
+			read = true
+		}
+		return payload, ok
+	}
 }
 
 // daemonOutcomeBefore is the daemon entry's outcome as far as it is known before
-// the transaction; residentOutcomeOwed when a restart is owed, which the restart
-// settles as restarted, restart_unverified or restart_failed.
-// --no-restart wins over the hook shape, and both over --dry-run, because
-// `planned` says the switch would restart and neither of them would.
-func daemonOutcomeBefore(observed string, mode residentMode) string {
+// the transaction. owed is true when a restart is owed; the outcome is then
+// `planned` until the restart settles restarted, restart_unverified or
+// restart_failed. --no-restart wins over the hook shape, and both over --dry-run,
+// because `planned` says the switch would restart and neither of them would.
+func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, owed bool) {
 	switch observed {
 	case constants.ResidentObservedDiffers:
 		switch {
 		case mode.noRestart:
-			return constants.ResidentOutcomeOptedOut
+			return constants.ResidentOutcomeOptedOut, false
 		case mode.hook:
-			return constants.ResidentOutcomeWarned
+			return constants.ResidentOutcomeWarned, false
 		case mode.dryRun:
-			return constants.ResidentOutcomePlanned
+			return constants.ResidentOutcomePlanned, false
 		}
-		return residentOutcomeOwed
+		return constants.ResidentOutcomePlanned, true
 	case constants.ResidentObservedUnknown:
 		// Never restarted on a guess, whatever the flags.
-		return constants.ResidentOutcomeWarned
+		return constants.ResidentOutcomeWarned, false
 	}
-	return constants.ResidentOutcomeNone
+	return constants.ResidentOutcomeNone, false
 }
 
-// noticeBeforeSwitch is step 2's stderr line for one daemon; restart is the
-// manual step it names (residentRestartCommand). absent and matches print
-// nothing.
-func noticeBeforeSwitch(observed, outcome, restart string) {
+// noticeBeforeSwitch is step 2's stderr line for one daemon; manual builds the
+// manual step the warnings name (residentRestartCommand). absent and matches
+// print nothing.
+func noticeBeforeSwitch(observed, outcome string, owed bool, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
-		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", restart)
+		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", manual())
 		return
 	}
 	if observed != constants.ResidentObservedDiffers {
 		return
 	}
-	switch outcome {
-	case residentOutcomeOwed:
+	switch {
+	case owed:
 		notef("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch")
-	case constants.ResidentOutcomePlanned:
+	case outcome == constants.ResidentOutcomePlanned:
 		notef("codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it")
-	case constants.ResidentOutcomeOptedOut:
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", restart)
-	case constants.ResidentOutcomeWarned:
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", restart)
+	case outcome == constants.ResidentOutcomeOptedOut:
+		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", manual())
+	case outcome == constants.ResidentOutcomeWarned:
+		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
 	}
 }
 
@@ -207,46 +220,57 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 	}
 }
 
-// reconcileResidents is step 4: it runs once per command, after the whole
-// transaction has succeeded and every lock is released (the caller's position
-// is the contract: after buildSwitchTargets has returned and after
-// teardownSynced), and never when the transaction failed or rolled a tool back
-// — the caller returns before reaching it then. It fills in each owed restart's
-// outcome in results and reports it on stderr. A failed or unverified restart
-// is a warning: the exit code is unchanged and nothing is rolled back.
-func (app *App) reconcileResidents(ctx context.Context, results []switchResult, pending []pendingRestart) {
-	for _, p := range pending {
-		outcome := app.restartDaemon(ctx, p)
-		results[p.result].Residents[p.entry].Outcome = outcome
+// reconcileResidents is step 4 for a switch's results: it runs once per
+// command, after the whole transaction has succeeded and every lock is released
+// (the caller's position is the contract: after buildSwitchTargets has returned
+// and after teardownSynced), and never when the transaction failed or rolled a
+// tool back — the caller returns before reaching it then.
+func (app *App) reconcileResidents(ctx context.Context, results []switchResult) {
+	for i := range results {
+		app.reconcileSlot(ctx, &results[i].residentSlot)
 	}
+}
+
+// reconcileSlot runs the restart slot owes, if any, and settles its daemon
+// entry's outcome; the restart reports on stderr. A failed or unverified restart
+// is a warning: the exit code is unchanged and nothing is rolled back. It owes
+// nothing afterwards, so a second call does not restart again.
+func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
+	if slot.restart == nil {
+		return
+	}
+	p := slot.restart
+	slot.restart = nil
+	p.entry.Outcome = app.restartDaemon(ctx, *p)
 }
 
 // restartDaemon runs the daemon's restart command with the spec's environment,
 // which sets CODEX_HOME to the real home after everything inherited, so a bound
 // directory's value cannot select another daemon, and bounds it by
 // residentRestartLimit. It goes through runner.LaunchWithEnv, which reads no
-// output, so a daemon the command leaves running cannot hold kae past the
-// limit. It then re-probes against the live credential as it
-// reads at each attempt — not the switch's target, so a later switch by another
-// kae process does not make this restart look unverified — each probe bounded by
-// what is left of the 5 s.
+// output, so a daemon the command leaves running cannot hold kae past the limit.
+// It then re-probes every residentRecheckInterval for at most
+// residentRecheckLimit, each probe bounded by what is left of that, against the
+// live credential as it reads at each attempt — not the switch's target, so a
+// later switch by another kae process does not make this restart look
+// unverified.
 func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
-	manual := app.residentRestartCommand(p.holder, p.spec)
+	manual := func() string { return app.residentRestartCommand(p.holder, p.spec) }
 	limit := app.residentRestartLimit()
 	runCtx, cancel := context.WithTimeout(ctx, limit)
 	code, err := runner.LaunchWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
-	// Only a command that did not succeed is judged against the deadline: one
-	// that exited 0 just as it passed restarted the daemon. A cancelled parent
-	// (an interrupt) is a plain failure, not a timeout.
 	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded)
 	cancel()
-	failed := code != 0 || err != nil
-	if failed && timedOut {
-		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
+	// A command that exited 0 as the deadline passed restarted the daemon, so
+	// success is judged first. A cancelled parent (an interrupt) is a plain
+	// failure, not a timeout.
+	switch {
+	case code == 0 && err == nil:
+	case timedOut:
+		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual())
 		return constants.ResidentOutcomeRestartFailed
-	}
-	if failed {
-		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
+	default:
+		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual())
 		return constants.ResidentOutcomeRestartFailed
 	}
 	deadline := app.Now().Add(residentRecheckLimit)
@@ -256,7 +280,7 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 			break
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, remaining)
-		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, liveCredential(p.ad, app.Env))
+		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, p.live)
 		cancel()
 		if observed == constants.ResidentObservedMatches {
 			notef("codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live")
@@ -264,7 +288,7 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		}
 		app.sleep(ctx, residentRecheckInterval)
 	}
-	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s", manual)
+	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s", manual())
 	return constants.ResidentOutcomeRestartUnverified
 }
 

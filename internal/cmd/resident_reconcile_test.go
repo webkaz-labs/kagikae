@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
-	"github.com/webkaz-labs/kagikae/internal/testutil/wsrpctest"
 )
 
 // The tests in this file swap runner.LaunchWithEnv and os.Stdout/os.Stderr, so none
@@ -32,42 +30,6 @@ const (
 
 func codexChatGPTAuth(accountID, token string) string {
 	return `{"auth_mode":"chatgpt","tokens":{"access_token":"` + token + `","account_id":"` + accountID + `"}}`
-}
-
-// residentDaemon is a fake codex managed daemon whose answer the test changes,
-// as a restart would.
-type residentDaemon struct {
-	socket   string
-	accepted *atomic.Int32
-	answer   atomic.Pointer[string]
-}
-
-func (d *residentDaemon) holds(accountID string) {
-	reply := accountReadReply(accountID)
-	d.answer.Store(&reply)
-}
-
-func (d *residentDaemon) answers(reply string) { d.answer.Store(&reply) }
-
-func startResidentDaemon(t *testing.T, accountID string) *residentDaemon {
-	t.Helper()
-	d := &residentDaemon{}
-	d.holds(accountID)
-	d.socket, d.accepted = wsrpctest.ServeEach(t, func(p *wsrpctest.Peer) {
-		if p.Upgrade() != nil {
-			return
-		}
-		for i := 0; ; i++ {
-			f, err := p.ReadFrame()
-			if err != nil || f.Op == wsrpctest.OpClose {
-				return
-			}
-			if answer := *d.answer.Load(); i == 2 && answer != "" {
-				_ = p.Send(wsrpctest.Text(answer))
-			}
-		}
-	})
-	return d
 }
 
 // restartCall is one call of runner.LaunchWithEnv the reconcile made.
@@ -88,7 +50,7 @@ type restartCall struct {
 type residentFixture struct {
 	app    *App
 	holder adapter.ResidentHolder
-	daemon *residentDaemon
+	daemon *fakeDaemon
 
 	mu       sync.Mutex
 	restarts []restartCall
@@ -146,9 +108,9 @@ func newResidentFixture(t *testing.T) *residentFixture {
 }
 
 // withDaemon serves a fake daemon holding accountID behind the declared socket.
-func (f *residentFixture) withDaemon(t *testing.T, accountID string) *residentDaemon {
+func (f *residentFixture) withDaemon(t *testing.T, accountID string) *fakeDaemon {
 	t.Helper()
-	f.daemon = startResidentDaemon(t, accountID)
+	f.daemon = startFakeDaemon(t, accountReadReply(accountID))
 	linkSocket(t, f.app, f.holder, f.daemon.socket)
 	return f.daemon
 }
@@ -204,6 +166,24 @@ func (f *residentFixture) restartCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.restarts)
+}
+
+// use runs `kae use <target> <name>` (target "all" for a profile) with opts
+// and requires exit 0.
+func (f *residentFixture) use(t *testing.T, ctx context.Context, opts commonOpts, target, name string) (stdout, stderr string) {
+	t.Helper()
+	code, stdout, stderr := captureBoth(t, func() int { return runSwitch(ctx, f.app, opts, target, name) })
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	return stdout, stderr
+}
+
+// wantCodexResidents requires the JSON report's codex result to carry exactly
+// want.
+func wantCodexResidents(t *testing.T, stdout string, want ...residentEntry) {
+	t.Helper()
+	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, want) {
+		t.Errorf("codex residents = %+v, want %+v", got, want)
+	}
 }
 
 // codexResidents decodes a switch report (explicit or bare) and returns the
@@ -273,18 +253,11 @@ func TestUseRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	f.stubRestart(t, f.restartTo(t))
 	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "bound", ".codex"))
 
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	if f.liveAccountID(t) != residentMain {
 		t.Fatal("the switch did not apply main")
 	}
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 	if f.restartCount() != 1 {
 		t.Fatalf("restarted %d times, want once", f.restartCount())
 	}
@@ -319,15 +292,8 @@ func TestUseRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 func TestUseComparesTheDaemonWithTheTargetSnapshot(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentMain)
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedMatches, constants.ResidentOutcomeNone), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedMatches, constants.ResidentOutcomeNone), sessionEntry)
 	if strings.Contains(stderr, "managed daemon (codex app-server daemon)") {
 		t.Errorf("a matching daemon printed a notice:\n%s", stderr)
 	}
@@ -341,17 +307,12 @@ func TestUseWithoutADaemonOrAnAccountChange(t *testing.T) {
 		target  string
 		session bool
 	}{{"side", false}, {"main", true}} {
-		code, stdout, stderr := captureBoth(t, func() int {
-			return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, tc.target)
-		})
-		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, tc.target)
 		want := []residentEntry{daemonEntry(constants.ResidentObservedAbsent, constants.ResidentOutcomeNone)}
 		if tc.session {
 			want = append(want, sessionEntry)
 		}
-		if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, want) {
-			t.Errorf("use codex %s: residents = %+v, want %+v", tc.target, got, want)
-		}
+		wantCodexResidents(t, stdout, want...)
 		if strings.Contains(stderr, warnSession) != tc.session {
 			t.Errorf("use codex %s: session warning present = %v, want %v:\n%s",
 				tc.target, !tc.session, tc.session, stderr)
@@ -417,11 +378,7 @@ func TestUseSuppressesTheRestart(t *testing.T) {
 					t.Errorf("%s: announced a restart:\n%s", format, stderr)
 				}
 				if format == formatJSON {
-					if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-						daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry,
-					}) {
-						t.Errorf("residents = %+v", got)
-					}
+					wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
 				}
 				wantLive := residentMain
 				if opts.DryRun {
@@ -474,19 +431,11 @@ func TestProfileSwitchReconcilesOnce(t *testing.T) {
 		}
 		return inner(ctx, env, name, args...)
 	}
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, "all", "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	byTool := codexResidents(t, stdout)
-	if got := byTool[constants.ToolClaude]; len(got) != 0 {
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, "all", "main")
+	if got := codexResidents(t, stdout)[constants.ToolClaude]; len(got) != 0 {
 		t.Errorf("claude residents = %+v, want []", got)
 	}
-	if got := byTool[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry,
-	}) {
-		t.Errorf("codex residents = %+v", got)
-	}
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 	if f.restartCount() != 1 {
 		t.Errorf("restarted %d times, want once", f.restartCount())
 	}
@@ -533,15 +482,8 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
 	f.stubRestart(t, func(*restartCall) int { return 3 })
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
 	if !strings.Contains(stderr, warnFailed+"\n") {
 		t.Errorf("stderr lacks the failure warning:\n%s", stderr)
 	}
@@ -556,9 +498,9 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 // A daemon that still differs, or cannot be read, when the re-probes run out is
 // restart_unverified; the waits are 250 ms apart and stop at 5 s.
 func TestRestartUnverifiedAfterTheWait(t *testing.T) {
-	for name, after := range map[string]func(d *residentDaemon){
-		"still differs": func(*residentDaemon) {},
-		"unreadable": func(d *residentDaemon) {
+	for name, after := range map[string]func(d *fakeDaemon){
+		"still differs": func(*fakeDaemon) {},
+		"unreadable": func(d *fakeDaemon) {
 			d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":null}}`)
 		},
 	} {
@@ -566,15 +508,8 @@ func TestRestartUnverifiedAfterTheWait(t *testing.T) {
 			f := newResidentFixture(t)
 			d := f.withDaemon(t, residentSide)
 			f.stubRestart(t, func(*restartCall) int { after(d); return 0 })
-			code, stdout, stderr := captureBoth(t, func() int {
-				return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			})
-			mustExit(t, constants.ExitOK, code, stdout+stderr)
-			if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-				daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry,
-			}) {
-				t.Errorf("residents = %+v", got)
-			}
+			stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
 			if !strings.Contains(stderr, warnUnverfied+"\n") {
 				t.Errorf("stderr lacks the unverified warning:\n%s", stderr)
 			}
@@ -598,15 +533,8 @@ func TestRestartVerifiesAgainstTheLiveCredential(t *testing.T) {
 		d.holds(residentSide)
 		return 0
 	})
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 	if f.sleeps != 0 {
 		t.Errorf("waited %d times for a daemon already on the live account", f.sleeps)
 	}
@@ -619,15 +547,8 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 		d := f.withDaemon(t, residentSide)
 		d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail + `"},"workspaceRouting":null}}`)
 		opts.Format = formatJSON
-		code, stdout, stderr := captureBoth(t, func() int {
-			return runSwitch(context.Background(), f.app, opts, constants.ToolCodex, "main")
-		})
-		mustExit(t, constants.ExitOK, code, stdout+stderr)
-		if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-			daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned), sessionEntry,
-		}) {
-			t.Errorf("%+v: residents = %+v", opts, got)
-		}
+		stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
+		wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned), sessionEntry)
 		if !strings.Contains(stderr, warnUnknown+"\n") {
 			t.Errorf("%+v: stderr lacks the unknown warning:\n%s", opts, stderr)
 		}
@@ -644,10 +565,7 @@ func TestUseResidentsInJapanese(t *testing.T) {
 	f.withDaemon(t, residentSide)
 	f.stubRestart(t, f.restartTo(t))
 	l10ntest.UseJapanese(t)
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatText}, constants.ToolCodex, "main")
 	for _, line := range []string{
 		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
 		"kae: warning: この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
@@ -696,7 +614,7 @@ func TestBoundShellReachesAndNamesTheRealHomeDaemon(t *testing.T) {
 		}
 		// The bound home's own daemon already holds the target: a probe that went
 		// there would read matches and restart nothing.
-		boundDaemon := startResidentDaemon(t, residentMain)
+		boundDaemon := startFakeDaemon(t, accountReadReply(residentMain))
 		linkSocket(t, f.app, f.holder, boundDaemon.socket)
 		canonicalBound, err := filepath.EvalSymlinks(bound)
 		if err != nil {
@@ -706,10 +624,7 @@ func TestBoundShellReachesAndNamesTheRealHomeDaemon(t *testing.T) {
 			t.Fatalf("fixture: bound socket %s is not under %s", got, canonicalBound)
 		}
 
-		code, stdout, stderr := captureBoth(t, func() int {
-			return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON, NoRestart: noRestart}, constants.ToolCodex, "main")
-		})
-		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		_, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON, NoRestart: noRestart}, constants.ToolCodex, "main")
 		if n := boundDaemon.accepted.Load(); n != 0 {
 			t.Errorf("noRestart=%v: the bound home's daemon was probed %d times", noRestart, n)
 		}
@@ -781,15 +696,8 @@ func TestRestartTimesOut(t *testing.T) {
 			return saved(ctx, env, name, args...)
 		}
 	}
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
 	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
@@ -835,16 +743,9 @@ func TestReprobesStayWithinTheWait(t *testing.T) {
 		return now
 	}
 	start := time.Now()
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	elapsed := time.Since(start)
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
 	if elapsed > 3*time.Second {
 		t.Errorf("the wait took %v; a re-probe outlived the 5 s", elapsed)
 	}
@@ -862,15 +763,8 @@ func TestRestartExitingZeroAtTheDeadlineIsNotATimeout(t *testing.T) {
 		<-ctx.Done()
 		return inner(ctx, env, name, args...)
 	}
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v\n%s", got, stderr)
-	}
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 }
 
 // An interrupt (the parent context cancelled) is a plain failure, not reported
@@ -881,15 +775,8 @@ func TestRestartInterruptedIsNotATimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	f.stubRestart(t, func(*restartCall) int { cancel(); return -1 })
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runSwitch(ctx, f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry,
-	}) {
-		t.Errorf("residents = %+v", got)
-	}
+	stdout, stderr := f.use(t, ctx, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
 	if strings.Contains(stderr, "did not finish within") {
 		t.Errorf("an interrupt was reported as a timeout:\n%s", stderr)
 	}
@@ -924,19 +811,37 @@ func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 			runner.LaunchWithEnv = osLaunchWithEnv
 			t.Cleanup(func() { runner.LaunchWithEnv = saved })
 			start := time.Now()
-			code, stdout, stderr := captureBoth(t, func() int {
-				return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			})
+			stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 			elapsed := time.Since(start)
-			mustExit(t, constants.ExitOK, code, stdout+stderr)
-			if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
-				daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry,
-			}) {
-				t.Errorf("residents = %+v\n%s", got, stderr)
-			}
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
 			if elapsed > 3*time.Second {
 				t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
 			}
 		})
+	}
+}
+
+// The probe and the account-change check share one read of the target
+// credential.
+func TestResidentsBeforeSwitchReadsTheTargetOnce(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	reads := 0
+	target := func(context.Context) ([]byte, bool) {
+		reads++
+		return []byte(codexChatGPTAuth(residentMain, "codex-main-token")), true
+	}
+	var slot residentSlot
+	_, stderr := captureStderr(t, func() int {
+		f.app.residentsBeforeSwitch(context.Background(), constants.ToolCodex, target, &slot, residentMode{dryRun: true})
+		return 0
+	})
+	if reads != 1 {
+		t.Errorf("read the target %d times, want once", reads)
+	}
+	if !reflect.DeepEqual(slot.Residents, []residentEntry{
+		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomePlanned), sessionEntry,
+	}) {
+		t.Errorf("residents = %+v\n%s", slot.Residents, stderr)
 	}
 }

@@ -19,9 +19,9 @@ type switchResult struct {
 	Applied  bool      `json:"applied"`
 	Actions  []action  `json:"actions"`
 	Warnings []message `json:"warnings"`
-	// Residents is what the switch observed and did about the tool's resident
-	// processes; [] for a tool without them.
-	Residents []residentEntry `json:"residents"`
+	// residentSlot carries `residents`: what the switch observed and did about
+	// the tool's resident processes, [] for a tool without them.
+	residentSlot
 }
 
 type switchReport struct {
@@ -31,9 +31,6 @@ type switchReport struct {
 	Profile       *string        `json:"profile"`
 	BackupID      string         `json:"backup_id,omitempty"`
 	Results       []switchResult `json:"results"`
-	// pending holds the daemon restarts owed once the transaction has succeeded
-	// and its locks are released (reconcileResidents).
-	pending []pendingRestart
 }
 
 // CmdUse switches now, in global scope (alias: kae u):
@@ -56,8 +53,7 @@ func CmdUse(ctx context.Context, args []string) int {
 	if !ok {
 		return constants.ExitUsage
 	}
-	shared, isolated, quiet, auto, profileFlag, useFlags := uf.shared, uf.isolated, uf.quiet, uf.auto, uf.profile, uf.fs
-	isolatedMode, ok := resolveScope(shared, isolated)
+	isolatedMode, ok := resolveScope(uf.shared, uf.isolated)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -65,22 +61,22 @@ func CmdUse(ctx context.Context, args []string) int {
 		return usageLine("use [-s|-i] [-P <profile>] | " + toolName + " use [-s|-i] <profile> | " + toolName + " use [-s|-i] <tool> <account>")
 	}
 	scopeExplicit := false
-	useFlags.Visit(func(f *flag.Flag) {
+	uf.fs.Visit(func(f *flag.Flag) {
 		if f.Name == "s" || f.Name == "shared" || f.Name == "i" || f.Name == "isolated" {
 			scopeExplicit = true
 		}
 	})
-	if auto && (scopeExplicit || len(positionals) != 0) {
+	if uf.auto && (scopeExplicit || len(positionals) != 0) {
 		return usageError("--auto accepts only a resolved profile (-P); do not combine it with positional arguments or -s/-i")
 	}
 	app := newApp(opts.ConfigPath)
-	if auto {
-		return runUseAuto(ctx, app, opts, profileFlag, quiet)
+	if uf.auto {
+		return runUseAuto(ctx, app, opts, uf.profile, uf.quiet)
 	}
 	if len(positionals) == 0 {
-		return runUseBare(ctx, app, opts, isolatedMode, profileFlag, quiet)
+		return runUseBare(ctx, app, opts, isolatedMode, uf.profile, uf.quiet)
 	}
-	if profileFlag != "" {
+	if uf.profile != "" {
 		return usageError("-P <profile> selects a profile for bare `kae use`; drop the positional or the flag")
 	}
 	target, name := "all", positionals[0]
@@ -93,25 +89,16 @@ func CmdUse(ctx context.Context, args []string) int {
 	return runSwitch(ctx, app, opts, target, name)
 }
 
-// useFlagValues is what parseUseFlags read beyond commonOpts; fs is the parsed
-// set, for asking which flags were given.
-type useFlagValues struct {
-	shared, isolated, quiet, auto bool
-	profile                       string
-	fs                            *flag.FlagSet
-}
-
 // parseUseFlags parses `kae use`'s flags and carries the two that steer the
 // resident reconcile into opts: --no-restart as NoRestart and --auto as the hook
 // shape (ResidentHook).
 func parseUseFlags(flags []string) (commonOpts, useFlagValues, bool) {
 	var v useFlagValues
-	var noRestart bool
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
 		v.fs = fs
-		registerUseFlags(fs, &v.shared, &v.isolated, &v.quiet, &v.auto, &noRestart, &v.profile)
+		registerUseFlags(fs, &v)
 	})
-	opts.NoRestart, opts.ResidentHook = noRestart, v.auto
+	opts.NoRestart, opts.ResidentHook = v.noRestart, v.auto
 	return opts, v, ok
 }
 
@@ -129,7 +116,7 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 			return finish(opts, err)
 		}
 	}
-	app.reconcileResidents(ctx, report.Results, report.pending)
+	app.reconcileResidents(ctx, report.Results)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -190,7 +177,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
 			Applied: !opts.DryRun, Actions: app.actionsOf(plan.Specs),
-			Warnings: plan.Warnings, Residents: []residentEntry{},
+			Warnings: plan.Warnings,
 		}
 		if beErr == nil {
 			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && !w.Empty() {
@@ -217,19 +204,24 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 				}
 			}
 		}
-		// The probe only reads, so a dry-run runs it too and plans what it found;
-		// it owes no restart.
-		app.probeResidentsBeforeSwitch(ctx, be, plans, report.Results, residentModeOf(opts))
+	} else {
+		if beErr != nil {
+			return nil, beErr
+		}
+		warnBeforeApply(report.Results, staleTools)
+	}
+	// Steps 1 and 2 of the resident reconcile: probe and notice, before the locks
+	// and the first write, against what each plan leaves live. A dry-run runs the
+	// probe too (it only reads) and owes no restart; the restarts a real run owes
+	// ride in the results and run in the caller, once the transaction has
+	// succeeded and the deferred releaseLocks below has run.
+	mode := residentModeOf(opts)
+	for i, plan := range plans {
+		app.residentsBeforeSwitch(ctx, plan.Tool, snapshotCredential(be, plan), &report.Results[i].residentSlot, mode)
+	}
+	if opts.DryRun {
 		return report, nil
 	}
-	if beErr != nil {
-		return nil, beErr
-	}
-	warnBeforeApply(report.Results, staleTools)
-	// Steps 1 and 2 of the resident reconcile: probe and notice, before the locks
-	// and the first write. The restarts it owes run in the caller, once the
-	// transaction has succeeded and the deferred releaseLocks below has run.
-	report.pending = app.probeResidentsBeforeSwitch(ctx, be, plans, report.Results, residentModeOf(opts))
 
 	tools := make([]string, len(plans))
 	for i, plan := range plans {

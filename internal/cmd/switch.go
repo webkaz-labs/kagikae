@@ -213,8 +213,9 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		warnBeforeApply(report.Results, staleTools)
 	}
 	// Steps 1 and 2 of the resident reconcile: probe and notice, before the locks
-	// and the first write, against what each plan leaves live. A dry-run runs the
-	// probe too (it only reads) and owes no restart; the restarts a real run owes
+	// and the first write, against what each plan leaves live. A dry-run, like
+	// --no-restart and the hook shape, only checks that the daemon's socket exists
+	// and owes no restart; the restarts a real run owes
 	// ride in the results and run in the caller, once the transaction has
 	// succeeded and the deferred releaseLocks below has run.
 	mode := residentModeOf(opts)

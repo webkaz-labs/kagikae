@@ -173,7 +173,8 @@ func setExtraEnv(cmd *exec.Cmd, extraEnv []string) {
 	}
 }
 
-// QueryMaxOutput caps how much of a QueryWithEnv program's stdout is read.
+// QueryMaxOutput caps how much of a QueryWithEnv or LaunchWithEnv program's
+// stdout is read.
 const QueryMaxOutput = 1 << 20
 
 // QueryWithEnv runs a program kae reads the stdout of and that may leave a

@@ -213,7 +213,8 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	ctx = secret.WithReadCache(ctx)
 
 	// A backend error is fatal only on the real path; a dry-run still prints its plan,
-	// and its probe then reads the backup's credential as unreadable.
+	// and its resident reconcile then reads the backup's credential as unreadable,
+	// which counts as a change of codex's account.
 	be, beErr := app.secretBackend()
 	if beErr != nil {
 		if !opts.DryRun {

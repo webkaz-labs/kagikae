@@ -272,7 +272,7 @@ var jaWarnings = map[string]string{
 
 	"codex: could not read the managed daemon's account; if it is not on the live account, run: %s": "codex: 管理デーモンのアカウントを読み取れませんでした。現在有効なアカウントでない場合は、%s を実行してください。",
 
-	"codex: kae's check was the first client to connect to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s": "codex: kae の確認が管理デーモンに最初に接続したクライアントになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、%s を実行してください。",
+	"codex: kae's check was the first program to identify itself to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s": "codex: kae の確認が、管理デーモンに名乗った最初のプログラムになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、%s を実行してください。",
 
 	"codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted": "管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。",
 

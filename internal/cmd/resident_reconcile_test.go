@@ -47,7 +47,7 @@ type restartCall struct {
 
 // residentFixture is an App with codex accounts main and side captured, side
 // live and recorded, claude main and side too, and profiles main and side over
-// both tools. Its clock advances only in the restart's waits.
+// both tools. Its clock advances only in the reconcile's waits (App.sleep).
 type residentFixture struct {
 	app    *App
 	holder adapter.ResidentHolder
@@ -143,7 +143,9 @@ func restartedReport(socket string) string {
 
 // stubRestart replaces runner.LaunchWithEnv for the test: it records the call and
 // returns what run returns, with f.restartOutput on stdout. restartTo is the
-// usual run: the daemon comes back on the live account and the command succeeds.
+// usual run: the command succeeds, and the fake daemon then holds the live
+// account, as a restarted daemon would, for whatever connects to it later; kae
+// itself judges the restart by f.restartOutput alone.
 func (f *residentFixture) stubRestart(t *testing.T, run func(*restartCall) int) {
 	t.Helper()
 	saved := runner.LaunchWithEnv
@@ -252,7 +254,7 @@ const (
 	warnSessionDry = "kae: warning: codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted"
 	noteRestarted  = "kae: note: codex: restarted the managed daemon"
 	warnUnverfied  = "kae: warning: codex: codex app-server daemon restart succeeded, but kae could not read its report or it named another socket, so kae cannot tell whether the managed daemon restarted; if it is not using the live account, run: codex app-server daemon restart"
-	warnOriginator = "kae: warning: codex: kae's check was the first client to connect to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: codex app-server daemon restart"
+	warnOriginator = "kae: warning: codex: kae's check was the first program to identify itself to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: codex app-server daemon restart"
 	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
 
@@ -574,15 +576,17 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 func TestRestartIsJudgedByItsReport(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		report  func(declared, target string) string
+		report  func(declared, target, other string) string
 		outcome string
 	}{
-		{"declared socket", func(declared, _ string) string { return restartedReport(declared) }, constants.ResidentOutcomeRestarted},
-		{"resolved socket", func(_, target string) string { return restartedReport(target) }, constants.ResidentOutcomeRestarted},
-		{"another socket", func(string, string) string { return restartedReport("/tmp/kae-elsewhere/app-server-control.sock") }, constants.ResidentOutcomeRestartUnverified},
-		{"no report", func(string, string) string { return "" }, constants.ResidentOutcomeRestartUnverified},
-		{"not JSON", func(string, string) string { return "restarted\n" }, constants.ResidentOutcomeRestartUnverified},
-		{"not restarted", func(declared, _ string) string {
+		{"declared socket", func(declared, _, _ string) string { return restartedReport(declared) }, constants.ResidentOutcomeRestarted},
+		{"resolved socket", func(_, target, _ string) string { return restartedReport(target) }, constants.ResidentOutcomeRestarted},
+		{"another socket", func(_, _, _ string) string { return restartedReport("/tmp/kae-elsewhere/app-server-control.sock") }, constants.ResidentOutcomeRestartUnverified},
+		// Another daemon's socket that exists: resolving both paths must not make it the same one.
+		{"another existing socket", func(_, _, other string) string { return restartedReport(other) }, constants.ResidentOutcomeRestartUnverified},
+		{"no report", func(_, _, _ string) string { return "" }, constants.ResidentOutcomeRestartUnverified},
+		{"not JSON", func(_, _, _ string) string { return "restarted\n" }, constants.ResidentOutcomeRestartUnverified},
+		{"not restarted", func(declared, _, _ string) string {
 			return `{"status":"running","socketPath":"` + declared + `"}`
 		}, constants.ResidentOutcomeRestartUnverified},
 	} {
@@ -594,7 +598,8 @@ func TestRestartIsJudgedByItsReport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f.restartOutput = tc.report(declared, target)
+			other := startFakeDaemon(t, accountReadReply(residentMain))
+			f.restartOutput = tc.report(declared, target, other.socket)
 			var before int32
 			// The restarted daemon still answers the old account: only the report counts.
 			f.stubRestart(t, func(*restartCall) int { before = d.accepted.Load(); return 0 })
@@ -745,7 +750,7 @@ func TestUseRestartWarningsInJapanese(t *testing.T) {
 				f.daemon.holds(residentMain)
 				f.daemon.initializes(probeOriginatorAgent)
 			},
-			"kae: warning: codex: kae の確認が管理デーモンに最初に接続したクライアントになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: kae の確認が、管理デーモンに名乗った最初のプログラムになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、codex app-server daemon restart を実行してください。",
 		},
 		{
 			"unknown",

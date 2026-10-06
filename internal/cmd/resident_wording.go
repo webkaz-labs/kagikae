@@ -119,10 +119,12 @@ func daemonUnknownMessage(manual string) message {
 }
 
 // probeOriginatorMessage is the warning of a run that connected to a daemon it
-// does not restart and found it had become the daemon's first client, so the
-// threads the daemon creates from now on carry kae's probe name.
+// does not restart and found it had been the first client to initialize the
+// daemon under a name upstream does not reserve, so the threads the daemon
+// creates from now on carry kae's probe name. "identify itself" is the plain
+// word for that initialize.
 func probeOriginatorMessage(manual string) message {
-	return msgf("codex: kae's check was the first client to connect to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s", manual)
+	return msgf("codex: kae's check was the first program to identify itself to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s", manual)
 }
 
 // session is the fixed warning about codex sessions kae does not look for; dryRun

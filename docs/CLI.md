@@ -288,9 +288,10 @@ them as follows; tools without resident processes are unaffected.
    command running too. Upstream's restart stops the old daemon, waiting up to its
    `shutdownGraceSeconds` (60 s by default, 0 to 300 s) for running tasks before it
    forces the daemon down, and then starts the new daemon itself (rust-v0.160.1's
-   `codex-rs/app-server-daemon` README and `src/backend/pid.rs`, read 2026-10-06),
-   so a command killed midway could leave no daemon running. A `restart_pending`
-   restart is not probed again. A failed, pending or unverified restart is a warning: the switch
+   `codex-rs/app-server-daemon`: the README, `restart_with_settings` in `lib.rs`
+   and `stop_with_grace` in `backend/pid.rs`, read 2026-10-06), so a command
+   killed midway could leave no daemon running. A `restart_pending` restart is not
+   probed again. A failed, pending or unverified restart is a warning: the switch
    stays applied and is not rolled back, and the exit code stays `0`. When the
    transaction failed or rolled any tool back, there is no restart. A profile switch
    reconciles once, after the whole transaction. What a restart was seen to do to

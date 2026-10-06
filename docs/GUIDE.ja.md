@@ -351,7 +351,8 @@ codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`�
 デーモンの再起動（上流の `codex app-server daemon restart`）は、古いデーモンを止めるときに、
 デーモンに接続したクライアントで実行中のタスクの終了を `shutdownGraceSeconds`（既定 60 秒、
 0〜300 秒）まで待ち、それを過ぎると強制終了してから、新しいデーモンを起動します（上流の
-rust-v0.160.1 のソースの README と `src/backend/pid.rs` による）。タスクが終わるまで再起動が
+rust-v0.160.1 のソースの README、`lib.rs` の `restart_with_settings`、`backend/pid.rs` の
+`stop_with_grace` による）。タスクが終わるまで再起動が
 待ったことは観測されています。kae は再起動を 30 秒まで待ち、終わらなければ待つのをやめて
 警告します。このとき再起動のコマンドは止めずに実行させたままにするので、Ctrl-C で kae を
 止めても、端末を閉じても、コマンドは止まりません。タスクの終了を待った後に再起動が続く

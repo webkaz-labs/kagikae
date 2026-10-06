@@ -235,8 +235,9 @@ child could rotate the live credential unseen — a cached value would be stale.
   § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
   stdout and stderr are the null device rather than pipes, because the daemon the
   restart leaves running would inherit a pipe and hold kae past the restart's
-  30 s limit, and in a session of its own, so a restart kae stops waiting for keeps
-  running; `daemon version` through `runner.QueryWithEnv`, whose stdout is an
+  30 s limit, and in a session of its own, so the interrupt and hangup of kae's
+  terminal do not reach it; a restart still running at the limit keeps running
+  because kae never kills it (§ Resident processes); `daemon version` through `runner.QueryWithEnv`, whose stdout is an
   unlinked temporary file rather than a pipe and whose stdin and stderr are the null
   device, for the same reason — a daemon it started would otherwise hold doctor —
   and of whose output kae reads at most 1 MiB; `osascript` through `runner.Run`, and

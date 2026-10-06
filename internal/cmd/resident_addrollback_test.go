@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -452,5 +455,57 @@ func TestAddAndRollbackParseNoRestart(t *testing.T) {
 		if opts, _, ok := parseRollbackFlags(flags); !ok || opts.NoRestart != want {
 			t.Errorf("rollback %q: ok=%v NoRestart=%v, want %v", flags, ok, opts.NoRestart, want)
 		}
+	}
+}
+
+// The rollback's probe runs before its locks: every connection to the daemon,
+// the first probe's and the restart's re-probes, finds the codex lock free.
+func TestRollbackProbesWithoutTheLock(t *testing.T) {
+	f := newRollbackFixture(t)
+	f.withDaemon(t, residentMain)
+	f.stubRestart(t, f.restartTo(t))
+	dials, held := 0, 0
+	f.app.dialUnix = func(ctx context.Context, network, address string) (net.Conn, error) {
+		dials++
+		if l, err := lock.Acquire(f.app.Paths.LocksDir(), constants.ToolCodex); err == nil {
+			l.Release()
+		} else {
+			held++
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, address)
+	}
+	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatText})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if dials < 2 {
+		t.Fatalf("dialled the daemon %d times, want the probe and a re-probe", dials)
+	}
+	if held != 0 {
+		t.Errorf("%d of %d probes ran while the rollback held the codex lock", held, dials)
+	}
+}
+
+// A rollback reads the backup's codex payload from kae's secret store once: the
+// probe, the superseded-credential warning and the restore share the cache.
+func TestRollbackReadsTheBackupPayloadOnce(t *testing.T) {
+	f := newRollbackFixture(t)
+	f.withDaemon(t, residentSide)
+	fileBE, err := secret.Resolve(secret.BackendFile, f.app.Env.GOOS, f.app.Paths.SecretsDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := &countingBackend{Backend: fileBE, gets: map[string]int{}}
+	f.app.backendForTest = counter
+	meta, found, err := latestRestorable(f.app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("no backup to roll back to (found %v, err %v)", found, err)
+	}
+	rec, ok := backupRecord(meta, constants.ToolCodex, credentialArtifactName(constants.ToolCodex))
+	if !ok {
+		t.Fatal("the backup has no codex credential record")
+	}
+	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatText})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got := counter.gets[rec.SecretRef]; got != 1 {
+		t.Errorf("read the backup's codex payload %d times, want once", got)
 	}
 }

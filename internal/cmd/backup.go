@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -198,18 +199,21 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		}
 	}
 
-	// The resident probe, the pre-rollback backup and the superseded-credential warning
-	// read the same live credential and identity, which on darwin is a `security`
-	// subprocess each. No child process runs during a rollback, so the cache cannot
-	// observe a store something else moved, and the restore's own writes invalidate the
-	// entries they touch — the same idiom as the switch (docs/ARCHITECTURE.md § Caching).
-	ctx = keychain.WithReadCache(ctx)
+	// The resident probe, the superseded-credential warning and the restore each read
+	// the backup's payloads from kae's own secret store. A backup's payloads do not
+	// change, so one read serves all three, and the pre-rollback backup's writes
+	// invalidate what they touch — the same idiom as the switch.
+	ctx = secret.WithReadCache(ctx)
 
 	// A backend error is fatal only on the real path; a dry-run still prints its plan,
 	// and its probe then reads the backup's credential as unreadable.
 	be, beErr := app.secretBackend()
-	if beErr != nil && !opts.DryRun {
-		return nil, beErr
+	if beErr != nil {
+		if !opts.DryRun {
+			return nil, beErr
+		}
+	} else {
+		be = secret.Cached(be)
 	}
 	// Steps 1 and 2 of the resident reconcile (docs/CLI.md § kae use Semantics): probe
 	// and notice before the locks and the first write, against the credential this
@@ -229,6 +233,14 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, err
 	}
 	defer releaseLocks(locks)
+
+	// The pre-rollback backup and the superseded-credential warning read the same live
+	// credential and identity, which on darwin is a `security` subprocess each. The cache
+	// opens only under the locks, so the probe's lock-free read above is not reused for
+	// the backup. No child process runs during a rollback, so the cache cannot observe a
+	// store something else moved, and the restore's own writes invalidate the entries
+	// they touch — the same idiom as the switch (docs/ARCHITECTURE.md § Caching).
+	ctx = keychain.WithReadCache(ctx)
 
 	st, err := app.loadState()
 	if err != nil {

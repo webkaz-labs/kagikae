@@ -277,8 +277,8 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 // residentsAtCapture is the reconcile of `kae add --no-login` (docs/CLI.md
 // § kae add Semantics, codex resident processes): the live login stays as it
 // is, so nothing is restarted, and a daemon of the real home that holds another
-// account than the live credential, or whose account kae cannot read, gets a
-// warning only. It only reads, so --dry-run runs it too. It returns the
+// account than the live credential or none, or whose account kae cannot read,
+// gets a warning only. It only reads, so --dry-run runs it too. It returns the
 // result's `residents`: that daemon's entry, outcome `warned`, or none.
 func (app *App) residentsAtCapture(ctx context.Context, tool string) []residentEntry {
 	residents := []residentEntry{}

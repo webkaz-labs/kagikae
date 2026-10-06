@@ -108,11 +108,11 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 	if json.Unmarshal(msg, &reply) != nil || jsonMember(reply.Error) || !jsonMember(reply.Result) {
 		return constants.ResidentObservedUnknown
 	}
-	got, held, ok := h.ParseDaemonAccount(reply.Result)
+	got, ok := h.ParseDaemonAccount(reply.Result)
 	if !ok {
 		return constants.ResidentObservedUnknown
 	}
-	if held && got.Same(want) {
+	if got.Held && got.Account.Same(want) {
 		return constants.ResidentObservedMatches
 	}
 	return constants.ResidentObservedDiffers

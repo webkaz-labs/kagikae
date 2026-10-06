@@ -198,7 +198,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// ...and the assumptions nobody has re-checked in six months, which the
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
-	// A managed daemon still holding another account than the live credential: a
+	// A managed daemon holding another account than the live credential, or none: a
 	// local probe of its socket (no subprocess of the tool, no network), so like
 	// the version checks it honors the filter and needs no secret backend. The
 	// `daemon version` half's findings, from the round above, follow it.

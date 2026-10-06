@@ -124,26 +124,26 @@ func accountReadResult(accountID string) string {
 func TestParseDaemonAccountComparesWithTheCredential(t *testing.T) {
 	cred, _ := Codex{}.CredentialAccount([]byte(`{"tokens":{"account_id":"` + fixtureAccount + `"}}`))
 
-	same, held, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(fixtureAccount)))
-	if !ok || !held || !same.Same(cred) {
-		t.Errorf("matching account: got %v, held %v, ok %v", same, held, ok)
+	same, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(fixtureAccount)))
+	if !ok || !same.Held || !same.Account.Same(cred) {
+		t.Errorf("matching account: got %+v, ok %v", same, ok)
 	}
-	other, held, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(otherAccount)))
-	if !ok || !held || other.Same(cred) {
-		t.Errorf("different account: got %v, held %v, ok %v, want a readable key that differs", other, held, ok)
+	other, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(otherAccount)))
+	if !ok || !other.Held || other.Account.Same(cred) {
+		t.Errorf("different account: got %+v, ok %v, want a readable key that differs", other, ok)
 	}
 }
 
-// A daemon that answers `account` null holds no account, as one on 0.160.1 did
-// after the live credential changed under it (docs/ADAPTERS.md § Resident
+// A daemon that answers `account` null with requiresOpenaiAuth true holds no
+// account, as one on 0.160.1 did after a switch (docs/ADAPTERS.md § Resident
 // processes); that is readable, and distinct from an answer kae cannot read.
 func TestParseDaemonAccountReadsNoAccount(t *testing.T) {
 	for name, result := range map[string]string{
-		"measured on 0.160.1": `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}`,
-		"no workspaceRouting": `{"account":null}`,
+		"measured on 0.160.1":     `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}`,
+		"workspaceRouting absent": `{"account":null,"requiresOpenaiAuth":true}`,
 	} {
-		if _, held, ok := (Codex{}).ParseDaemonAccount([]byte(result)); !ok || held {
-			t.Errorf("%s: held %v, ok %v, want no account (held false, ok true)", name, held, ok)
+		if got, ok := (Codex{}).ParseDaemonAccount([]byte(result)); !ok || got.Held {
+			t.Errorf("%s: got %+v, ok %v, want no account (Held false, ok true)", name, got, ok)
 		}
 	}
 }
@@ -160,12 +160,17 @@ func TestParseDaemonAccountRejectsUnreadableAnswers(t *testing.T) {
 		"result is an array":           `[]`,
 		"not JSON":                     `{"workspaceRouting":`,
 		"whole JSON-RPC reply":         `{"jsonrpc":"2.0","id":2,"result":` + accountReadResult(fixtureAccount) + `}`,
-		"no account, but routing":      `{"account":null,"workspaceRouting":{"chatgptAccountId":"` + fixtureAccount + `"}}`,
 		"no account, routing a string": `{"account":null,"workspaceRouting":"x"}`,
 		"empty result":                 `{}`,
+		// A model provider that needs no OpenAI login answers these nulls whatever
+		// the credential; a restart would not change it.
+		"no OpenAI auth required":                    `{"account":null,"requiresOpenaiAuth":false,"workspaceRouting":null}`,
+		"no workspaceRouting, no requiresOpenaiAuth": `{"account":null}`,
+		"requiresOpenaiAuth a string":                `{"account":null,"requiresOpenaiAuth":"true","workspaceRouting":null}`,
+		"no account, but routing":                    `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":{"chatgptAccountId":"` + fixtureAccount + `"}}`,
 	} {
-		if _, held, ok := (Codex{}).ParseDaemonAccount([]byte(result)); ok || held {
-			t.Errorf("%s: ParseDaemonAccount held %v, ok %v", name, held, ok)
+		if got, ok := (Codex{}).ParseDaemonAccount([]byte(result)); ok || got.Held {
+			t.Errorf("%s: ParseDaemonAccount %+v, ok %v", name, got, ok)
 		}
 	}
 }

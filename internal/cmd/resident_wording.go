@@ -6,6 +6,11 @@ import "time"
 // a switch (`kae use`), the login flow of `kae add`, or `kae rollback`. Only the
 // sentences that speak of the command differ; the daemon's unreadable account and
 // an unverified restart read the same for all three.
+//
+// Each method spells out every sentence in full rather than splicing the command's
+// name into one: a catalog key is the literal format string at its sink, so each
+// op needs a whole sentence of its own for the Japanese lookup to find. The switch
+// sentences are S4's, unchanged.
 type residentOp int
 
 const (

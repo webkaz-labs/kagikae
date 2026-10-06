@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
-	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -109,12 +108,14 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	// differently. app.Env is already global-scoped (pinnedGlobalScope): a bound
 	// directory's CODEX_HOME does not reach it.
 	spec := holder.ResidentDaemon(app.Env)
-	// The probe and accountChanges share one read of each credential.
+	// The probe and accountChanges share one read of each credential. A nil
+	// target or previous reads the live credential.
+	liveReader := liveCredential(ad, app.Env)
 	if target == nil {
-		target = liveCredential(ad, app.Env)
+		target = liveReader
 	}
 	if previous == nil {
-		previous = liveCredential(ad, app.Env)
+		previous = liveReader
 	}
 	target = readOnce(target)
 	live := readOnce(previous)
@@ -133,7 +134,7 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	slot.Residents = residents
 	if owed {
 		slot.restart = &pendingRestart{
-			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec, live: liveCredential(ad, app.Env),
+			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec, live: liveReader,
 		}
 	}
 }
@@ -222,6 +223,7 @@ func accountChanges(ctx context.Context, h adapter.ResidentHolder, live, target 
 // snapshotCredential reads the credential payload plan will write: the target
 // snapshot's, from the one artifact that is not identity-only. ok is false when
 // be is nil, the snapshot cannot be read, or it holds no credential.
+// backupCredential is its counterpart for what a backup puts back.
 func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 	return func(ctx context.Context) ([]byte, bool) {
 		if be == nil {
@@ -246,27 +248,6 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 			return nil, false
 		}
 		return payload, true
-	}
-}
-
-// backupCredential reads tool's credential payload as meta recorded it: what a
-// rollback to meta puts back, and for `kae add` what was live before the login
-// flow. ok is false when be is nil, the backup has no credential record for tool
-// or records it as absent, or its payload cannot be read.
-func backupCredential(be secret.Backend, meta backup.Meta, tool string) credentialReader {
-	return func(ctx context.Context) ([]byte, bool) {
-		if be == nil {
-			return nil, false
-		}
-		rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
-		if !ok || !rec.Present {
-			return nil, false
-		}
-		data, found, err := be.Get(ctx, rec.SecretRef)
-		if err != nil || !found {
-			return nil, false
-		}
-		return data, true
 	}
 }
 

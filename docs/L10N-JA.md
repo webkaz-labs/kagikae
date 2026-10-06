@@ -99,7 +99,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | secret backend | シークレットストア | 決定 | secret store と同一視する |
 | cancel | キャンセル | 確定 | |
 | resident process | 常駐プロセス | 提案 | 切替の後も起動時のアカウントを使い続ける上流のプロセス。子プロセスと混ぜない |
-| managed daemon | 管理デーモン | 確定 | GUIDE.ja.md が既に使っている。文書の初出は「管理デーモン（`codex app-server daemon`）」と併記する。切替の前後に出す 1 行の通知とセッションの警告は併記しない（手動手順を示す警告ではコマンド名が名前を示す） |
+| managed daemon | 管理デーモン | 確定 | GUIDE.ja.md が既に使っている。文書の初出は「管理デーモン（`codex app-server daemon`）」と併記する。端末の出力では併記しない（手動手順を示す警告では、そのコマンドが名前を示す） |
 | ChatGPT desktop app | ChatGPT アプリ | 確定 | GUIDE.ja.md が既に使っている。製品名 ChatGPT は訳さない |
 
 ### 型と記号

@@ -285,11 +285,9 @@ them as follows; tools without resident processes are unaffected.
    A failed or unverified restart is a warning: the switch stays applied and is not
    rolled back, and the exit code stays `0`. When the transaction failed or rolled
    any tool back, there is no restart. A profile switch reconciles once, after the
-   whole transaction. A codex TUI connected to the daemon kept working across a
-   restart and moved to the new account; what a restart does to a task running in a
-   connected client has not been measured ([ACCEPTANCE.md](ACCEPTANCE.md) § Second
-   part: switch round trips (2026-10-06), [ROADMAP.md](ROADMAP.md) § Current work
-   order).
+   whole transaction. What a restart was seen to do to clients connected to the
+   daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
+   what is still open is in [ROADMAP.md](ROADMAP.md) § Current work order.
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
    `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `.
@@ -308,10 +306,9 @@ them as follows; tools without resident processes are unaffected.
    warns and does nothing to it. Without `--yes`, a run that cannot ask — no
    terminal, `--json` — warns instead.
 6. **Sessions.** Whenever this command changed codex's account, kae warns, before
-   the write, that codex sessions started before the switch keep the previous account
-   until they are restarted. kae does not look for such a session; the warning is a
-   fixed sentence, and it names no exception, although a session connected to the
-   daemon follows the daemon's restart (step 4).
+   the write, that codex sessions started before the switch and not connected to
+   the managed daemon keep the previous account until they are restarted. kae does
+   not look for such a session; the warning is a fixed sentence.
 
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 
@@ -362,21 +359,34 @@ When kae cannot tell whether the app is running, at the probe or when it asks ag
 after consent, the entry is `observed: unknown`, `outcome: warned`, whatever the
 condition.
 
-**How the lines read.** Before the write, one line says what kae will do to the
-daemon and the ChatGPT app together, naming only what it acts on: the restart it
-owes, and the app it will ask about or, under `--yes`, quit and relaunch; under
-`--dry-run` the same line says what it would do. `--no-restart` and the hook shape
-give one warning for both instead, with the manual steps: the restart command for
-the daemon, quitting and reopening for the app. A daemon whose account kae cannot
-read, an app kae cannot tell about, and an app it cannot ask about (no terminal,
-`--json`, without `--yes`) each get a warning of their own. After the transaction,
-a daemon `restarted` and an app `relaunched` read as one line, and either one alone
-as its own line; every other outcome — `restart_unverified`, `restart_failed`,
-`declined`, `none` for an app closed meanwhile, and the quit outcomes — is a line of
-its own, a warning naming the manual step except for `none`. The lines name the
-command only where they speak of its time or its result, in its own words: `after
-the switch`, `after kae add` and `after kae rollback`, and `the switch is kept`,
-`kae add's result is kept` and `kae rollback's result is kept`.
+**How the lines read.** Each line is one `kae: note:` or `kae: warning:` line,
+except the success, which sits under the command's result line:
+
+- Before the write, one note says what kae will do to the daemon and the ChatGPT
+  app together, naming only what it acts on: the restart it owes, and the app it
+  will ask about or, under `--yes`, quit and relaunch. Under `--dry-run` the same
+  note says what the run would do, and the app's consent is judged as a real run
+  would judge it, so a dry run that could not ask gets the warning below too; the
+  app's `outcome` stays `planned`.
+- `--no-restart` and the hook shape give one warning for both instead, with the
+  manual steps: the restart command for the daemon, quitting and reopening for the
+  app.
+- A daemon whose account kae cannot read, an app kae cannot tell about, and an app
+  it cannot ask about (no terminal, `--json`, without `--yes`) each get a warning
+  of their own.
+- After the transaction, every outcome but the success is a line of its own, as it
+  settles: `restart_unverified`, `restart_failed`, `declined` and the quit outcomes
+  are warnings naming the manual step, and `none` for an app closed meanwhile is a
+  note.
+- The success — a daemon `restarted`, an app `relaunched`, or both as one line — is
+  held until the command prints its result, and then goes to stderr, indented and
+  without a prefix, right after the line of that result: `Switched codex -> <account>`,
+  `Captured codex/<account> ...` (which `kae add` prints after the reconcile), or
+  the codex item of `kae rollback`. A run that prints no result line (`--json`,
+  `--quiet`) says it as a `kae: note:` line instead. An interrupt before the result
+  line says nothing of a success that had already happened.
+- Which words a line uses, and where it names the command, is set by
+  `internal/cmd/resident_wording.go`, whose doc comment states the rules.
 
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result

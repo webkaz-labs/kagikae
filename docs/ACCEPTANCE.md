@@ -38,7 +38,7 @@ Also not measured in this first part: whether a resident process still on the ol
 account writes a refreshed token back to `auth.json`; the second part below records
 what a round trip of switches did to the account left behind.
 
-### Second part: switch round trips (2026-10-06)
+### Second part: switch round trips
 
 Measured by the operator's agent on 2026-10-06 on the same machine with codex
 0.160.1, switching with kae between two ChatGPT accounts, main and side. Each row is

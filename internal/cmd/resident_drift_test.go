@@ -87,10 +87,14 @@ func TestDoctorResidentDriftHonorsTheToolFilter(t *testing.T) {
 }
 
 // Inside a bound directory the check still probes the real codex home's daemon,
-// compared with the real home's credential, not the bound home's.
+// compared with the real home's credential, not the bound home's, and names the
+// restart with the real home, since the bare command typed in that shell would
+// restart the bound home's daemon (docs/CLI.md § kae use Semantics, The manual
+// step). Outside one, the bare command is ByObservation's suffix.
 func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T) {
 	app, _, h := probeFixture(t, probeAccount)
 	linkSocket(t, app, h, startFakeDaemon(t, accountReadReply(probeOtherAcct)).socket)
+	realHome := strings.TrimPrefix(h.ResidentDaemon(app.Env).Env[0], "CODEX_HOME=")
 	bound := app.Paths.IsolatedConfigDir("abcdef0123456789", constants.ToolCodex, "main")
 	app.Env.Getenv = func(key string) string {
 		if key == "CODEX_HOME" {
@@ -108,14 +112,37 @@ func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T)
 	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), "holds a different account") {
 		t.Fatalf("want the real home's differs warning, got %+v", rows)
 	}
+	want := "; to make it use the live account, run: CODEX_HOME='" + realHome + "' codex app-server daemon restart"
+	if msg := rows[0].Message.Error(); !strings.HasSuffix(msg, want) {
+		t.Errorf("message = %q, want suffix %q", msg, want)
+	}
 	if got := app.Env.Getenv("CODEX_HOME"); got != bound {
 		t.Errorf("doctor must not mask the binding for its other checks: CODEX_HOME = %q", got)
 	}
 }
 
-// The check runs no subprocess — the `daemon version` half stays off, even
-// with codex on PATH — and connects only to the daemon's Unix socket.
-func TestResidentDriftRunsNoSubprocessAndDialsOnlyTheSocket(t *testing.T) {
+// The check runs no subprocess of the tool — the `daemon version` half stays
+// off, even with codex on PATH — and connects only to the daemon's Unix socket.
+// The fixture's credential is auth.json, so no keychain reader runs either and
+// any subprocess at all is a finding here.
+func TestResidentDriftRunsNoToolSubprocessAndDialsOnlyTheSocket(t *testing.T) {
+	withEnv := 0
+	savedRun, savedLaunch, savedInteractive := runner.RunWithEnv, runner.LaunchWithEnv, runner.RunInteractive
+	t.Cleanup(func() {
+		runner.RunWithEnv, runner.LaunchWithEnv, runner.RunInteractive = savedRun, savedLaunch, savedInteractive
+	})
+	runner.RunWithEnv = func(context.Context, []string, string, ...string) (string, string, int) {
+		withEnv++
+		return "", "", 1
+	}
+	runner.LaunchWithEnv = func(context.Context, []string, string, ...string) (int, error) {
+		withEnv++
+		return 1, nil
+	}
+	runner.RunInteractive = func(context.Context, []string, string, ...string) (int, error) {
+		withEnv++
+		return 1, nil
+	}
 	for _, answer := range []string{accountReadReply(probeOtherAcct), residentDaemonError, ""} {
 		app, _, h := probeFixture(t, probeAccount)
 		if answer != "" {
@@ -127,17 +154,11 @@ func TestResidentDriftRunsNoSubprocessAndDialsOnlyTheSocket(t *testing.T) {
 			dials = append(dials, network)
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		}
-		withEnv := 0
-		saved := runner.RunWithEnv
-		runner.RunWithEnv = func(context.Context, []string, string, ...string) (string, string, int) {
-			withEnv++
-			return "", "", 1
-		}
+		withEnv = 0
 		fake := &runnertest.Fake{}
 		runner.With(fake, func() { app.residentDriftChecks(context.Background(), "") })
-		runner.RunWithEnv = saved
 		if fake.Name != "" || withEnv != 0 {
-			t.Errorf("answer %q: ran %q %v and %d RunWithEnv call(s)", answer, fake.Name, fake.Args, withEnv)
+			t.Errorf("answer %q: ran %q %v and %d env-runner call(s)", answer, fake.Name, fake.Args, withEnv)
 		}
 		for _, network := range dials {
 			if network != "unix" {

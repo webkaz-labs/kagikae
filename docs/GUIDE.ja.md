@@ -368,7 +368,8 @@ logged out or signed in to another account. Please sign in again.」と出た場
 
 `kae doctor` は、管理デーモンが現在の認証情報とは別のアカウントを使っている場合と、
 使っているアカウントを読み取れない場合に警告します。doctor 自身はデーモンを再起動しないので、
-警告に従って `codex app-server daemon restart` を実行してください。
+警告が表示するコマンドを実行してください。`CODEX_HOME` を export しているシェルでは、上と同じく
+`CODEX_HOME='<実ホーム側の codex ホーム>'` を前に付けた形で表示されます。
 
 `relogin` は固定先のストアを選択します。対応フローと拒否条件は
 [CLI.md](CLI.md#kae-relogin-semantics) を参照してください。手動で固定先にログインする

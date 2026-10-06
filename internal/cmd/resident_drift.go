@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -18,7 +17,8 @@ import (
 // is deliberately not implemented: the contract keeps it off until the acceptance
 // records that the command starts no daemon and makes no network call
 // (docs/ROADMAP.md § Current work order, slice 6), and nothing here runs a
-// subprocess of the tool.
+// subprocess of the tool. Reading the live credential may still run the
+// platform's keychain reader (`security` on darwin) under the keyring store.
 //
 // The probe looks at the real home, never the one a bound directory exports:
 // doctor run inside a bound directory still answers for the daemon a global
@@ -40,7 +40,10 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 			continue // no resident processes: nothing to compare
 		}
 		spec := h.ResidentDaemon(env)
-		restart := strings.Join(spec.Restart, " ")
+		// Named for the shell doctor runs in, which may export another home than
+		// the real one the probe looked at (docs/CLI.md § kae use Semantics, The
+		// manual step).
+		restart := app.residentRestartCommand(h, spec)
 		switch app.probeResidentDaemon(ctx, h, spec, liveCredential(ad, env)) {
 		case constants.ResidentObservedDiffers:
 			checks = append(checks, adapter.Check{
@@ -63,7 +66,8 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 
 // realHomeEnv is app.Env with the isolation values kae itself set hidden, the
 // view a global switch acts on (applyGlobalScope), without changing app.Env for
-// the rest of doctor, whose bound-directory checks read the binding.
+// the rest of doctor, whose bound-directory checks read the binding. app itself
+// stays the shell's view, which residentRestartCommand compares against.
 func (app *App) realHomeEnv() adapter.Env {
 	scoped := App{Paths: app.Paths, Env: app.Env}
 	scoped.applyGlobalScope()

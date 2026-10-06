@@ -190,8 +190,8 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
 	// A managed daemon still holding another account than the live credential: a
-	// local probe of its socket (no subprocess, no network), so like the version
-	// checks it honors the filter and needs no secret backend.
+	// local probe of its socket (no subprocess of the tool, no network), so like
+	// the version checks it honors the filter and needs no secret backend.
 	report.Checks = append(report.Checks, app.residentDriftChecks(ctx, toolFilter)...)
 	// state.json naming an account that has no snapshot. Deliberately out here and
 	// not with the credential-health checks: it needs no secret backend, and an

@@ -36,14 +36,14 @@ const (
 	addWarnOptedOut  = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
 	addWarnSession   = "kae: warning: codex sessions started before this kae add that are not connected to the managed daemon keep the previous account until they are restarted"
 	addNoteRestarted = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae add left live"
-	addWarnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
+	addWarnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart"
 	rbNoticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back; kae restarts it after the rollback"
 	rbNoticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback would put back; the rollback would restart it"
 	rbWarnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
 	rbWarnSession    = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon keep the previous account until they are restarted"
 	rbWarnSessionDry = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon would keep the previous account until they are restarted"
 	rbNoteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae rollback put back"
-	rbWarnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
+	rbWarnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart"
 )
 
 // loginAs replaces the interactive login flow with one that writes payload to the
@@ -658,5 +658,58 @@ func TestRollbackKeychainCacheStartsUnderTheLocks(t *testing.T) {
 	// The probe's read before the locks, and the backup's under them.
 	if reads < 2 {
 		t.Errorf("read codex's live keyring item %d times during the rollback, want the probe's and the backup's (2 or more)", reads)
+	}
+}
+
+// A restart that fails after kae add or kae rollback keeps the command's result
+// and names the retry, in English and Japanese. The daemon held no account, so
+// the warning must not claim it keeps a previous one.
+func TestAddAndRollbackRestartFailureWarns(t *testing.T) {
+	failing := func(*restartCall) int { return 3 }
+	for _, tc := range []struct {
+		name     string
+		run      func(t *testing.T) (code int, stdout, stderr string)
+		english  string
+		japanese string
+	}{
+		{
+			"add",
+			func(t *testing.T) (int, string, string) {
+				f := newResidentFixture(t)
+				f.withDaemon(t, residentSide).answers(noAccountReply)
+				f.stubRestart(t, failing)
+				f.loginAs(t, codexChatGPTAuth(residentMain, "codex-login-token"))
+				return f.add(t, commonOpts{Format: formatText}, false)
+			},
+			addWarnFailed,
+			"kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"rollback",
+			func(t *testing.T) (int, string, string) {
+				f := newRollbackFixture(t)
+				f.withDaemon(t, residentMain).answers(noAccountReply)
+				f.stubRestart(t, failing)
+				return f.rollback(t, commonOpts{Format: formatText})
+			},
+			rbWarnFailed,
+			"kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、codex app-server daemon restart を実行してください。",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, japanese := range []bool{false, true} {
+				want := tc.english
+				if japanese {
+					l10ntest.UseJapanese(t)
+					want = tc.japanese
+				}
+				code, stdout, stderr := tc.run(t)
+				mustExit(t, constants.ExitOK, code, stdout+stderr)
+				if !strings.Contains(stderr, want+"\n") {
+					t.Errorf("stderr lacks %q:\n%s", want, stderr)
+				}
+				assertNoResidentPII(t, stdout, stderr)
+			}
+		})
 	}
 }

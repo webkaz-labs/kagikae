@@ -77,7 +77,7 @@ kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent restorable (or given) backup
 kae use|add|rollback [...] --no-restart
                                      # leave codex's managed daemon and the ChatGPT app
-                                     #   running on the previous account (warn instead)
+                                     #   running as they are (warn instead)
 kae completion <bash|zsh|fish> [--install|--no-function]
                                      # print (or register) a dynamic completion script;
                                      #   printed, it also defines the kae shell function

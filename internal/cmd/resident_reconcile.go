@@ -204,7 +204,7 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 // absent and matches print nothing.
 func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
-		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", manual())
+		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it is not using the live account, run: %s", manual())
 		return
 	}
 	if observed != constants.ResidentObservedDiffers {
@@ -377,7 +377,7 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		}
 		app.sleep(ctx, residentRecheckInterval)
 	}
-	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s", manual())
+	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: %s", manual())
 	return constants.ResidentOutcomeRestartUnverified
 }
 

@@ -240,7 +240,7 @@ var jaWarnings = map[string]string{
 	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
 	// resident_reconcile.go.
-	"codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。前のアカウントのままの場合は、%s を実行してください。",
+	"codex: could not read which account the managed daemon (codex app-server daemon) holds; if it is not using the live account, run: %s": "codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。現在有効なアカウントを使っていない場合は、%s を実行してください。",
 
 	"codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live; kae restarts it after the switch": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替の後に kae が再起動します。",
 
@@ -254,15 +254,15 @@ var jaWarnings = map[string]string{
 
 	"codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted": "この切替を実行すると、それより前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 
-	"codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
 	"codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live": "codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",
 
-	"codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。前のアカウントのままの場合は、%s を実行してください。",
+	"codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: %s": "codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、%s を実行してください。",
 
 	// resident_wording.go: kae add and kae rollback.
 	"codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live; kae restarts it now": "codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントを使っていません。kae が再起動します。",
@@ -281,17 +281,17 @@ var jaWarnings = map[string]string{
 
 	"codex sessions started before this kae rollback that are not connected to the managed daemon would keep the previous account until they are restarted": "この kae rollback を実行すると、それより前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 
-	"codex: codex app-server daemon restart did not finish within %s; kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart did not finish within %s; kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: codex app-server daemon restart did not finish within %s; kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart did not finish within %s; kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: could not run codex app-server daemon restart (%v); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: could not run codex app-server daemon restart (%v); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: could not run codex app-server daemon restart (%v); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: could not run codex app-server daemon restart (%v); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: codex app-server daemon restart failed (exit %d); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart failed (exit %d); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。kae add の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: codex app-server daemon restart failed (exit %d); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+	"codex: codex app-server daemon restart failed (exit %d); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。kae rollback の結果はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
 	"codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae add left live": "codex: 管理デーモン（codex app-server daemon）を再起動しました。この kae add の後に有効なアカウントを使っています。",
 

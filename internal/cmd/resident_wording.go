@@ -70,31 +70,31 @@ func (op residentOp) session(dryRun bool) message {
 func (op residentOp) restartTimedOut(limit time.Duration, manual string) message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: codex app-server daemon restart did not finish within %s; kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
+		return msgf("codex: codex app-server daemon restart did not finish within %s; kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
 	case residentOpRollback:
-		return msgf("codex: codex app-server daemon restart did not finish within %s; kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
+		return msgf("codex: codex app-server daemon restart did not finish within %s; kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
 	}
-	return msgf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
+	return msgf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
 }
 
 func (op residentOp) restartNotRun(err error, manual string) message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: could not run codex app-server daemon restart (%v); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", err, manual)
+		return msgf("codex: could not run codex app-server daemon restart (%v); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
 	case residentOpRollback:
-		return msgf("codex: could not run codex app-server daemon restart (%v); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", err, manual)
+		return msgf("codex: could not run codex app-server daemon restart (%v); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
 	}
-	return msgf("codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", err, manual)
+	return msgf("codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
 }
 
 func (op residentOp) restartExited(code int, manual string) message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: codex app-server daemon restart failed (exit %d); kae add's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
+		return msgf("codex: codex app-server daemon restart failed (exit %d); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
 	case residentOpRollback:
-		return msgf("codex: codex app-server daemon restart failed (exit %d); kae rollback's result is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
+		return msgf("codex: codex app-server daemon restart failed (exit %d); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
 	}
-	return msgf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
+	return msgf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
 }
 
 // restarted is the note of a verified restart.

@@ -287,18 +287,18 @@ them as follows; tools without resident processes are unaffected.
    it: one that ends kae while it waits, which then reports nothing, leaves the
    command running too. Upstream's restart stops the old daemon, waiting up to its
    `shutdownGraceSeconds` (60 s by default, 0 to 300 s) for running tasks before it
-   forces the daemon down, and then starts the new daemon itself (rust-v0.160.1's
-   `codex-rs/app-server-daemon`: the README, `restart_with_settings` in `lib.rs`
-   and `stop_with_grace` in `backend/pid.rs`, read 2026-10-06), so a command
-   killed midway could leave no daemon running. A `restart_pending` restart is not
-   probed again. A failed, pending or unverified restart is a warning: the switch
-   stays applied and is not rolled back, and the exit code stays `0`. When the
-   transaction failed or rolled any tool back, there is no restart. A profile switch
-   reconciles once, after the whole transaction. What a restart was seen to do to
-   clients connected to the daemon is in [ACCEPTANCE.md](ACCEPTANCE.md)
-   § Second part: switch round trips and [ACCEPTANCE.md](ACCEPTANCE.md)
-   § Third part: idle reads, running tasks and the quit dialog; what is still open
-   is in [ROADMAP.md](ROADMAP.md) § Current work order.
+   forces the daemon down, and then starts the new daemon itself
+   ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
+   quit dialog), so a command killed midway could leave no daemon running. A
+   `restart_pending` restart is not probed again. A failed, pending or unverified
+   restart is a warning: the switch stays applied and is not rolled back, and the
+   exit code stays `0`. When the transaction failed or rolled any tool back, there
+   is no restart. A profile switch reconciles once, after the whole transaction.
+   What a restart was seen to do to clients connected to the daemon is in
+   [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
+   [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
+   quit dialog; what is still open is in [ROADMAP.md](ROADMAP.md) § Current work
+   order.
 5. **The ChatGPT app**, when it is running and this command changed codex's account:
    kae asks on the terminal, default No:
    `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `. The

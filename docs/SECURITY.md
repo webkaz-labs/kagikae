@@ -236,8 +236,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   stdout and stderr are the null device rather than pipes, because the daemon the
   restart leaves running would inherit a pipe and hold kae past the restart's
   30 s limit, and in a session of its own, so the interrupt and hangup of kae's
-  terminal do not reach it; a restart still running at the limit keeps running
-  because kae never kills it (§ Resident processes); `daemon version` through `runner.QueryWithEnv`, whose stdout is an
+  terminal do not reach it; kae never kills it (§ Resident processes);
+  `daemon version` through `runner.QueryWithEnv`, whose stdout is an
   unlinked temporary file rather than a pipe and whose stdin and stderr are the null
   device, for the same reason — a daemon it started would otherwise hold doctor —
   and of whose output kae reads at most 1 MiB; `osascript` through `runner.Run`, and
@@ -384,13 +384,11 @@ commands. The restart therefore follows the transaction, after state is saved an
 the locks are released: a restart before the state save would, if the save failed,
 leave the backup restored on disk while the daemon ran the new account. kae never
 kills the restart command (its own child): one still running at its 30 s limit is
-left running and kae stops waiting for it, and it runs in a session of its own, so
-the interrupt or hangup of kae's terminal does not reach it either. Upstream's
-restart stops the old daemon before it starts the new one, and a command killed
-between the two would leave no daemon ([CLI.md](CLI.md) § kae use Semantics,
-step 4). A failed restart does not roll the switch back. That is not the
-mixed-state rule of § Mutation Safety Rules, which governs files kae writes; the
-daemon's memory is not one of them.
+left running and kae stops waiting for it, for the reason [CLI.md](CLI.md) § kae
+use Semantics, step 4, gives. It runs in a session of its own, so the interrupt or
+hangup of kae's terminal does not reach it either. A failed restart does not roll
+the switch back. That is not the mixed-state rule of § Mutation Safety Rules,
+which governs files kae writes; the daemon's memory is not one of them.
 
 ## Isolation Safety
 

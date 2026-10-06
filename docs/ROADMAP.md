@@ -101,10 +101,9 @@ acceptance still has to settle:
   state it did not; a lead, not an answer, for the moment after a restart: in
   upstream's source, a daemon with no cached routing runs routing discovery
   through its `BackendClient`, which can connect;
-- whether a restart command kae has stopped waiting for at its 30 s limit
-  (`restart_pending`, left running rather than killed) goes on to start the new
-  daemon once the running tasks finish or upstream's shutdown grace ends; upstream's
-  source says the command starts it itself after the stop, which is not measured;
+- whether a restart kae left running at its 30 s limit (`restart_pending`) goes
+  on to start the new daemon; upstream's source says it does, which is not
+  measured;
 - what kae does about a resident process still on the old account that refreshes
   that account's token. Whether it writes the token back to `auth.json` is not
   measured; an old session not connected to the daemon is inferred to invalidate

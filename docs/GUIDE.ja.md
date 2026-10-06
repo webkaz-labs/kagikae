@@ -356,8 +356,8 @@ kae は再起動を 30 秒まで待ち、終わらなければ待つのをやめ
 kae が待つのをやめた後も再起動は続き、新しいデーモンを起動することを観測しました。上限の時間を
 過ぎても終わらないタスクは中断されます（[ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the app's n and an isolated daemon）。
 新しいデーモンが起動していない場合は、警告に表示されるコマンドを実行してください。
-kae が再起動したデーモンでその後に作られるスレッドには、作成元（originator）として kae の確認用の名前
-`kae_probe` が記録されることがあります。既知の制限です（[ADAPTERS.md](ADAPTERS.md) § Resident processes）。
+kae の確認が最初に接続したデーモン（特に kae が再起動した直後のデーモン）でその後に作られるスレッドには、
+作成元（originator）として kae の確認用の名前 `kae_probe` が記録されることがあります。既知の制限です（[ADAPTERS.md](ADAPTERS.md) § Resident processes）。
 コマンドで codex のアカウントが変わった場合は、管理デーモンに接続していない古い codex の
 セッションが、再起動するまで前のアカウントのままであることを警告します。以前から開いたままの
 `codex resume` などは、切り替える前に終了してください。開いたままにすると、そのセッションが

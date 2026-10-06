@@ -171,8 +171,9 @@ child could rotate the live credential unseen — a cached value would be stale.
   and runs `codex app-server daemon version`, which the local acceptance observed
   to start no daemon when none runs and to answer with IP traffic denied
   ([CLI.md](CLI.md) § `kae doctor --json`). kae makes no network call for it;
-  the daemon itself connects to answer only while its routing cache is empty, as
-  it does on its own when it starts (§ Resident processes). Neither
+  the daemon itself may connect to answer when its routing cache has no answer,
+  sending the request it also sends on its own when it starts (§ Resident
+  processes). Neither
   account it compares reaches the output.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
@@ -354,8 +355,10 @@ of whether the app is running. It acts on one through exactly two paths:
    it once the quit has been observed. A quit that is not observed within the wait
    is reported, never escalated.
 
-**Observing the daemon** is a read-only local IPC probe, and every limit below is
-part of the contract:
+**Observing the daemon** is a local IPC probe that only reads codex's auth state.
+Its `initialize` can still settle the originator and automatic login of a daemon
+no client has initialized yet, a known side effect [ADAPTERS.md](ADAPTERS.md)
+§ Resident processes describes. Every limit below is part of the contract:
 
 - kae connects only to the socket of the real codex home — the one a switch
   writes and doctor inspects — and only after
@@ -373,11 +376,13 @@ part of the contract:
 - kae makes no network call for the probe. The daemon itself was not seen to
   contact the network to answer `account/read` with `refreshToken: false` in its
   steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running
-  tasks and the quit dialog). While its workspace-routing cache is empty — right
-  after it starts, after its discovery failed, offline — the probe's `initialize`
-  alone makes the daemon send its discovery request to the backend, the request
-  it also sends on its own when it starts, and offline `account/read` answers with
-  an error, which kae reads as `unknown` and does not restart on
+  tasks and the quit dialog). When its workspace-routing cache has no answer — for
+  example when its own discovery at start-up has not succeeded, as offline, or its
+  auth has changed since — the probe's `initialize` alone makes the daemon send its
+  discovery request to the backend, the request it also sends on its own when it
+  starts. On a 401 the daemon reloads or refreshes its own token, as it does for
+  any client. A failing discovery makes `account/read` answer with an error, which
+  kae reads as `unknown` and does not restart on
   ([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
   app's n and an isolated daemon). The probe carries no credential; the daemon
   sends its own.

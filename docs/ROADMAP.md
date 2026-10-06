@@ -70,8 +70,8 @@ daemon probe, the reconcile in `kae use`, the same reconcile in `kae add` and
 commands, `doctor resident_drift` with both halves on by default, and the codex
 usage veto ([CLI.md](CLI.md) § Subscription windows in listings) — are on main, and
 git log records them; no release ships them yet. What remains is slice 8, the
-real-machine acceptance,
-recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names, after which
+real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
+placeholder names, after which
 codex's `VerifiedVersion()` is raised to the version it ran against; until then it
 stays where it is.
 
@@ -88,7 +88,11 @@ Before slice 8 can pass, the acceptance still has to settle what kae does about 
 resident process still on the old account that refreshes that account's token.
 Whether it writes the token back to `auth.json` is not measured; an old session
 not connected to the daemon is inferred to invalidate the token in kae's snapshot
-by rotating it, which a new login of that account repairs.
+by rotating it, which a new login of that account repairs. In upstream's source a
+daemon's routing discovery that meets a 401 reloads and refreshes its own token
+only while `auth.json` names the account it holds
+([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+app's n and an isolated daemon).
 
 Done when slice 8's acceptance is recorded, the question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.

@@ -263,8 +263,10 @@ them as follows; tools without resident processes are unaffected.
    cannot be read, byte-identical credentials count as no change and anything else
    as a change, so a switch kae cannot judge still gets the warning of step 6. Only
    when it does, kae asks whether the ChatGPT app is running (macOS only): an app
-   that keeps the account it already holds needs nothing. The probe only reads, so
-   `--dry-run` runs it too.
+   that keeps the account it already holds needs nothing. The probe only reads
+   codex's auth state, so `--dry-run` runs it too; its `initialize` can still settle
+   the originator and automatic login of a daemon no client has initialized yet, a
+   known side effect [ADAPTERS.md](ADAPTERS.md) § Resident processes describes.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
    transaction, under the warning rules of § Output Rules, in the lines
    **How the lines read** below sets out. `--dry-run` stops here:
@@ -302,8 +304,9 @@ them as follows; tools without resident processes are unaffected.
    [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
    [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
    quit dialog; what is still open is in [ROADMAP.md](ROADMAP.md) § Current work
-   order. Threads created through a daemon kae restarted can carry kae's probe
-   name as their originator, a known limit [ADAPTERS.md](ADAPTERS.md) § Resident
+   order. Threads created through a daemon kae's probe was the first client to
+   initialize — above all one kae has just restarted — can carry kae's probe name
+   as their originator, a known limit [ADAPTERS.md](ADAPTERS.md) § Resident
    processes describes.
 5. **The ChatGPT app**, when it is running and this command changed codex's account:
    kae asks on the terminal, default No:
@@ -2635,13 +2638,17 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 
   No socket with no running daemon, and a matching account, are silent. Neither
   account is printed. Doctor never restarts anything. The socket half, which only
-  reads, runs by default. kae itself connects to nothing but the socket. The daemon
-  answers `account/read` from a workspace-routing cache held in its memory, and
-  was not seen to contact the network for it in its steady state. While that cache
-  is empty — right after the daemon starts, after its discovery failed, offline — a
+  reads codex's auth state, runs by default; its `initialize` has the known side
+  effect on a daemon no client has initialized yet that [ADAPTERS.md](ADAPTERS.md)
+  § Resident processes describes. kae itself connects to nothing but the socket.
+  The daemon answers `account/read` from a workspace-routing cache held in its
+  memory, and was not seen to contact the network for it in its steady state. When
+  the cache has no answer — for example when the daemon's own discovery at start-up
+  has not succeeded, as offline, or the daemon's auth has changed since — a
   client's `initialize` alone makes the daemon send its discovery request to the
-  backend, the request it also sends on its own when it starts, and offline
-  `account/read` answers with an error, which reads `unknown`
+  backend, the request it also sends on its own when it starts. On a 401 the
+  daemon reloads or refreshes its own token, as it does for any client. A failing
+  discovery makes `account/read` answer with an error, which reads `unknown`
   ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
   quit dialog; [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
   limit, the app's n and an isolated daemon).

@@ -421,12 +421,19 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   processes owns the limits.
 - **client name** `kae_probe`, the `clientInfo.name` of kae's `initialize`. A
   daemon takes the originator of the threads it creates from the first client
-  that initializes it, once per process, and kae probes the daemon as soon as its
-  restart returns, so kae's probe can be that first client: threads created
-  afterwards through the restarted daemon then carry `kae_probe` as their
-  originator, in the rollout and in codex's state, until the daemon next
-  restarts. That is a known limit, and was observed
-  ([ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
+  that initializes it, once per process, so kae's probe can be that first client
+  whenever it reaches a daemon no client has initialized yet: above all right
+  after kae's own restart, which kae probes as soon as it returns, but also in the
+  probe before a switch (`use`, `add`, `rollback`, the mise enter hook included)
+  and in doctor's `resident_drift`, for instance after the daemon's updater or a
+  `codex app-server daemon start` started it. Threads created afterwards through
+  that daemon then carry `kae_probe` as their originator, in the rollout and in
+  codex's state, until the daemon next restarts. In upstream's source the same
+  first client also settles the legacy automatic login: unless it asks for
+  explicit gateway OAuth, which kae's probe does not, it allows automatic login,
+  and a later client that asks for explicit login overrides that; what this
+  changes in practice is not established. Both are known limits; the originator
+  was observed ([ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
   [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
   app's n and an isolated daemon). kae does not name itself after another client
   to avoid it: a client's name would pass kae off as that client and attribute

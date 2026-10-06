@@ -122,7 +122,10 @@ Before slice 8 can pass, the acceptance has to settle what is not yet verified:
   that captures the restart's output;
 - whether a resident process still on the old account can write a refreshed token
   back to `auth.json`, which would overwrite a switch while a hook or
-  `--no-restart` leaves it running.
+  `--no-restart` leaves it running;
+- what happens when the ChatGPT app answers the quit with a confirmation dialog:
+  the quit request then times out (`-1712`), the 20 s wait ends in `quit_timeout`,
+  and if the user chooses to quit afterwards the app is not relaunched.
 
 Done when slice 8's acceptance is recorded, each question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.

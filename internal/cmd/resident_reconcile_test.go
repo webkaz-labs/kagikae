@@ -233,15 +233,27 @@ func assertNoResidentPII(t *testing.T, outputs ...string) {
 const (
 	noticeRestart  = "kae: note: codex: after the switch, kae will restart the managed daemon"
 	noticePlanned  = "kae: note: codex: after the switch, kae would restart the managed daemon"
-	warnOptedOut   = "kae: warning: codex: --no-restart: kae does not restart the managed daemon; to move it to the live account, run: codex app-server daemon restart"
-	warnHook       = "kae: warning: codex: the enter hook (--auto) does not restart the managed daemon; to move it to the live account, run: codex app-server daemon restart"
+	warnOptedOut   = "kae: warning: codex: kae does not restart the managed daemon (--no-restart); to move it to the live account, run: codex app-server daemon restart"
+	warnHook       = "kae: warning: codex: kae does not restart the managed daemon (the enter hook, --auto); to move it to the live account, run: codex app-server daemon restart"
 	warnUnknown    = "kae: warning: codex: could not read the managed daemon's account; if it is not on the live account, run: codex app-server daemon restart"
-	warnSession    = "kae: warning: codex sessions started before the switch keep the previous account until they are restarted"
-	warnSessionDry = "kae: warning: codex sessions started before the switch would keep the previous account until they are restarted"
+	warnSession    = "kae: warning: codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted"
+	warnSessionDry = "kae: warning: codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted"
 	noteRestarted  = "kae: note: codex: restarted the managed daemon"
-	warnUnverfied  = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: codex app-server daemon restart"
+	warnUnverfied  = "kae: warning: codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: codex app-server daemon restart"
 	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
+
+// daemonLines is the lines of stderr that speak of the daemon, apart from the
+// session warning, which names it too.
+func daemonLines(stderr string) string {
+	var lines []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if strings.Contains(line, daemonMention) && !strings.Contains(line, "codex sessions started before") {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 
 // The everyday case: the daemon holds the live account (side), the switch leaves
 // main live, so the daemon differs from what the switch leaves and is restarted
@@ -329,7 +341,7 @@ func TestUseComparesTheDaemonWithTheTargetSnapshot(t *testing.T) {
 	f.withDaemon(t, residentMain)
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedMatches, constants.ResidentOutcomeNone), sessionEntry)
-	if strings.Contains(stderr, daemonMention) {
+	if daemonLines(stderr) != "" {
 		t.Errorf("a matching daemon printed a notice:\n%s", stderr)
 	}
 }
@@ -352,7 +364,7 @@ func TestUseWithoutADaemonOrAnAccountChange(t *testing.T) {
 			t.Errorf("use codex %s: session warning present = %v, want %v:\n%s",
 				tc.target, !tc.session, tc.session, stderr)
 		}
-		if strings.Contains(stderr, daemonMention) {
+		if daemonLines(stderr) != "" {
 			t.Errorf("use codex %s: an absent daemon printed a notice:\n%s", tc.target, stderr)
 		}
 	}
@@ -387,6 +399,8 @@ func TestUseSuppressesTheRestart(t *testing.T) {
 		{"auto with yes", commonOpts{ResidentHook: true, Yes: true}, hook, constants.ResidentOutcomeWarned, warnHook},
 		{"dry-run", commonOpts{DryRun: true, Yes: true}, explicit, constants.ResidentOutcomePlanned, noticePlanned},
 		{"dry-run auto", commonOpts{DryRun: true, ResidentHook: true}, hook, constants.ResidentOutcomeWarned, warnHook},
+		// --no-restart wins over the hook shape.
+		{"auto no-restart", commonOpts{ResidentHook: true, NoRestart: true}, hook, constants.ResidentOutcomeOptedOut, warnOptedOut},
 		{"dry-run no-restart", commonOpts{DryRun: true, NoRestart: true}, explicit, constants.ResidentOutcomeOptedOut, warnOptedOut},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -639,19 +653,19 @@ func TestUseSuppressedRestartInJapanese(t *testing.T) {
 			"dry-run",
 			commonOpts{DryRun: true},
 			explicit,
-			"kae: note: codex: 実行すると、切替後に管理デーモンを再起動します。",
+			"kae: note: codex: 切替後、管理デーモンを再起動します（--dry-run のため、実際には行いません）。",
 		},
 		{
 			"no-restart",
 			commonOpts{NoRestart: true},
 			explicit,
-			"kae: warning: codex: --no-restart のため、管理デーモンを再起動しません。有効なアカウントに移すには、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: --no-restart のため、管理デーモンを再起動しません。現在有効なアカウントに移すには、codex app-server daemon restart を実行してください。",
 		},
 		{
 			"auto",
 			commonOpts{ResidentHook: true},
 			hook,
-			"kae: warning: codex: enter フック（--auto）では管理デーモンを再起動しません。有効なアカウントに移すには、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: enter フック（--auto）のため、管理デーモンを再起動しません。現在有効なアカウントに移すには、codex app-server daemon restart を実行してください。",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -677,19 +691,19 @@ func TestUseRestartWarningsInJapanese(t *testing.T) {
 		{
 			"failed",
 			func(t *testing.T, f *residentFixture) { f.stubRestart(t, func(*restartCall) int { return 3 }) },
-			"kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、codex app-server daemon restart を実行してください。",
 		},
 		{
 			"unverified",
 			func(t *testing.T, f *residentFixture) { f.stubRestart(t, func(*restartCall) int { return 0 }) },
-			"kae: warning: codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、codex app-server daemon restart を実行してください。",
 		},
 		{
 			"unknown",
 			func(t *testing.T, f *residentFixture) {
 				f.daemon.answers(apiKeyReply)
 			},
-			"kae: warning: codex: 管理デーモンのアカウントを読み取れませんでした。有効なアカウントでない場合は、codex app-server daemon restart を実行してください。",
+			"kae: warning: codex: 管理デーモンのアカウントを読み取れませんでした。現在有効なアカウントでない場合は、codex app-server daemon restart を実行してください。",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -712,9 +726,9 @@ func TestUseResidentsInJapanese(t *testing.T) {
 	l10ntest.UseJapanese(t)
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatText}, constants.ToolCodex, "main")
 	for _, line := range []string{
-		"kae: note: codex: 切替後に管理デーモンを再起動します。",
-		"kae: warning: 切替前から動いている codex セッションは、再起動するまで前のアカウントのままです。",
-		"kae: note: codex: 管理デーモンを再起動しました。",
+		"kae: note: codex: 切替後、管理デーモンを再起動します。",
+		"kae: warning: 管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。",
+		"  codex: 管理デーモンを再起動しました",
 	} {
 		if !strings.Contains(stderr, line+"\n") {
 			t.Errorf("stderr lacks %q:\n%s", line, stderr)
@@ -776,7 +790,7 @@ func TestBoundShellReachesAndNamesTheRealHomeDaemon(t *testing.T) {
 		manual := "CODEX_HOME=" + shellSingleQuote(strings.TrimPrefix(realSpec.Env[0], "CODEX_HOME=")) +
 			" codex app-server daemon restart"
 		if noRestart {
-			if !strings.Contains(stderr, "kae does not restart the managed daemon; to move it to the live account, run: "+manual+"\n") {
+			if !strings.Contains(stderr, "kae does not restart the managed daemon (--no-restart); to move it to the live account, run: "+manual+"\n") {
 				t.Errorf("the manual step does not name the real home %q:\n%s", manual, stderr)
 			}
 			continue

@@ -1,11 +1,31 @@
 package cmd
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/webkaz-labs/kagikae/internal/l10n"
+)
 
 // residentOp is the command a resident reconcile runs for, which its notices name:
-// a switch (`kae use`), the login flow of `kae add`, or `kae rollback`. Only the
-// sentences that speak of the command's time or result differ; everything else
-// reads the same for all three.
+// a switch (`kae use`), the login flow of `kae add`, or `kae rollback`.
+//
+// This file is the one place the resident-process lines are worded, and these are
+// its rules (docs/CLI.md § kae use Semantics, **How the lines read**, routes here):
+//
+//   - A line names the command only where it speaks of the command's time or its
+//     result: the time words of the notice before the write (after), the session
+//     warning (session) and the kept result of a failed restart (resultKept). Every
+//     other line reads the same for all three commands.
+//   - The time words are "after the switch", "after kae add" and "after kae
+//     rollback"; in Japanese they end with a comma (切替後、), so that what follows
+//     — a kanji word or the name ChatGPT — needs no space after them.
+//   - The terminal lines do not pair the managed daemon with its command name
+//     (docs/L10N-JA.md, managed daemon); a warning that names the manual step names
+//     the command there.
+//   - In Japanese the account a line moves a process to is 「現在有効なアカウント」,
+//     or 「現在有効な codex アカウント」 where the line names codex's account.
 //
 // No method splices the command's name into a sentence: a catalog key is the
 // literal format string at its sink, so each op gets a whole sentence of its own
@@ -19,13 +39,15 @@ const (
 	residentOpRollback
 )
 
-// residentApp is what the notice before the write says about the ChatGPT app.
+// residentApp is what the notice before the write says about the running ChatGPT
+// app (desktopPlan.announced).
 type residentApp int
 
 const (
-	residentAppNone residentApp = iota // no running app the command acts on
-	residentAppAsk                     // asked about after the transaction
-	residentAppYes                     // --yes: quit and relaunched without asking
+	residentAppNone     residentApp = iota // no running app the line speaks of
+	residentAppConfirm                     // kae asks before it quits and relaunches the app
+	residentAppRelaunch                    // --yes: kae quits and relaunches it without asking
+	residentAppLeft                        // --no-restart or the hook shape leaves it running
 )
 
 // after is the time words of the notice before the write.
@@ -44,15 +66,15 @@ func (op residentOp) after() message {
 // nothing to either.
 func residentAction(daemon bool, app residentApp) (m message, ok bool) {
 	switch {
-	case daemon && app == residentAppAsk:
+	case daemon && app == residentAppConfirm:
 		return msgf("restart the managed daemon and ask whether to quit and relaunch the ChatGPT app"), true
-	case daemon && app == residentAppYes:
+	case daemon && app == residentAppRelaunch:
 		return msgf("restart the managed daemon and quit and relaunch the ChatGPT app"), true
 	case daemon:
 		return msgf("restart the managed daemon"), true
-	case app == residentAppAsk:
+	case app == residentAppConfirm:
 		return msgf("ask whether to quit and relaunch the ChatGPT app"), true
-	case app == residentAppYes:
+	case app == residentAppRelaunch:
 		return msgf("quit and relaunch the ChatGPT app"), true
 	}
 	return message{}, false
@@ -68,30 +90,26 @@ func (op residentOp) planned(action message) message {
 	return msgf("codex: %s, kae would %s", op.after(), action)
 }
 
-// optedOutMessage is the one warning under --no-restart for the daemon (daemon)
-// and the app (app), naming the manual steps; ok is false when neither is owed.
-func optedOutMessage(daemon, app bool, manual func() string) (m message, ok bool) {
-	switch {
-	case daemon && app:
-		return msgf("codex: --no-restart: kae does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: %s", manual()), true
-	case daemon:
-		return msgf("codex: --no-restart: kae does not restart the managed daemon; to move it to the live account, run: %s", manual()), true
-	case app:
-		return msgf("codex: --no-restart: kae does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it"), true
+// suppressedReason is why a run restarts and quits nothing: --no-restart, or the
+// hook shape (--auto), which only a switch has.
+func suppressedReason(hook bool) message {
+	if hook {
+		return msgf("the enter hook, --auto")
 	}
-	return message{}, false
+	return msgf("--no-restart")
 }
 
-// hookMessage is optedOutMessage for the hook shape (--auto), which only a switch
-// has.
-func hookMessage(daemon, app bool, manual func() string) (m message, ok bool) {
+// suppressedMessage is the one warning, before the write, for the daemon
+// (daemon) and the app (app) that reason leaves as they are, naming the manual
+// steps; ok is false when it leaves neither.
+func suppressedMessage(reason message, daemon, app bool, manual func() string) (m message, ok bool) {
 	switch {
 	case daemon && app:
-		return msgf("codex: the enter hook (--auto) does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: %s", manual()), true
+		return msgf("codex: kae does not restart the managed daemon or the ChatGPT app (%s); to move them to the live account, quit and reopen the app, and run: %s", reason, manual()), true
 	case daemon:
-		return msgf("codex: the enter hook (--auto) does not restart the managed daemon; to move it to the live account, run: %s", manual()), true
+		return msgf("codex: kae does not restart the managed daemon (%s); to move it to the live account, run: %s", reason, manual()), true
 	case app:
-		return msgf("codex: the enter hook (--auto) does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it"), true
+		return msgf("codex: kae does not relaunch the ChatGPT app (%s); to move it to the live account, quit and reopen it", reason), true
 	}
 	return message{}, false
 }
@@ -106,15 +124,15 @@ func daemonUnknownMessage(manual string) message {
 func (op residentOp) session(dryRun bool) message {
 	switch {
 	case op == residentOpLogin:
-		return msgf("codex sessions started before kae add keep the previous account until they are restarted")
+		return msgf("codex sessions started before kae add and not connected to the managed daemon keep the previous account until they are restarted")
 	case op == residentOpRollback && dryRun:
-		return msgf("codex sessions started before kae rollback would keep the previous account until they are restarted")
+		return msgf("codex sessions started before kae rollback and not connected to the managed daemon would keep the previous account until they are restarted")
 	case op == residentOpRollback:
-		return msgf("codex sessions started before kae rollback keep the previous account until they are restarted")
+		return msgf("codex sessions started before kae rollback and not connected to the managed daemon keep the previous account until they are restarted")
 	case dryRun:
-		return msgf("codex sessions started before the switch would keep the previous account until they are restarted")
+		return msgf("codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted")
 	}
-	return msgf("codex sessions started before the switch keep the previous account until they are restarted")
+	return msgf("codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted")
 }
 
 // restartTimedOut, restartNotRun and restartExited are the warnings of a restart
@@ -150,34 +168,82 @@ func (op residentOp) resultKept() message {
 	return msgf("the switch is kept")
 }
 
-// daemonRestartedMessage is the note of a verified restart, when no relaunched app
-// shares its line.
-func daemonRestartedMessage() message {
-	return msgf("codex: restarted the managed daemon")
+// restartUnverifiedMessage is the warning of a restart kae could not confirm.
+func restartUnverifiedMessage(manual string) message {
+	return msgf("codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: %s", manual)
 }
 
-// appRelaunchedMessage is the note of a relaunched app, when no verified restart
-// shares its line.
-func appRelaunchedMessage() message {
-	return msgf("codex: relaunched the ChatGPT app")
+// residentDone is the success of a reconcile: a verified restart, a relaunched
+// app, or both on one line. It is a phrase, said after the command's result line
+// (residentSlot.printDone).
+func residentDone(restarted, relaunched bool) (m message, ok bool) {
+	switch {
+	case restarted && relaunched:
+		return msgf("restarted the managed daemon and the ChatGPT app"), true
+	case restarted:
+		return msgf("restarted the managed daemon"), true
+	case relaunched:
+		return msgf("relaunched the ChatGPT app"), true
+	}
+	return message{}, false
 }
 
-// bothRestartedMessage is the one note of a verified restart and a relaunched app.
-func bothRestartedMessage() message {
-	return msgf("codex: restarted the managed daemon and the ChatGPT app")
+// underReport is a success phrase as the indented line under the command's
+// result line, with no prefix.
+func underReport(done message) message {
+	return msgf("  codex: %s", done)
 }
+
+// alone is a success phrase as a `kae: note:` line, for a run that prints no
+// result line to put it under (--json, --quiet).
+func alone(done message) message {
+	return msgf("codex: %s", done)
+}
+
+// printUnderReport writes m on stderr with no prefix.
+func printUnderReport(m message) {
+	fmt.Fprintln(os.Stderr, l10n.Render(m))
+}
+
+// The ChatGPT app's warnings and its note of an app closed meanwhile.
 
 // desktopCannotAskMessage is the warning of a run that cannot ask, without --yes.
 func desktopCannotAskMessage() message {
 	return msgf("codex: kae cannot ask here whether to relaunch the ChatGPT app (no terminal, or --json); to move it to the live account, quit and reopen it, or pass --yes")
 }
 
-// desktopQuitFailedMessage is the warning of a quit request that failed.
-func desktopQuitFailedMessage() message {
-	return msgf("codex: could not ask the ChatGPT app to quit; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again")
-}
-
 // desktopUnknownMessage is the warning when kae cannot tell whether the app runs.
 func desktopUnknownMessage() message {
 	return msgf("codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to move it to the live account")
+}
+
+// desktopDeclinedMessage is the warning of an answer no.
+func desktopDeclinedMessage() message {
+	return msgf("codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it")
+}
+
+// desktopClosedMessage is the note of an app the user closed before kae asked it
+// to quit.
+func desktopClosedMessage() message {
+	return msgf("codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it")
+}
+
+// desktopRelaunchFailedMessage is the warning of an app that quit but did not open.
+func desktopRelaunchFailedMessage(bundleID string) message {
+	return msgf("codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself", bundleID)
+}
+
+// desktopQuitTimeoutMessage is the warning of an app still running at the deadline.
+func desktopQuitTimeoutMessage() message {
+	return msgf("codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it")
+}
+
+// desktopQuitDeniedMessage is the warning when macOS refused kae control of the app.
+func desktopQuitDeniedMessage() message {
+	return msgf("codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again")
+}
+
+// desktopQuitFailedMessage is the warning of a quit request that failed.
+func desktopQuitFailedMessage() message {
+	return msgf("codex: could not ask the ChatGPT app to quit; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again")
 }

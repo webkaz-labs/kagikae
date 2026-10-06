@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -214,8 +215,8 @@ const (
 	appPrompt         = "Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: "
 	appNoticeAhead    = "kae: note: codex: after the switch, kae will ask whether to quit and relaunch the ChatGPT app"
 	appNoticePlanned  = "kae: note: codex: after the switch, kae would quit and relaunch the ChatGPT app"
-	appWarnOptedOut   = "kae: warning: codex: --no-restart: kae does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it"
-	appWarnHook       = "kae: warning: codex: the enter hook (--auto) does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it"
+	appWarnOptedOut   = "kae: warning: codex: kae does not relaunch the ChatGPT app (--no-restart); to move it to the live account, quit and reopen it"
+	appWarnHook       = "kae: warning: codex: kae does not relaunch the ChatGPT app (the enter hook, --auto); to move it to the live account, quit and reopen it"
 	appWarnCannotAsk  = "kae: warning: codex: kae cannot ask here whether to relaunch the ChatGPT app (no terminal, or --json); to move it to the live account, quit and reopen it, or pass --yes"
 	appWarnUnknown    = "kae: warning: codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to move it to the live account"
 	appWarnDeclined   = "kae: warning: codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it"
@@ -230,9 +231,11 @@ const (
 	bothNoticeAhead   = "kae: note: codex: after the switch, kae will restart the managed daemon and ask whether to quit and relaunch the ChatGPT app"
 	bothNoticeYes     = "kae: note: codex: after the switch, kae will restart the managed daemon and quit and relaunch the ChatGPT app"
 	bothNoteRestarted = "kae: note: codex: restarted the managed daemon and the ChatGPT app"
-	addBothNoticeYes  = "kae: note: codex: after kae add, kae will restart the managed daemon and quit and relaunch the ChatGPT app"
-	rbBothNoticeYes   = "kae: note: codex: after kae rollback, kae will restart the managed daemon and quit and relaunch the ChatGPT app"
-	rbBothPlanYes     = "kae: note: codex: after kae rollback, kae would restart the managed daemon and quit and relaunch the ChatGPT app"
+	// The same under the command's result line, in a text report.
+	bothDoneLine     = "  codex: restarted the managed daemon and the ChatGPT app"
+	addBothNoticeYes = "kae: note: codex: after kae add, kae will restart the managed daemon and quit and relaunch the ChatGPT app"
+	rbBothNoticeYes  = "kae: note: codex: after kae rollback, kae will restart the managed daemon and quit and relaunch the ChatGPT app"
+	rbBothPlanYes    = "kae: note: codex: after kae rollback, kae would restart the managed daemon and quit and relaunch the ChatGPT app"
 	// Every notice before the write that announces a quit starts with this.
 	appAheadPrefix = "kae: note: codex: after the switch, kae will "
 	// Any line about the app contains this.
@@ -266,8 +269,8 @@ func TestUseAsksThenQuitsAndRelaunchesTheChatGPTApp(t *testing.T) {
 				t.Errorf("prompt = %q, want %q", term.out.String(), appPrompt)
 			}
 			chatgpt.wantRelaunched(t, 1)
-			requireLines(t, stderr, bothNoticeAhead, bothNoteRestarted)
-			if strings.Index(stderr, bothNoticeAhead) > strings.Index(stderr, bothNoteRestarted) {
+			requireLines(t, stderr, bothNoticeAhead, bothDoneLine)
+			if strings.Index(stderr, bothNoticeAhead) > strings.Index(stderr, bothDoneLine) {
 				t.Errorf("the outcome precedes the notice:\n%s", stderr)
 			}
 			assertNoResidentPII(t, stdout, stderr, term.out.String())
@@ -511,7 +514,10 @@ func TestUseChatGPTAppUnknown(t *testing.T) {
 			stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON, Yes: true}, constants.ToolCodex, "main")
 			wantAppResidents(t, stdout, constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned)
 			chatgpt.wantCalls(t, "query")
-			requireLines(t, stderr, appWarnUnknown)
+			// Said once, before the write: an app kae cannot tell about owes no quit.
+			if n := strings.Count(stderr, appWarnUnknown+"\n"); n != 1 {
+				t.Errorf("unknown-app warning said %d times, want once:\n%s", n, stderr)
+			}
 		})
 	}
 }
@@ -598,7 +604,7 @@ func TestAddQuitsAndRelaunchesTheChatGPTApp(t *testing.T) {
 	code, stdout, stderr := f.add(t, commonOpts{Format: formatText, Yes: true}, false)
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
 	chatgpt.wantRelaunched(t, 1)
-	requireLines(t, stderr, addBothNoticeYes, bothNoteRestarted)
+	requireLines(t, stderr, addBothNoticeYes, bothDoneLine)
 	assertNoResidentPII(t, stdout, stderr)
 }
 
@@ -683,112 +689,133 @@ func TestChatGPTAppInJapanese(t *testing.T) {
 	if chatgpt.quits() != 1 {
 		t.Errorf("calls = %q, want one quit", chatgpt.calls)
 	}
-	want := "kae: note: codex: 切替後に管理デーモンを再起動し、ChatGPT アプリの再起動を確認します。\n" +
-		"kae: warning: 切替前から動いている codex セッションは、再起動するまで前のアカウントのままです。\n" +
-		"kae: note: codex: 管理デーモンと ChatGPT アプリを再起動しました。\n"
+	want := "kae: note: codex: 切替後、管理デーモンを再起動し、ChatGPT アプリの再起動を確認します。\n" +
+		"kae: warning: 管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。\n" +
+		"  codex: 管理デーモンと ChatGPT アプリを再起動しました\n"
 	if stderr != want {
 		t.Errorf("stderr =\n%s\nwant\n%s", stderr, want)
 	}
 }
 
-// How the lines fold (docs/CLI.md § kae use Semantics, **How the lines read**),
-// on a daemon that differs and a running app, in English and in Japanese: one
-// line before the write for both, or one warning for both under --no-restart and
-// the hook shape; one line after it when the daemon restarted and the app
-// relaunched, and a line of its own for every other outcome. The whole of stderr
-// is compared, so a line said twice or a line too many fails.
+// How the lines fold and where they go (docs/CLI.md § kae use Semantics, **How
+// the lines read**), on a daemon that differs and a running app, in English and
+// in Japanese: one line before the write for both, or one warning for both under
+// --no-restart and the hook shape; after it, every warning first, then the
+// command's result line with the success — the verified restart, the relaunch, or
+// both on one line — indented under it, or as a note when no result line is
+// printed (--quiet, --json). stdout and stderr are captured together, in the
+// order they were written, and compared whole except the backup line, so a line
+// said twice, out of place or one too many fails.
 func TestResidentLinesFold(t *testing.T) {
 	const (
-		manual       = "codex app-server daemon restart"
-		jaSession    = "kae: warning: 切替前から動いている codex セッションは、再起動するまで前のアカウントのままです。"
-		jaSessionDry = "kae: warning: 切替を実行すると、切替前から動いている codex セッションは、再起動するまで前のアカウントのままになります。"
-		jaRestarted  = "kae: note: codex: 管理デーモンを再起動しました。"
-		jaRelaunched = "kae: note: codex: ChatGPT アプリを再起動しました。"
-		jaAheadYes   = "kae: note: codex: 切替後に管理デーモンと ChatGPT アプリを再起動します。"
-		jaAheadAsk   = "kae: note: codex: 切替後に管理デーモンを再起動し、ChatGPT アプリの再起動を確認します。"
-		jaDeclined   = "kae: warning: codex: ChatGPT アプリは起動したままにします。終了して起動し直すまで、起動時の codex アカウントを使い続けます。"
-		jaClosed     = "kae: note: codex: ChatGPT アプリはもう起動していないため、閉じたままにします。次に起動すると、現在有効な codex アカウントを使います。"
-		jaFailed     = "kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" + manual + " を実行してください。"
-		jaUnverified = "kae: warning: codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、" + manual + " を実行してください。"
-		jaCannotAsk  = "kae: warning: codex: ここでは ChatGPT アプリの再起動を確認できません（端末がないか、--json が指定されています）。有効なアカウントに移すには、アプリを終了して起動し直すか、--yes を指定してください。"
+		manual          = "codex app-server daemon restart"
+		switched        = "Switched codex -> main"
+		doneBoth        = "  codex: restarted the managed daemon and the ChatGPT app"
+		doneDaemon      = "  codex: restarted the managed daemon"
+		doneApp         = "  codex: relaunched the ChatGPT app"
+		jaSwitched      = "切り替えました: codex -> main"
+		jaDoneBoth      = "  codex: 管理デーモンと ChatGPT アプリを再起動しました"
+		jaDoneDaemon    = "  codex: 管理デーモンを再起動しました"
+		jaDoneApp       = "  codex: ChatGPT アプリを再起動しました"
+		jaAheadAsk      = "kae: note: codex: 切替後、管理デーモンを再起動し、ChatGPT アプリの再起動を確認します。"
+		jaAheadYes      = "kae: note: codex: 切替後、管理デーモンと ChatGPT アプリを再起動します。"
+		jaAheadDaemon   = "kae: note: codex: 切替後、管理デーモンを再起動します。"
+		jaAheadApp      = "kae: note: codex: 切替後、ChatGPT アプリの再起動を確認します。"
+		jaPlannedBoth   = "kae: note: codex: 切替後、管理デーモンを再起動し、ChatGPT アプリの再起動を確認します（--dry-run のため、実際には行いません）。"
+		jaPlannedDaemon = "kae: note: codex: 切替後、管理デーモンを再起動します（--dry-run のため、実際には行いません）。"
+		jaSession       = "kae: warning: 管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。"
+		jaSessionDry    = "kae: warning: 切替を実行すると、管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままになります。"
+		jaDeclined      = "kae: warning: codex: ChatGPT アプリは起動したままにします。終了して起動し直すまで、起動時の codex アカウントを使い続けます。"
+		jaClosed        = "kae: note: codex: ChatGPT アプリはもう起動していないため、閉じたままにします。次に起動すると、現在有効な codex アカウントを使います。"
+		jaFailed        = "kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" + manual + " を実行してください。"
+		jaUnverified    = "kae: warning: codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、" + manual + " を実行してください。"
+		jaCannotAsk     = "kae: warning: codex: ここでは ChatGPT アプリの再起動を確認できません（端末がないか、--json が指定されています）。現在有効なアカウントに移すには、アプリを終了して起動し直すか、--yes を指定してください。"
 	)
 	explicit := func(ctx context.Context, app *App, o commonOpts) int {
 		return runSwitch(ctx, app, o, constants.ToolCodex, "main")
+	}
+	quietBare := func(ctx context.Context, app *App, o commonOpts) int {
+		return runUseBare(ctx, app, o, false, "main", true)
 	}
 	hook := func(ctx context.Context, app *App, o commonOpts) int {
 		return runUseAuto(ctx, app, o, "main", true)
 	}
 	for _, tc := range []struct {
-		name    string
-		opts    commonOpts
-		run     func(context.Context, *App, commonOpts) int
-		answer  string // typed on a terminal; "" is no terminal
-		restart func(*testing.T, *residentFixture) func(*restartCall) int
-		recheck string
-		en, ja  []string
+		name     string
+		opts     commonOpts
+		run      func(context.Context, *App, commonOpts) int
+		noDaemon bool
+		answer   string // typed on a terminal; "" is no terminal
+		restart  func(*testing.T, *residentFixture) func(*restartCall) int
+		recheck  string
+		stderr   bool // compare stderr alone: the run's stdout is a plan or JSON
+		en, ja   []string
 	}{
 		{
-			"restarted and relaunched",
-			commonOpts{},
-			explicit, "y\n", restartsToLive, "",
-			[]string{bothNoticeAhead, warnSession, bothNoteRestarted},
-			[]string{jaAheadAsk, jaSession, "kae: note: codex: 管理デーモンと ChatGPT アプリを再起動しました。"},
+			name: "restarted and relaunched", run: explicit, answer: "y\n", restart: restartsToLive,
+			en: []string{bothNoticeAhead, warnSession, switched, doneBoth},
+			ja: []string{jaAheadAsk, jaSession, jaSwitched, jaDoneBoth},
 		},
 		{
-			"restarted and declined",
-			commonOpts{},
-			explicit, "n\n", restartsToLive, "",
-			[]string{bothNoticeAhead, warnSession, noteRestarted, appWarnDeclined},
-			[]string{jaAheadAsk, jaSession, jaRestarted, jaDeclined},
+			name: "app only", run: explicit, noDaemon: true, answer: "y\n",
+			en: []string{appNoticeAhead, warnSession, switched, doneApp},
+			ja: []string{jaAheadApp, jaSession, jaSwitched, jaDoneApp},
 		},
 		{
-			"restarted and closed meanwhile",
-			commonOpts{Yes: true},
-			explicit, "", restartsToLive, "closed",
-			[]string{bothNoticeYes, warnSession, noteRestarted, appNoteClosed},
-			[]string{jaAheadYes, jaSession, jaRestarted, jaClosed},
+			name: "restarted and declined", run: explicit, answer: "n\n", restart: restartsToLive,
+			en: []string{bothNoticeAhead, warnSession, appWarnDeclined, switched, doneDaemon},
+			ja: []string{jaAheadAsk, jaSession, jaDeclined, jaSwitched, jaDoneDaemon},
 		},
 		{
-			"restart failed and relaunched",
-			commonOpts{Yes: true},
-			explicit, "", restartExits(3), "",
-			[]string{bothNoticeYes, warnSession, warnFailed, appNoteRelaunched},
-			[]string{jaAheadYes, jaSession, jaFailed, jaRelaunched},
+			name: "restarted and closed meanwhile", opts: commonOpts{Yes: true}, run: explicit, restart: restartsToLive, recheck: "closed",
+			en: []string{bothNoticeYes, warnSession, appNoteClosed, switched, doneDaemon},
+			ja: []string{jaAheadYes, jaSession, jaClosed, jaSwitched, jaDoneDaemon},
 		},
 		{
-			"restart unverified and relaunched",
-			commonOpts{Yes: true},
-			explicit, "", restartExits(0), "",
-			[]string{bothNoticeYes, warnSession, warnUnverfied, appNoteRelaunched},
-			[]string{jaAheadYes, jaSession, jaUnverified, jaRelaunched},
+			name: "restart failed and relaunched", opts: commonOpts{Yes: true}, run: explicit, restart: restartExits(3),
+			en: []string{bothNoticeYes, warnSession, warnFailed, switched, doneApp},
+			ja: []string{jaAheadYes, jaSession, jaFailed, jaSwitched, jaDoneApp},
 		},
 		{
-			"cannot ask",
-			commonOpts{},
-			explicit, "", restartsToLive, "",
-			[]string{noticeRestart, appWarnCannotAsk, warnSession, noteRestarted},
-			[]string{"kae: note: codex: 切替後に管理デーモンを再起動します。", jaCannotAsk, jaSession, jaRestarted},
+			name: "restart unverified and relaunched", opts: commonOpts{Yes: true}, run: explicit, restart: restartExits(0),
+			en: []string{bothNoticeYes, warnSession, warnUnverfied, switched, doneApp},
+			ja: []string{jaAheadYes, jaSession, jaUnverified, jaSwitched, jaDoneApp},
 		},
 		{
-			"no-restart",
-			commonOpts{NoRestart: true, Yes: true},
-			explicit, "", nil, "",
-			[]string{"kae: warning: codex: --no-restart: kae does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: " + manual, warnSession},
-			[]string{"kae: warning: codex: --no-restart のため、管理デーモンと ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直し、" + manual + " を実行してください。", jaSession},
+			name: "cannot ask", run: explicit, restart: restartsToLive,
+			en: []string{noticeRestart, appWarnCannotAsk, warnSession, switched, doneDaemon},
+			ja: []string{jaAheadDaemon, jaCannotAsk, jaSession, jaSwitched, jaDoneDaemon},
 		},
 		{
-			"hook",
-			commonOpts{ResidentHook: true, Yes: true},
-			hook, "", nil, "",
-			[]string{"kae: warning: codex: the enter hook (--auto) does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: " + manual, warnSession},
-			[]string{"kae: warning: codex: enter フック（--auto）では管理デーモンと ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直し、" + manual + " を実行してください。", jaSession},
+			name: "quiet", opts: commonOpts{Yes: true}, run: quietBare, restart: restartsToLive,
+			en: []string{bothNoticeYes, warnSession, "kae: note: codex: restarted the managed daemon and the ChatGPT app"},
+			ja: []string{jaAheadYes, jaSession, "kae: note: codex: 管理デーモンと ChatGPT アプリを再起動しました。"},
 		},
 		{
-			"dry-run",
-			commonOpts{DryRun: true},
-			explicit, "y\n", nil, "",
-			[]string{"kae: note: codex: after the switch, kae would restart the managed daemon and ask whether to quit and relaunch the ChatGPT app", warnSessionDry},
-			[]string{"kae: note: codex: 実行すると、切替後に管理デーモンを再起動し、ChatGPT アプリの再起動を確認します。", jaSessionDry},
+			name: "json", opts: commonOpts{Yes: true, Format: formatJSON}, run: explicit, restart: restartsToLive, stderr: true,
+			en: []string{bothNoticeYes, warnSession, "kae: note: codex: restarted the managed daemon and the ChatGPT app"},
+			ja: []string{jaAheadYes, jaSession, "kae: note: codex: 管理デーモンと ChatGPT アプリを再起動しました。"},
+		},
+		{
+			name: "no-restart", opts: commonOpts{NoRestart: true, Yes: true}, run: explicit,
+			en: []string{"kae: warning: codex: kae does not restart the managed daemon or the ChatGPT app (--no-restart); to move them to the live account, quit and reopen the app, and run: " + manual, warnSession, switched},
+			ja: []string{"kae: warning: codex: --no-restart のため、管理デーモンと ChatGPT アプリを再起動しません。現在有効なアカウントに移すには、アプリを終了して起動し直し、" + manual + " を実行してください。", jaSession, jaSwitched},
+		},
+		{
+			name: "hook", opts: commonOpts{ResidentHook: true, Yes: true}, run: hook,
+			en: []string{"kae: warning: codex: kae does not restart the managed daemon or the ChatGPT app (the enter hook, --auto); to move them to the live account, quit and reopen the app, and run: " + manual, warnSession},
+			ja: []string{"kae: warning: codex: enter フック（--auto）のため、管理デーモンと ChatGPT アプリを再起動しません。現在有効なアカウントに移すには、アプリを終了して起動し直し、" + manual + " を実行してください。", jaSession},
+		},
+		{
+			name: "dry-run", opts: commonOpts{DryRun: true}, run: explicit, answer: "y\n", stderr: true,
+			en: []string{"kae: note: codex: after the switch, kae would restart the managed daemon and ask whether to quit and relaunch the ChatGPT app", warnSessionDry},
+			ja: []string{jaPlannedBoth, jaSessionDry},
+		},
+		{
+			// A dry-run says what a real run would: it could not ask here either.
+			name: "dry-run cannot ask", opts: commonOpts{DryRun: true}, run: explicit, stderr: true,
+			en: []string{noticePlanned, appWarnCannotAsk, warnSessionDry},
+			ja: []string{jaPlannedDaemon, jaCannotAsk, jaSessionDry},
 		},
 	} {
 		for _, japanese := range []bool{false, true} {
@@ -797,7 +824,9 @@ func TestResidentLinesFold(t *testing.T) {
 					l10ntest.UseJapanese(t)
 				}
 				f := newResidentFixture(t)
-				f.withDaemon(t, residentSide)
+				if !tc.noDaemon {
+					f.withDaemon(t, residentSide)
+				}
 				if tc.restart != nil {
 					f.stubRestart(t, tc.restart(t, f))
 				}
@@ -807,20 +836,64 @@ func TestResidentLinesFold(t *testing.T) {
 					f.answering(tc.answer)
 				}
 				opts := tc.opts
-				opts.Format = formatText
-				code, stdout, stderr := captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
-				mustExit(t, constants.ExitOK, code, stdout+stderr)
+				if opts.Format == "" {
+					opts.Format = formatText
+				}
+				var code int
+				var got string
+				if tc.stderr {
+					var stdout string
+					code, stdout, got = captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
+					assertNoResidentPII(t, stdout, got)
+				} else {
+					code, got = captureMerged(t, func() int { return tc.run(context.Background(), f.app, opts) })
+					assertNoResidentPII(t, got)
+				}
+				mustExit(t, constants.ExitOK, code, got)
 				lines := tc.en
 				if japanese {
 					lines = tc.ja
 				}
-				if want := strings.Join(lines, "\n") + "\n"; stderr != want {
-					t.Errorf("stderr =\n%s\nwant\n%s", stderr, want)
+				if want := strings.Join(lines, "\n") + "\n"; withoutBackupLine(got) != want {
+					t.Errorf("output =\n%s\nwant\n%s", got, want)
 				}
-				assertNoResidentPII(t, stdout, stderr)
 			})
 		}
 	}
+}
+
+// captureMerged is captureBoth with stdout and stderr on one pipe, so the output
+// keeps the order the two were written in.
+func captureMerged(t *testing.T, run func() int) (int, string) {
+	t.Helper()
+	oldOut, oldErr := os.Stdout, os.Stderr
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout, os.Stderr = write, write
+	code := run()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, string(out)
+}
+
+// withoutBackupLine drops a switch report's backup line, whose id varies.
+func withoutBackupLine(out string) string {
+	var kept []string
+	for _, line := range strings.SplitAfter(out, "\n") {
+		if strings.HasPrefix(line, "Backup: ") || strings.HasPrefix(line, "バックアップ: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "")
 }
 
 // restartsToLive is the restart that moves f's daemon to the live account
@@ -832,4 +905,39 @@ func restartExits(code int) func(*testing.T, *residentFixture) func(*restartCall
 	return func(*testing.T, *residentFixture) func(*restartCall) int {
 		return func(*restartCall) int { return code }
 	}
+}
+
+// kae add prints its result line after the reconcile, and kae rollback under its
+// codex item, so the success sits under the line of the command's result there
+// too, with nothing after it.
+func TestAddAndRollbackPutTheSuccessUnderTheResultLine(t *testing.T) {
+	t.Run("add", func(t *testing.T) {
+		f := newResidentFixture(t)
+		f.withDaemon(t, residentSide)
+		f.stubRestart(t, f.restartTo(t))
+		f.loginAs(t, codexChatGPTAuth(residentMain, "codex-login-token"))
+		f.app.pinnedGlobalScope()
+		f.withChatGPT(t)
+		code, out := captureMerged(t, func() int {
+			return runLogin(context.Background(), f.app, commonOpts{Format: formatText, Yes: true}, constants.ToolCodex, "main", false)
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if want := "\nCaptured codex/main (now active)\n" + bothDoneLine + "\n"; !strings.HasSuffix(out, want) {
+			t.Errorf("output does not end with %q:\n%s", want, out)
+		}
+	})
+	t.Run("rollback", func(t *testing.T) {
+		f := newRollbackFixture(t)
+		f.withDaemon(t, residentMain)
+		f.stubRestart(t, f.restartTo(t))
+		f.withChatGPT(t)
+		code, out := captureMerged(t, func() int {
+			return runRollback(context.Background(), f.app, commonOpts{Format: formatText, Yes: true}, "")
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		item := strings.Index(out, "\n  codex: ")
+		if item < 0 || !strings.HasSuffix(out[item:], " artifact(s)\n"+bothDoneLine+"\n") {
+			t.Errorf("the success does not follow the codex item at the end:\n%s", out)
+		}
+	})
 }

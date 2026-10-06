@@ -131,7 +131,11 @@ func runRollback(ctx context.Context, app *App, opts commonOpts, toID string) in
 		app.reconcileSlot(ctx, &report.Restored[i].residentSlot)
 	}
 	if opts.Format == formatJSON {
-		return encodeJSON(report)
+		code := encodeJSON(report)
+		for i := range report.Restored {
+			report.Restored[i].printDone(false)
+		}
+		return code
 	}
 	printRollback(report)
 	return constants.ExitOK
@@ -143,8 +147,11 @@ func printRollback(report *rollbackReport) {
 	} else {
 		reportf("Rolled back to backup %s", report.BackupID)
 	}
-	for _, item := range report.Restored {
+	for i := range report.Restored {
+		item := &report.Restored[i]
 		reportf("  %s: %d artifact(s)", item.Tool, item.Artifacts)
+		// A resident reconcile's success, under the line of its tool.
+		item.printDone(true)
 	}
 }
 

@@ -21,52 +21,75 @@ const defaultDesktopQueryTimeout = 5 * time.Second
 // desktopPlan is how a command treats one running desktop app that keeps the
 // tool's previous account (docs/CLI.md § kae use Semantics, **Resident processes
 // (codex)**, step 5 and the ChatGPT app's `outcome` table). It is decided before
-// the transaction, from the flags and whether kae can ask; only desktopAsk and
-// desktopYes act afterwards.
-type desktopPlan int
+// the transaction: the run's stance, and, for a run that acts or would act, how
+// kae gets consent. Only a run that acts with consentAsk or consentYes acts
+// afterwards.
+type desktopPlan struct {
+	stance  residentStance
+	consent desktopConsent // for stanceAct and stanceDryRun; zero otherwise
+}
+
+// desktopConsent is how kae gets the user's consent to quit the app.
+type desktopConsent int
 
 const (
-	desktopOptedOut  desktopPlan = iota + 1 // --no-restart
-	desktopHook                             // the hook shape (--auto), even with --yes
-	desktopDryRun                           // --dry-run
-	desktopCannotAsk                        // no terminal or --json, without --yes
-	desktopAsk                              // ask on the terminal after the transaction
-	desktopYes                              // --yes: quit and relaunch without asking
+	consentAsk       desktopConsent = iota + 1 // ask on the terminal after the transaction
+	consentYes                                 // --yes: quit and relaunch without asking
+	consentCannotAsk                           // no terminal or --json, without --yes
 )
 
-// planDesktop decides p for a running app. The order is the outcome table's:
-// --no-restart, then the hook shape, then --dry-run, and --yes only after them.
-// canAsk is called only when the answer matters, since it opens the terminal.
+// planDesktop decides p for a running app. The stance takes the one precedence
+// (residentMode.stance), and --yes counts only after it. canAsk is called only
+// when the answer matters, since it opens the terminal; it has no other side
+// effect, so a --dry-run asks it too and says what a real run would.
 func planDesktop(mode residentMode, canAsk func() bool) desktopPlan {
-	switch {
-	case mode.noRestart:
-		return desktopOptedOut
-	case mode.hook:
-		return desktopHook
-	case mode.dryRun:
-		return desktopDryRun
-	case mode.yes:
-		return desktopYes
-	case mode.json || !canAsk():
-		return desktopCannotAsk
+	p := desktopPlan{stance: mode.stance()}
+	if p.stance == stanceOptedOut || p.stance == stanceHook {
+		return p
 	}
-	return desktopAsk
+	switch {
+	case mode.yes:
+		p.consent = consentYes
+	case mode.json || !canAsk():
+		p.consent = consentCannotAsk
+	default:
+		p.consent = consentAsk
+	}
+	return p
 }
 
 // outcome is the entry's outcome before the transaction. An app the command
-// will act on reads `planned` until the quit settles it.
+// will act on, and any app under --dry-run, reads `planned` until the quit settles
+// it.
 func (p desktopPlan) outcome() string {
-	switch p {
-	case desktopOptedOut:
+	switch {
+	case p.stance == stanceOptedOut:
 		return constants.ResidentOutcomeOptedOut
-	case desktopHook, desktopCannotAsk:
+	case p.stance == stanceHook, p.stance == stanceAct && p.consent == consentCannotAsk:
 		return constants.ResidentOutcomeWarned
 	}
 	return constants.ResidentOutcomePlanned
 }
 
-// owed reports whether the command acts on the app after the transaction.
-func (p desktopPlan) owed() bool { return p == desktopAsk || p == desktopYes }
+// owed reports whether the command acts on the app after the transaction: only
+// a run that acts and has, or will ask for, consent. The zero plan of an app kae
+// cannot tell about owes nothing.
+func (p desktopPlan) owed() bool {
+	return p.stance == stanceAct && (p.consent == consentAsk || p.consent == consentYes)
+}
+
+// announced is what the notice before the write says kae does to the app.
+func (p desktopPlan) announced() residentApp {
+	switch {
+	case p.stance == stanceOptedOut, p.stance == stanceHook:
+		return residentAppLeft
+	case p.consent == consentYes:
+		return residentAppRelaunch
+	case p.consent == consentAsk:
+		return residentAppConfirm
+	}
+	return residentAppNone
+}
 
 // pendingQuit is a desktop app a command owes a confirmation and a quit, once
 // the transaction has succeeded, its locks are released and the daemon's
@@ -142,8 +165,8 @@ func (app *App) desktopQueryLimit() time.Duration {
 	return defaultDesktopQueryTimeout
 }
 
-// residentLine is one stderr line of a resident outcome, held so that
-// reconcileSlot can put it after the daemon's line or fold it into it.
+// residentLine is one stderr line of an app's outcome, returned rather than
+// printed so that reconcileSlot can hold a relaunch back for the success line.
 type residentLine struct {
 	m    message
 	warn bool
@@ -168,7 +191,7 @@ func (l residentLine) print() {
 // the unknown rule (`unknown`, `warned`). Every result but a relaunch and a
 // closed app is a warning; none changes the exit code.
 func (app *App) quitDesktopApp(ctx context.Context, q pendingQuit) residentLine {
-	if q.plan == desktopAsk {
+	if q.plan.consent == consentAsk {
 		yes, asked := app.confirmDesktopQuit()
 		if !asked {
 			q.entry.Outcome = constants.ResidentOutcomeWarned
@@ -176,14 +199,14 @@ func (app *App) quitDesktopApp(ctx context.Context, q pendingQuit) residentLine 
 		}
 		if !yes {
 			q.entry.Outcome = constants.ResidentOutcomeDeclined
-			return warnLine(msgf("codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it"))
+			return warnLine(desktopDeclinedMessage())
 		}
 	}
 	switch app.desktopAppState(ctx, q.bundleID) {
 	case desktopapp.StateRunning:
 	case desktopapp.StateNotRunning:
 		q.entry.Outcome = constants.ResidentOutcomeNone
-		return noteLine(msgf("codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it"))
+		return noteLine(desktopClosedMessage())
 	default:
 		q.entry.Observed = constants.ResidentObservedUnknown
 		q.entry.Outcome = constants.ResidentOutcomeWarned
@@ -205,16 +228,18 @@ func (app *App) quitDesktopApp(ctx context.Context, q pendingQuit) residentLine 
 func reportDesktopOutcome(outcome desktopapp.Outcome, bundleID string) (string, residentLine) {
 	switch outcome {
 	case desktopapp.OutcomeRelaunched:
-		return constants.ResidentOutcomeRelaunched, noteLine(appRelaunchedMessage())
+		// reconcileSlot holds the first relaunch for the line after the result.
+		done, _ := residentDone(false, true)
+		return constants.ResidentOutcomeRelaunched, noteLine(alone(done))
 	case desktopapp.OutcomeRelaunchFailed:
 		return constants.ResidentOutcomeRelaunchFailed,
-			warnLine(msgf("codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself", bundleID))
+			warnLine(desktopRelaunchFailedMessage(bundleID))
 	case desktopapp.OutcomeQuitTimeout:
 		return constants.ResidentOutcomeQuitTimeout,
-			warnLine(msgf("codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it"))
+			warnLine(desktopQuitTimeoutMessage())
 	case desktopapp.OutcomeQuitDenied:
 		return constants.ResidentOutcomeQuitDenied,
-			warnLine(msgf("codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again"))
+			warnLine(desktopQuitDeniedMessage())
 	}
 	return constants.ResidentOutcomeQuitFailed, warnLine(desktopQuitFailedMessage())
 }

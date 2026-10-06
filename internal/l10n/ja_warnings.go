@@ -240,11 +240,11 @@ var jaWarnings = map[string]string{
 	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
 	// resident_reconcile.go and resident_wording.go.
-	"after the switch": "切替後に",
+	"after the switch": "切替後、",
 
-	"after kae add": "kae add の後に",
+	"after kae add": "kae add の後、",
 
-	"after kae rollback": "kae rollback の後に",
+	"after kae rollback": "kae rollback の後、",
 
 	"restart the managed daemon and ask whether to quit and relaunch the ChatGPT app": "管理デーモンを再起動し、ChatGPT アプリの再起動を確認します",
 
@@ -258,43 +258,47 @@ var jaWarnings = map[string]string{
 
 	"codex: %s, kae will %s": "codex: %s%s。",
 
-	"codex: %s, kae would %s": "codex: 実行すると、%s%s。",
+	"codex: %s, kae would %s": "codex: %s%s（--dry-run のため、実際には行いません）。",
 
-	"codex: --no-restart: kae does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: %s": "codex: --no-restart のため、管理デーモンと ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直し、%s を実行してください。",
+	"the enter hook, --auto": "enter フック（--auto）のため、",
 
-	"codex: --no-restart: kae does not restart the managed daemon; to move it to the live account, run: %s": "codex: --no-restart のため、管理デーモンを再起動しません。有効なアカウントに移すには、%s を実行してください。",
+	"--no-restart": "--no-restart のため、",
 
-	"codex: --no-restart: kae does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it": "codex: --no-restart のため、ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直してください。",
+	"codex: kae does not restart the managed daemon or the ChatGPT app (%s); to move them to the live account, quit and reopen the app, and run: %s": "codex: %[1]s管理デーモンと ChatGPT アプリを再起動しません。現在有効なアカウントに移すには、アプリを終了して起動し直し、%[2]s を実行してください。",
 
-	"codex: the enter hook (--auto) does not restart the managed daemon or the ChatGPT app; to move them to the live account, quit and reopen the app, and run: %s": "codex: enter フック（--auto）では管理デーモンと ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直し、%s を実行してください。",
+	"codex: kae does not restart the managed daemon (%s); to move it to the live account, run: %s": "codex: %[1]s管理デーモンを再起動しません。現在有効なアカウントに移すには、%[2]s を実行してください。",
 
-	"codex: the enter hook (--auto) does not restart the managed daemon; to move it to the live account, run: %s": "codex: enter フック（--auto）では管理デーモンを再起動しません。有効なアカウントに移すには、%s を実行してください。",
+	"codex: kae does not relaunch the ChatGPT app (%s); to move it to the live account, quit and reopen it": "codex: %sChatGPT アプリを再起動しません。現在有効なアカウントに移すには、アプリを終了して起動し直してください。",
 
-	"codex: the enter hook (--auto) does not relaunch the ChatGPT app; to move it to the live account, quit and reopen it": "codex: enter フック（--auto）では ChatGPT アプリを再起動しません。有効なアカウントに移すには、アプリを終了して起動し直してください。",
+	"codex: could not read the managed daemon's account; if it is not on the live account, run: %s": "codex: 管理デーモンのアカウントを読み取れませんでした。現在有効なアカウントでない場合は、%s を実行してください。",
 
-	"codex: could not read the managed daemon's account; if it is not on the live account, run: %s": "codex: 管理デーモンのアカウントを読み取れませんでした。有効なアカウントでない場合は、%s を実行してください。",
+	"codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted": "管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。",
 
-	"codex sessions started before the switch keep the previous account until they are restarted": "切替前から動いている codex セッションは、再起動するまで前のアカウントのままです。",
+	"codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted": "切替を実行すると、管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままになります。",
 
-	"codex sessions started before the switch would keep the previous account until they are restarted": "切替を実行すると、切替前から動いている codex セッションは、再起動するまで前のアカウントのままになります。",
+	"codex sessions started before kae add and not connected to the managed daemon keep the previous account until they are restarted": "kae add より前からあり、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントのままです。",
 
-	"codex sessions started before kae add keep the previous account until they are restarted": "kae add の前から動いている codex セッションは、再起動するまで前のアカウントのままです。",
+	"codex sessions started before kae rollback and not connected to the managed daemon keep the previous account until they are restarted": "kae rollback より前からあり、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントのままです。",
 
-	"codex sessions started before kae rollback keep the previous account until they are restarted": "kae rollback の前から動いている codex セッションは、再起動するまで前のアカウントのままです。",
+	"codex sessions started before kae rollback and not connected to the managed daemon would keep the previous account until they are restarted": "kae rollback を実行すると、それより前からあり、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントのままになります。",
 
-	"codex sessions started before kae rollback would keep the previous account until they are restarted": "kae rollback を実行すると、その前から動いている codex セッションは、再起動するまで前のアカウントのままになります。",
+	"restarted the managed daemon and the ChatGPT app": "管理デーモンと ChatGPT アプリを再起動しました",
 
-	"codex: restarted the managed daemon": "codex: 管理デーモンを再起動しました。",
+	"restarted the managed daemon": "管理デーモンを再起動しました",
 
-	"codex: relaunched the ChatGPT app": "codex: ChatGPT アプリを再起動しました。",
+	"relaunched the ChatGPT app": "ChatGPT アプリを再起動しました",
 
-	"codex: restarted the managed daemon and the ChatGPT app": "codex: 管理デーモンと ChatGPT アプリを再起動しました。",
+	"  codex: %s": "  codex: %s",
 
-	"codex: kae cannot ask here whether to relaunch the ChatGPT app (no terminal, or --json); to move it to the live account, quit and reopen it, or pass --yes": "codex: ここでは ChatGPT アプリの再起動を確認できません（端末がないか、--json が指定されています）。有効なアカウントに移すには、アプリを終了して起動し直すか、--yes を指定してください。",
+	"codex: %s": "codex: %s。",
 
-	"codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to move it to the live account": "codex: ChatGPT アプリが起動中か判断できませんでした。起動中なら、有効なアカウントに移すために、アプリを終了して起動し直してください。",
+	"codex: kae cannot ask here whether to relaunch the ChatGPT app (no terminal, or --json); to move it to the live account, quit and reopen it, or pass --yes": "codex: ここでは ChatGPT アプリの再起動を確認できません（端末がないか、--json が指定されています）。現在有効なアカウントに移すには、アプリを終了して起動し直すか、--yes を指定してください。",
 
-	"codex: %s; %s, and the managed daemon may not be using the live account yet; to retry, run: %s": "codex: %s。%sが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
+	"codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to move it to the live account": "codex: ChatGPT アプリが起動中か判断できませんでした。起動中なら、現在有効なアカウントに移すために、アプリを終了して起動し直してください。",
+
+	"codex: %s; %s, and the managed daemon may not be using the live account yet; to retry, run: %s": "codex: %s。%sが、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
+
+	"codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: %s": "codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、%s を実行してください。",
 
 	"codex app-server daemon restart did not finish within %s": "codex app-server daemon restart が %s 以内に終わりませんでした",
 
@@ -307,8 +311,6 @@ var jaWarnings = map[string]string{
 	"kae add's result is kept": "kae add の結果はそのまま有効です",
 
 	"kae rollback's result is kept": "kae rollback の結果はそのまま有効です",
-
-	"codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: %s": "codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、%s を実行してください。",
 
 	// resident_desktop.go: the ChatGPT app's outcomes.
 	"codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it": "codex: ChatGPT アプリは起動したままにします。終了して起動し直すまで、起動時の codex アカウントを使い続けます。",

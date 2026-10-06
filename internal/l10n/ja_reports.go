@@ -158,8 +158,8 @@ var jaReports = map[string]string{
 	"no blocking problems found":                                                  "先に進めない問題は見つかりませんでした",
 	"errors found; fix them before switching":                                     "エラーが見つかりました。切り替える前に修正してください",
 	"Check token companion identity over the network (e.g. gh api user)? [y/N]: ": "周辺ツールのトークンのログインを、ネットワークに接続して確認する場合（例: gh api user）は y を入力してください [y/N]: ",
-	// resident_desktop.go: the ChatGPT app's confirmation (docs/L10N-JA.md fixes its form).
-	"ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: ": "ChatGPT アプリは起動時の codex アカウントを使い続けます。アプリで実行中のタスクは中断されます。いま終了して再起動する場合は y を入力してください [y/N]: ",
+	// resident_desktop.go: the ChatGPT app's confirmation (docs/L10N-JA.md fixes its short question).
+	"Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: ": "ChatGPT アプリを終了して再起動しますか（実行中のタスクは中断されます）[y/N]: ",
 	"Config OK: %s": "設定は問題ありません: %s",
 
 	// completion_install.go.

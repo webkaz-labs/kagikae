@@ -86,10 +86,10 @@ type desktopEntry struct {
 
 // planDesktopApps is the desktop half of steps 1 and 2 for a command that
 // changes the tool's account: it asks once whether each of the holder's desktop
-// apps is running, decides what the command does about each running one, and
-// gives the notice on stderr. An app that is not running (or not installed, or
-// any app off macOS) gets no entry; one kae cannot tell about gets a warning
-// and an `unknown` entry, and nothing is done to it.
+// apps is running and decides what the command does about each running one;
+// noticeResidents gives the notice. An app that is not running (or not
+// installed, or any app off macOS) gets no entry; one kae cannot tell about gets
+// an `unknown` entry, and nothing is done to it.
 func (app *App) planDesktopApps(ctx context.Context, holder adapter.ResidentHolder, mode residentMode) []desktopEntry {
 	ids := app.desktopAppIDs(holder)
 	if len(ids) == 0 {
@@ -102,7 +102,6 @@ func (app *App) planDesktopApps(ctx context.Context, holder adapter.ResidentHold
 			continue
 		case desktopapp.StateRunning:
 			plan := planDesktop(mode, app.canPrompt)
-			noticeDesktop(mode.op, plan)
 			entries = append(entries, desktopEntry{
 				entry: residentEntry{
 					Kind: constants.ResidentKindDesktopApp, Observed: constants.ResidentObservedRunning,
@@ -112,7 +111,6 @@ func (app *App) planDesktopApps(ctx context.Context, holder adapter.ResidentHold
 				plan:     plan,
 			})
 		default:
-			warnMessage(desktopUnknownMessage())
 			entries = append(entries, desktopEntry{entry: residentEntry{
 				Kind: constants.ResidentKindDesktopApp, Observed: constants.ResidentObservedUnknown,
 				Outcome: constants.ResidentOutcomeWarned,
@@ -144,85 +142,81 @@ func (app *App) desktopQueryLimit() time.Duration {
 	return defaultDesktopQueryTimeout
 }
 
-// noticeDesktop is step 2's stderr line for a running app, in op's words where
-// the command is named.
-func noticeDesktop(op residentOp, plan desktopPlan) {
-	switch plan {
-	case desktopOptedOut:
-		warnf("codex: the ChatGPT app keeps the codex account it started with, and --no-restart leaves it running; to use the codex account now live, quit and reopen it")
-	case desktopHook:
-		// Only a switch has the hook shape.
-		warnf("codex: the ChatGPT app keeps the codex account it started with, and the enter hook (--auto) does not quit it; to use the codex account now live, quit and reopen it")
-	case desktopDryRun:
-		noteMessage(op.appPlanned())
-	case desktopCannotAsk:
-		warnMessage(desktopCannotAskMessage())
-	case desktopAsk, desktopYes:
-		noteMessage(op.appAhead())
+// residentLine is one stderr line of a resident outcome, held so that
+// reconcileSlot can put it after the daemon's line or fold it into it.
+type residentLine struct {
+	m    message
+	warn bool
+}
+
+func noteLine(m message) residentLine { return residentLine{m: m} }
+func warnLine(m message) residentLine { return residentLine{m: m, warn: true} }
+
+// print writes the line as a `kae: warning:` or a `kae: note:` line.
+func (l residentLine) print() {
+	if l.warn {
+		warnMessage(l.m)
+		return
 	}
+	noteMessage(l.m)
 }
 
 // quitDesktopApp is step 5 for one app: it asks when q's plan says so, checks
-// again that the app is still running, then quits and relaunches it, and settles
-// q's entry. An app the user closed in the meantime is left closed (`none`), and
-// one kae can no longer tell about follows the unknown rule (`unknown`,
-// `warned`). Every result but a relaunch and a closed app is a warning; none
-// changes the exit code.
-func (app *App) quitDesktopApp(ctx context.Context, q pendingQuit) {
+// again that the app is still running, then quits and relaunches it, settles q's
+// entry, and returns the line that reports it. An app the user closed in the
+// meantime is left closed (`none`), and one kae can no longer tell about follows
+// the unknown rule (`unknown`, `warned`). Every result but a relaunch and a
+// closed app is a warning; none changes the exit code.
+func (app *App) quitDesktopApp(ctx context.Context, q pendingQuit) residentLine {
 	if q.plan == desktopAsk {
 		yes, asked := app.confirmDesktopQuit()
 		if !asked {
-			warnMessage(desktopCannotAskMessage())
 			q.entry.Outcome = constants.ResidentOutcomeWarned
-			return
+			return warnLine(desktopCannotAskMessage())
 		}
 		if !yes {
-			warnf("codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it")
 			q.entry.Outcome = constants.ResidentOutcomeDeclined
-			return
+			return warnLine(msgf("codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it"))
 		}
 	}
 	switch app.desktopAppState(ctx, q.bundleID) {
 	case desktopapp.StateRunning:
 	case desktopapp.StateNotRunning:
-		notef("codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it")
 		q.entry.Outcome = constants.ResidentOutcomeNone
-		return
+		return noteLine(msgf("codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it"))
 	default:
-		warnMessage(desktopUnknownMessage())
 		q.entry.Observed = constants.ResidentObservedUnknown
 		q.entry.Outcome = constants.ResidentOutcomeWarned
-		return
+		return warnLine(desktopUnknownMessage())
 	}
 	outcome, err := app.desktopController().QuitAndRelaunch(ctx, q.bundleID)
 	if err != nil {
 		// Interrupted, or a guard of desktopapp's: the quit may not have been asked.
-		warnMessage(desktopQuitFailedMessage())
 		q.entry.Outcome = constants.ResidentOutcomeQuitFailed
-		return
+		return warnLine(desktopQuitFailedMessage())
 	}
-	q.entry.Outcome = reportDesktopOutcome(outcome, q.bundleID)
+	var line residentLine
+	q.entry.Outcome, line = reportDesktopOutcome(outcome, q.bundleID)
+	return line
 }
 
 // reportDesktopOutcome maps how QuitAndRelaunch ended to the residents token and
-// says it on stderr.
-func reportDesktopOutcome(outcome desktopapp.Outcome, bundleID string) string {
+// the line that says it.
+func reportDesktopOutcome(outcome desktopapp.Outcome, bundleID string) (string, residentLine) {
 	switch outcome {
 	case desktopapp.OutcomeRelaunched:
-		notef("codex: quit and relaunched the ChatGPT app, so it uses the codex account now live")
-		return constants.ResidentOutcomeRelaunched
+		return constants.ResidentOutcomeRelaunched, noteLine(appRelaunchedMessage())
 	case desktopapp.OutcomeRelaunchFailed:
-		warnf("codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself", bundleID)
-		return constants.ResidentOutcomeRelaunchFailed
+		return constants.ResidentOutcomeRelaunchFailed,
+			warnLine(msgf("codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself", bundleID))
 	case desktopapp.OutcomeQuitTimeout:
-		warnf("codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it")
-		return constants.ResidentOutcomeQuitTimeout
+		return constants.ResidentOutcomeQuitTimeout,
+			warnLine(msgf("codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it"))
 	case desktopapp.OutcomeQuitDenied:
-		warnf("codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again")
-		return constants.ResidentOutcomeQuitDenied
+		return constants.ResidentOutcomeQuitDenied,
+			warnLine(msgf("codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again"))
 	}
-	warnMessage(desktopQuitFailedMessage())
-	return constants.ResidentOutcomeQuitFailed
+	return constants.ResidentOutcomeQuitFailed, warnLine(desktopQuitFailedMessage())
 }
 
 // confirmDesktopQuit asks on the terminal whether to quit and relaunch the app,
@@ -238,7 +232,7 @@ func (app *App) confirmDesktopQuit() (yes, asked bool) {
 	if !ok {
 		return false, false
 	}
-	fmt.Fprint(rw, l10n.Sprintf("ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: "))
+	fmt.Fprint(rw, l10n.Sprintf("Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: "))
 	line, _ := bufio.NewReader(rw).ReadString('\n')
 	return isYes(line), true
 }

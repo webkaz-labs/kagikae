@@ -272,6 +272,8 @@ var jaWarnings = map[string]string{
 
 	"codex: could not read the managed daemon's account; if it is not on the live account, run: %s": "codex: 管理デーモンのアカウントを読み取れませんでした。現在有効なアカウントでない場合は、%s を実行してください。",
 
+	"codex: kae's check was the first client to connect to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s": "codex: kae の確認が管理デーモンに最初に接続したクライアントになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、%s を実行してください。",
+
 	"codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted": "管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままです。",
 
 	"codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted": "切替を実行すると、管理デーモンに接続していない古い codex セッションは、再起動するまで前のアカウントのままになります。",
@@ -298,7 +300,7 @@ var jaWarnings = map[string]string{
 
 	"codex: %s; %s, and the managed daemon may not be using the live account yet; to retry, run: %s": "codex: %s。%sが、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、%s を実行してください。",
 
-	"codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: %s": "codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、%s を実行してください。",
+	"codex: codex app-server daemon restart succeeded, but kae could not read its report or it named another socket, so kae cannot tell whether the managed daemon restarted; if it is not using the live account, run: %s": "codex: codex app-server daemon restart は成功しましたが、その報告を読み取れないか、報告が別のソケットを示していたため、管理デーモンが再起動したか判断できません。現在有効なアカウントを使っていない場合は、%s を実行してください。",
 
 	"codex: codex app-server daemon restart did not finish in time, so kae left it running and stopped waiting; it may be waiting for running tasks to finish before it restarts the managed daemon; %s; if the managed daemon does not restart, run: %s": "codex: codex app-server daemon restart が時間内に終わらなかったため、kae は実行したままにして待つのをやめました。実行中のタスクの終了を待ってから管理デーモンを再起動する可能性があります。%s。管理デーモンが再起動されない場合は、%s を実行してください。",
 

@@ -107,8 +107,8 @@ func TestLaunchFallsBackToRun(t *testing.T) {
 	}
 }
 
-// LaunchWithEnv sets its entries over the inherited environment and waits for
-// the program only.
+// LaunchWithEnv sets its entries over the inherited environment, waits for the
+// program only, and returns what it printed on stdout once it has exited.
 func TestLaunchWithEnv(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
@@ -116,21 +116,38 @@ func TestLaunchWithEnv(t *testing.T) {
 	}
 	t.Setenv("KAE_LAUNCH_TEST", "inherited")
 	ctx := context.Background()
-	if code, err := LaunchWithEnv(ctx, []string{"KAE_LAUNCH_TEST=set"}, sh, "-c", `test "$KAE_LAUNCH_TEST" = set`); code != 0 || err != nil {
+	if _, code, err := LaunchWithEnv(ctx, []string{"KAE_LAUNCH_TEST=set"}, sh, "-c", `test "$KAE_LAUNCH_TEST" = set`); code != 0 || err != nil {
 		t.Fatalf("the extra entry did not win over the inherited one: %d %v", code, err)
 	}
-	if code, err := LaunchWithEnv(ctx, nil, sh, "-c", "exit 3"); code != 3 || err != nil {
-		t.Fatalf("exit code = %d (%v), want 3", code, err)
+	if out, code, err := LaunchWithEnv(ctx, nil, sh, "-c", "echo partial; exit 3"); code != 3 || err != nil || out != "partial\n" {
+		t.Fatalf("exit = %q %d (%v), want the output and 3", out, code, err)
+	}
+	if out, code, err := LaunchWithEnv(ctx, nil, sh, "-c", "echo report; echo noise >&2"); code != 0 || err != nil || out != "report\n" {
+		t.Fatalf("stdout = %q %d %v, want only the report", out, code, err)
 	}
 	start := time.Now()
-	if code, err := LaunchWithEnv(ctx, nil, sh, "-c", "sleep 5 & exit 0"); code != 0 || err != nil {
-		t.Fatalf("code = %d, err = %v", code, err)
+	// The background child keeps the stdout file open and writes into it after
+	// the program has exited: kae waits for neither.
+	if out, code, err := LaunchWithEnv(ctx, nil, sh, "-c", "(sleep 1; echo late) & echo first; exit 0"); code != 0 || err != nil || out != "first\n" {
+		t.Fatalf("stdout = %q, code = %d, err = %v", out, code, err)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
+	if elapsed := time.Since(start); elapsed > 900*time.Millisecond {
 		t.Fatalf("LaunchWithEnv waited %v for the program's background child", elapsed)
 	}
-	if code, err := LaunchWithEnv(ctx, nil, "/nonexistent/kae-restart"); code == 0 || err == nil || errors.Is(err, ErrStillRunning) {
-		t.Fatalf("an unstartable program = %d %v", code, err)
+	if out, code, err := LaunchWithEnv(ctx, nil, "/nonexistent/kae-restart"); code == 0 || err == nil || errors.Is(err, ErrStillRunning) || out != "" {
+		t.Fatalf("an unstartable program = %q %d %v", out, code, err)
+	}
+}
+
+// At most QueryMaxOutput bytes of the program's stdout are read.
+func TestLaunchWithEnvCapsTheOutput(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	out, code, err := LaunchWithEnv(context.Background(), nil, sh, "-c", "head -c 1200000 /dev/zero")
+	if code != 0 || err != nil || len(out) != QueryMaxOutput {
+		t.Fatalf("read %d bytes (%d %v), want %d", len(out), code, err, QueryMaxOutput)
 	}
 }
 
@@ -153,12 +170,12 @@ func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
 			start := time.Now()
-			code, err := LaunchWithEnv(ctx, nil, shell, "-c", script, shell, pidFile, marker)
+			out, code, err := LaunchWithEnv(ctx, nil, shell, "-c", script, shell, pidFile, marker)
 			if elapsed := time.Since(start); elapsed > 450*time.Millisecond {
 				t.Fatalf("LaunchWithEnv returned %v after a 50ms deadline", elapsed)
 			}
-			if code != -1 || !errors.Is(err, ErrStillRunning) {
-				t.Fatalf("at the deadline = %d %v, want -1 and ErrStillRunning", code, err)
+			if code != -1 || !errors.Is(err, ErrStillRunning) || out != "" {
+				t.Fatalf("at the deadline = %q %d %v, want no output, -1 and ErrStillRunning", out, code, err)
 			}
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatal("the program finished before the deadline; the test proves nothing")
@@ -189,7 +206,7 @@ func TestLaunchWithEnvStartsNothingOnAnEndedContext(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	code, err := LaunchWithEnv(ctx, nil, sh, "-c", `echo ran > "$1"`, sh, marker)
+	_, code, err := LaunchWithEnv(ctx, nil, sh, "-c", `echo ran > "$1"`, sh, marker)
 	if code != 1 || !errors.Is(err, context.Canceled) {
 		t.Fatalf("on an ended ctx = %d %v, want 1 and context.Canceled", code, err)
 	}

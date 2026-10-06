@@ -51,8 +51,11 @@ type fakeDaemon struct {
 	socket   string // the short path it listens on
 	accepted *atomic.Int32
 	answer   atomic.Pointer[string]
-	mu       sync.Mutex
-	messages []string
+	// userAgent, when set, is what it answers initialize with; unset, it does not
+	// answer initialize at all.
+	userAgent atomic.Pointer[string]
+	mu        sync.Mutex
+	messages  []string
 }
 
 func (d *fakeDaemon) received() []string {
@@ -66,6 +69,18 @@ func (d *fakeDaemon) answers(reply string) { d.answer.Store(&reply) }
 
 // holds makes the daemon answer that it holds accountID.
 func (d *fakeDaemon) holds(accountID string) { d.answers(accountReadReply(accountID)) }
+
+// initializes makes the daemon answer initialize with userAgent.
+func (d *fakeDaemon) initializes(userAgent string) { d.userAgent.Store(&userAgent) }
+
+// probeOriginatorAgent is the userAgent a daemon answers initialize with when
+// kae's probe became its originator; uaMarker stands in for what else a user
+// agent carries, which must not be printed either.
+const (
+	uaMarker             = "ua-fixture-terminal"
+	probeOriginatorAgent = "kae_probe/0.160.1 (Mac OS 26.0.0; arm64) " + uaMarker + " (kae_probe; 0)"
+	otherOriginatorAgent = "codex_cli_rs/0.160.1 (Mac OS 26.0.0; arm64) " + uaMarker + " (kae_probe; 0)"
+)
 
 // startFakeDaemon listens in a short directory under /tmp, beyond the sun_path
 // limit's reach; the declared socket under the codex home links there the way
@@ -86,6 +101,10 @@ func startFakeDaemon(t *testing.T, answer string) *fakeDaemon {
 			d.mu.Lock()
 			d.messages = append(d.messages, string(f.Payload))
 			d.mu.Unlock()
+			if ua := d.userAgent.Load(); i == 0 && ua != nil {
+				_ = p.Send(wsrpctest.Text(`{"jsonrpc":"2.0","id":1,"result":{"userAgent":"` + *ua +
+					`","codexHome":"/home/you/.codex","platformFamily":"unix","platformOs":"macos"}}`))
+			}
 			if answer := *d.answer.Load(); i == 2 && answer != "" {
 				_ = p.Send(wsrpctest.Text(`{"jsonrpc":"2.0","method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}}`),
 					wsrpctest.Text(answer))
@@ -424,5 +443,59 @@ func TestProbeResidentDaemonPrintsNoPersonalData(t *testing.T) {
 		default:
 			t.Errorf("probe = %q", result)
 		}
+	}
+}
+
+// The answer to initialize says whether kae became the daemon's originator, also
+// when account/read then fails; a daemon that does not answer initialize, or
+// names another originator, says no.
+func TestAskResidentDaemonReadsTheOriginator(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, userAgent, answer string
+		observed                string
+		originated              bool
+	}{
+		{"kae first, matches", probeOriginatorAgent, accountReadReply(probeAccount), constants.ResidentObservedMatches, true},
+		{"kae first, unreadable", probeOriginatorAgent, residentDaemonError, constants.ResidentObservedUnknown, true},
+		{"kae first, differs", probeOriginatorAgent, accountReadReply(probeOtherAcct), constants.ResidentObservedDiffers, true},
+		{"another first", otherOriginatorAgent, accountReadReply(probeAccount), constants.ResidentObservedMatches, false},
+		{"no initialize answer", "", accountReadReply(probeAccount), constants.ResidentObservedMatches, false},
+	} {
+		app, ad, h := probeFixture(t, probeAccount)
+		d := startFakeDaemon(t, tc.answer)
+		if tc.userAgent != "" {
+			d.initializes(tc.userAgent)
+		}
+		linkSocket(t, app, h, d.socket)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		got := app.askResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env))
+		cancel()
+		if got.observed != tc.observed || got.originated != tc.originated {
+			t.Errorf("%s: probe = %+v, want %s and originated %v", tc.name, got, tc.observed, tc.originated)
+		}
+	}
+}
+
+// A run that cannot restart reads the socket alone: absent, present for a socket
+// the user owns, unknown for anything else, and never connects.
+func TestResidentSocketDoesNotConnect(t *testing.T) {
+	t.Parallel()
+	app, _, h := probeFixture(t, probeAccount)
+	spec := h.ResidentDaemon(app.Env)
+	if got := app.residentSocket(spec); got != constants.ResidentObservedAbsent {
+		t.Errorf("no socket = %q, want absent", got)
+	}
+	d := startFakeDaemon(t, accountReadReply(probeOtherAcct))
+	linkSocket(t, app, h, d.socket)
+	if got := app.residentSocket(spec); got != constants.ResidentObservedPresent {
+		t.Errorf("owned socket = %q, want present", got)
+	}
+	app.euidForTest = func() int { return os.Geteuid() + 1 }
+	if got := app.residentSocket(spec); got != constants.ResidentObservedUnknown {
+		t.Errorf("another user's socket = %q, want unknown", got)
+	}
+	if n := d.accepted.Load(); n != 0 {
+		t.Errorf("connected %d time(s)", n)
 	}
 }

@@ -79,9 +79,9 @@ func TestMain(m *testing.M) {
 		return "", "", 1
 	}
 
-	runner.LaunchWithEnv = func(_ context.Context, _ []string, name string, args ...string) (int, error) {
+	runner.LaunchWithEnv = func(_ context.Context, _ []string, name string, args ...string) (string, int, error) {
 		panicUnstubbedRunner("runner.LaunchWithEnv", name, args)
-		return 1, nil
+		return "", 1, nil
 	}
 
 	runner.QueryWithEnv = func(_ context.Context, _ []string, name string, args ...string) (string, int) {

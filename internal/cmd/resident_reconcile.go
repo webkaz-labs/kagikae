@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -12,15 +13,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// How the restart is verified (docs/CLI.md § kae use Semantics, **Resident
-// processes (codex)**, step 4): re-probe this often, for at most this long.
-const (
-	residentRecheckInterval = 250 * time.Millisecond
-	residentRecheckLimit    = 5 * time.Second
-	// defaultResidentRestartTimeout bounds kae's wait for the restart command; one
-	// that has not finished by then is left running, restart_pending.
-	defaultResidentRestartTimeout = 30 * time.Second
-)
+// defaultResidentRestartTimeout bounds kae's wait for the restart command; one
+// that has not finished by then is left running, restart_pending.
+const defaultResidentRestartTimeout = 30 * time.Second
 
 // residentEntry is one item of a switch result's `residents` array. It carries
 // tokens only: no account, email or plan (docs/SECURITY.md § Resident processes).
@@ -110,24 +105,23 @@ func residentModeOf(opts commonOpts) residentMode {
 }
 
 // pendingRestart is a daemon restart a switch owes. entry is the `daemon` item
-// whose outcome the restart settles; live reads the live credential afresh on
-// every call, for the re-probes.
+// whose outcome the restart settles.
 type pendingRestart struct {
 	entry  *residentEntry
 	op     residentOp
 	holder adapter.ResidentHolder
 	spec   adapter.DaemonSpec
-	live   credentialReader
 }
 
 // residentsBeforeSwitch is steps 1 and 2 of the reconcile for one tool, run
 // before anything is written and without a lock. When the tool keeps resident
-// processes, it probes the daemon of the real home once against target — the
-// credential the switch will leave live — decides whether this command changes
-// the tool's account, fills slot's residents, gives the notice on stderr, and
-// records in slot the restart owed after the transaction (none under --dry-run,
-// --no-restart or the hook shape). A tool without resident processes keeps an
-// empty array.
+// processes, it looks at the daemon of the real home once — a run that may
+// restart it probes it against target, the credential the switch will leave
+// live; one under --dry-run, --no-restart or the hook shape only checks that its
+// socket exists — decides whether this command changes the tool's account, fills
+// slot's residents, gives the notice on stderr, and records in slot the restart
+// owed after the transaction (none under those three). A tool without resident
+// processes keeps an empty array.
 func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target credentialReader,
 	slot *residentSlot, mode residentMode,
 ) {
@@ -137,8 +131,8 @@ func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target c
 // residentsAfterLogin is the reconcile of `kae add`'s login flow (docs/CLI.md
 // § kae add Semantics, codex resident processes): the flow decides the account,
 // so it runs after the flow and after the lock is released, probes the daemon
-// once against the credential finally left live, and restarts it at once when
-// it differs and --no-restart is not given. before reads the credential live
+// once against the credential finally left live (without --no-restart; with it
+// it only checks the socket), and restarts it at once when it differs. before reads the credential live
 // before the flow, for whether the command changed the tool's account.
 // It returns the slot, whose held success follows add's result line.
 func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) *residentSlot {
@@ -179,15 +173,22 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	}
 	target = readOnce(target)
 	live := readOnce(previous)
-	observed := app.probeResidentDaemon(ctx, holder, spec, target)
-	outcome, owed := daemonOutcomeBefore(observed, mode)
-	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome}}
+	// Only a run that may restart the daemon connects to it (docs/CLI.md § kae use
+	// Semantics, step 1); the others read the socket alone.
+	var probe daemonProbe
+	if mode.stance() == stanceAct {
+		probe = app.askResidentDaemon(ctx, holder, spec, target)
+	} else {
+		probe.observed = app.residentSocket(spec)
+	}
+	changes := accountChanges(ctx, holder, live, target)
+	outcome, owed := daemonOutcomeBefore(probe.observed, changes, mode)
+	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: probe.observed, Outcome: outcome}}
 	// The desktop apps matter only to a command that changes the account: one
 	// that does not leaves them on the account they hold, so they are not asked
 	// about and get no entry.
 	var apps []desktopEntry
 	appBase := 0
-	changes := accountChanges(ctx, holder, live, target)
 	if changes {
 		apps = app.planDesktopApps(ctx, holder, mode)
 		appBase = len(residents)
@@ -199,7 +200,14 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 			Outcome: constants.ResidentOutcomeWarned,
 		})
 	}
-	noticeResidents(mode, observed, apps, func() string { return app.residentRestartCommand(holder, spec) })
+	manual := func() string { return app.residentRestartCommand(holder, spec) }
+	noticeResidents(mode, probe.observed, daemonOffTarget(probe.observed, changes), apps, manual)
+	// A daemon that differs is restarted into one no client has initialized, and a
+	// restart that fails or is left pending names the manual restart itself.
+	if probe.originated && (probe.observed == constants.ResidentObservedMatches ||
+		probe.observed == constants.ResidentObservedUnknown) {
+		warnMessage(probeOriginatorMessage(manual()))
+	}
 	// The session warning follows the notice, so the entries are built above it.
 	if changes {
 		warnMessage(mode.op.session(mode.dryRun))
@@ -208,7 +216,7 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	slot.Residents = residents
 	if owed {
 		slot.restart = &pendingRestart{
-			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec, live: liveReader,
+			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec,
 		}
 	}
 	for i, a := range apps {
@@ -233,13 +241,24 @@ func readOnce(r credentialReader) credentialReader {
 	}
 }
 
+// daemonOffTarget reports whether the notice treats the daemon as one that is
+// not on the account the command leaves live: one that differs, or, read by a
+// run that did not connect, one whose socket is present while the command
+// changes the account (docs/CLI.md § kae use Semantics).
+func daemonOffTarget(observed string, changes bool) bool {
+	return observed == constants.ResidentObservedDiffers ||
+		observed == constants.ResidentObservedPresent && changes
+}
+
 // daemonOutcomeBefore is the daemon entry's outcome as far as it is known before
-// the transaction. owed is true when a restart is owed; the outcome is then
-// `planned` until the restart settles restarted, restart_unverified,
-// restart_failed or restart_pending.
-func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, owed bool) {
-	switch observed {
-	case constants.ResidentObservedDiffers:
+// the transaction; changes is whether the command changes the tool's account.
+// owed is true when a restart is owed; the outcome is then `planned` until the
+// restart settles restarted, restart_unverified, restart_failed or
+// restart_pending. Only a run that acts reads differs, and it never reads
+// present, so a present daemon is never owed a restart.
+func daemonOutcomeBefore(observed string, changes bool, mode residentMode) (outcome string, owed bool) {
+	switch {
+	case daemonOffTarget(observed, changes):
 		switch mode.stance() {
 		case stanceOptedOut:
 			return constants.ResidentOutcomeOptedOut, false
@@ -249,7 +268,7 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 			return constants.ResidentOutcomePlanned, false
 		}
 		return constants.ResidentOutcomePlanned, true
-	case constants.ResidentObservedUnknown:
+	case observed == constants.ResidentObservedUnknown:
 		// Never restarted on a guess, whatever the flags.
 		return constants.ResidentOutcomeWarned, false
 	}
@@ -259,15 +278,15 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 // noticeResidents is step 2's stderr lines for the daemon and the running apps
 // (docs/CLI.md § kae use Semantics, **How the lines read**): a daemon kae cannot
 // read gets its own warning; then one line says what the run does to the daemon
-// (when it differs) and the apps together — a note, or under --no-restart and the
-// hook shape a warning with the manual steps; then each app kae cannot ask about
-// or cannot tell about gets its own warning. manual builds the manual restart
-// (residentRestartCommand). absent and matches print nothing.
-func noticeResidents(mode residentMode, observed string, apps []desktopEntry, manual func() string) {
+// (when daemon, daemonOffTarget) and the apps together — a note, or under
+// --no-restart and the hook shape a warning with the manual steps; then each app
+// kae cannot ask about or cannot tell about gets its own warning. manual builds
+// the manual restart (residentRestartCommand). absent, matches and a present
+// daemon that is not off target print nothing.
+func noticeResidents(mode residentMode, observed string, daemon bool, apps []desktopEntry, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
 		warnMessage(daemonUnknownMessage(manual()))
 	}
-	daemon := observed == constants.ResidentObservedDiffers
 	app := residentAppNone
 	for _, a := range apps {
 		if app == residentAppNone && a.entry.Observed == constants.ResidentObservedRunning {
@@ -349,33 +368,6 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 	}
 }
 
-// residentsAtCapture is the reconcile of `kae add --no-login` (docs/CLI.md
-// § kae add Semantics, codex resident processes): the live login stays as it
-// is, so nothing is restarted, and a daemon of the real home that holds another
-// account than the live credential or none, or whose account kae cannot read,
-// gets a warning only. It only reads, so --dry-run runs it too. It returns the
-// result's `residents`: that daemon's entry, outcome `warned`, or none.
-func (app *App) residentsAtCapture(ctx context.Context, tool string) []residentEntry {
-	residents := []residentEntry{}
-	ad, err := adapter.ForTool(tool)
-	if err != nil {
-		return residents
-	}
-	holder, ok := ad.(adapter.ResidentHolder)
-	if !ok {
-		return residents
-	}
-	spec := holder.ResidentDaemon(app.Env)
-	observed := app.probeResidentDaemon(ctx, holder, spec, liveCredential(ad, app.Env))
-	if msg, ok := app.residentDriftMessage(tool, holder, spec, observed); ok {
-		warnMessage(msg)
-		residents = append(residents, residentEntry{
-			Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: constants.ResidentOutcomeWarned,
-		})
-	}
-	return residents
-}
-
 // reconcileResidents is step 4 for a switch's results: it runs once per
 // command, after the whole transaction has succeeded and every lock is released
 // (the caller's position is the contract: after buildSwitchTargets has returned
@@ -421,19 +413,19 @@ func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
 // restartDaemon runs the daemon's restart command with the spec's environment,
 // which sets CODEX_HOME to the real home after everything inherited, so a bound
 // directory's value cannot select another daemon, and waits for it at most
-// residentRestartLimit. It goes through runner.LaunchWithEnv, which reads no
-// output, so a daemon the command leaves running cannot hold kae past the limit,
-// and which never kills it (docs/CLI.md § kae use Semantics, step 4, says why):
-// its ErrStillRunning is restart_pending, not probed again. Otherwise it re-probes
-// every residentRecheckInterval for at most residentRecheckLimit, each probe
-// bounded by what is left of that, against the live credential as it reads at
-// each attempt — not the switch's target, so a later switch by another kae
-// process does not make this restart look unverified.
+// residentRestartLimit. It goes through runner.LaunchWithEnv, which takes the
+// command's stdout in a file rather than a pipe, so a daemon the command leaves
+// running cannot hold kae past the limit, and which never kills it (docs/CLI.md
+// § kae use Semantics, step 4, says why): its ErrStillRunning is
+// restart_pending. A command that exits 0 is judged by its own report alone —
+// restarted when it reports a restart at the spec's socket, restart_unverified
+// otherwise — and the restarted daemon is not probed, since a probe would make
+// kae its first client.
 func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	manual := func() string { return app.residentRestartCommand(p.holder, p.spec) }
 	limit := app.residentRestartLimit()
 	runCtx, cancel := context.WithTimeout(ctx, limit)
-	code, err := runner.LaunchWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
+	stdout, code, err := runner.LaunchWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
 	cancel()
 	switch {
 	case code == 0 && err == nil:
@@ -447,23 +439,27 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		warnMessage(p.op.restartExited(code, manual()))
 		return constants.ResidentOutcomeRestartFailed
 	}
-	deadline := app.Now().Add(residentRecheckLimit)
-	for {
-		remaining := deadline.Sub(app.Now())
-		if remaining <= 0 || ctx.Err() != nil {
-			break
-		}
-		probeCtx, cancel := context.WithTimeout(ctx, remaining)
-		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, p.live)
-		cancel()
-		if observed == constants.ResidentObservedMatches {
-			// reconcileSlot holds it for the line after the result.
-			return constants.ResidentOutcomeRestarted
-		}
-		app.sleep(ctx, residentRecheckInterval)
+	if socket, ok := p.holder.ParseDaemonRestart([]byte(stdout)); ok && sameSocket(socket, p.spec.Socket) {
+		// reconcileSlot holds it for the line after the result.
+		return constants.ResidentOutcomeRestarted
 	}
 	warnMessage(restartUnverifiedMessage(manual()))
 	return constants.ResidentOutcomeRestartUnverified
+}
+
+// sameSocket reports whether the socket a restart reported is the declared one:
+// the same path, or two existing paths that resolve to the same one, as the
+// probe resolves the declared socket (resolveDeclaredSocket).
+func sameSocket(reported, declared string) bool {
+	if filepath.Clean(reported) == filepath.Clean(declared) {
+		return true
+	}
+	got, err := filepath.EvalSymlinks(reported)
+	if err != nil {
+		return false
+	}
+	want, absent, err := resolveDeclaredSocket(declared)
+	return err == nil && !absent && got == want
 }
 
 // residentRestartLimit bounds the restart command: App.residentRestartTimeout,

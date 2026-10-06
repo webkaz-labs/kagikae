@@ -102,8 +102,16 @@ func TestDaemonProbeRequestsAreTheFixedReadOnlySequence(t *testing.T) {
 		}
 		switch m.Method {
 		case "initialize":
-			if m.ID == nil || *m.ID == adapter.DaemonProbeResponseID {
-				t.Errorf("initialize id = %v, want a request id other than the account/read one", m.ID)
+			if m.ID == nil || *m.ID != adapter.DaemonProbeInitializeID || *m.ID == adapter.DaemonProbeResponseID {
+				t.Errorf("initialize id = %v, want %d, other than the account/read one", m.ID, adapter.DaemonProbeInitializeID)
+			}
+			var params struct {
+				ClientInfo struct {
+					Name string `json:"name"`
+				} `json:"clientInfo"`
+			}
+			if err := json.Unmarshal(m.Params, &params); err != nil || params.ClientInfo.Name != "kae_probe" {
+				t.Errorf("initialize clientInfo.name = %q (%v), want kae_probe", params.ClientInfo.Name, err)
 			}
 		case "initialized":
 			if m.ID != nil {
@@ -147,6 +155,29 @@ func TestOnlyCodexIsAResidentHolder(t *testing.T) {
 		_, holds := a.(adapter.ResidentHolder)
 		if holds != (tool == constants.ToolCodex) {
 			t.Errorf("%s implements ResidentHolder = %v", tool, holds)
+		}
+	}
+}
+
+// The probe became the originator exactly when the userAgent the daemon answers
+// initialize with begins with the probe's name and a slash.
+func TestProbeOriginated(t *testing.T) {
+	for _, tc := range []struct {
+		result string
+		want   bool
+	}{
+		{`{"userAgent":"kae_probe/0.160.1 (Mac OS 26.0.0; arm64) iTerm.app (kae_probe; 0)","codexHome":"/home/you/.codex"}`, true},
+		{`{"userAgent":"codex_cli_rs/0.160.1 (Mac OS 26.0.0; arm64) iTerm.app (kae_probe; 0)"}`, false},
+		{`{"userAgent":"Codex Desktop/0.160.1"}`, false},
+		{`{"userAgent":"kae_probe_other/0.160.1"}`, false},
+		{`{"userAgent":"kae_probe"}`, false},
+		{`{"userAgent":7}`, false},
+		{`{}`, false},
+		{`null`, false},
+		{`not json`, false},
+	} {
+		if got := adapter.ProbeOriginated([]byte(tc.result)); got != tc.want {
+			t.Errorf("ProbeOriginated(%s) = %v, want %v", tc.result, got, tc.want)
 		}
 	}
 }

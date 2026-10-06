@@ -30,6 +30,34 @@ func residentDriftRows(report *doctorReport) []adapter.Check {
 	return rows
 }
 
+// doctorWithResidentSocket is the doctor report of a run under --yes as far as
+// resident_drift's socket half goes.
+func doctorWithResidentSocket(app *App, filter string) *doctorReport {
+	return buildDoctorWith(context.Background(), app, filter, doctorOptIns{residentSocket: true})
+}
+
+// Without --yes doctor does not connect to the daemon and says nothing of the
+// socket half, whatever the daemon holds; --yes turns it on (docs/CLI.md
+// § `kae doctor --json`).
+func TestDoctorResidentDriftSocketHalfOnlyUnderYes(t *testing.T) {
+	for _, yes := range []bool{false, true} {
+		app, _, h := probeFixture(t, probeAccount)
+		d := startFakeDaemon(t, accountReadReply(probeOtherAcct))
+		linkSocket(t, app, h, d.socket)
+		_, stdout, stderr := captureBoth(t, func() int {
+			return runDoctor(context.Background(), app, commonOpts{Format: formatJSON, Yes: yes}, constants.ToolCodex)
+		})
+		connected := d.accepted.Load() != 0
+		if connected != yes {
+			t.Errorf("--yes=%v: connected to the daemon = %v", yes, connected)
+		}
+		reported := strings.Contains(stdout, constants.CheckResidentDrift)
+		if reported != yes {
+			t.Errorf("--yes=%v: resident_drift reported = %v:\n%s%s", yes, reported, stdout, stderr)
+		}
+	}
+}
+
 // The four observations through the registered check: differs (another account,
 // or none) and unknown warn on codex and name the restart; absent and matches
 // are silent.
@@ -50,7 +78,7 @@ func TestDoctorResidentDriftByObservation(t *testing.T) {
 			if tc.answer != "" {
 				linkSocket(t, app, h, startFakeDaemon(t, tc.answer).socket)
 			}
-			rows := residentDriftRows(buildDoctor(context.Background(), app, "", false))
+			rows := residentDriftRows(doctorWithResidentSocket(app, ""))
 			if tc.want == "" {
 				if len(rows) != 0 {
 					t.Fatalf("%s must be silent, got %+v", tc.name, rows)
@@ -77,13 +105,13 @@ func TestDoctorResidentDriftHonorsTheToolFilter(t *testing.T) {
 	app, _, h := probeFixture(t, probeAccount)
 	d := startFakeDaemon(t, accountReadReply(probeOtherAcct))
 	linkSocket(t, app, h, d.socket)
-	if rows := residentDriftRows(buildDoctor(context.Background(), app, constants.ToolClaude, false)); len(rows) != 0 {
+	if rows := residentDriftRows(doctorWithResidentSocket(app, constants.ToolClaude)); len(rows) != 0 {
 		t.Errorf("doctor claude must not report codex's daemon: %+v", rows)
 	}
 	if n := d.accepted.Load(); n != 0 {
 		t.Errorf("doctor claude connected to the daemon %d time(s)", n)
 	}
-	if rows := residentDriftRows(buildDoctor(context.Background(), app, constants.ToolCodex, false)); len(rows) != 1 {
+	if rows := residentDriftRows(doctorWithResidentSocket(app, constants.ToolCodex)); len(rows) != 1 {
 		t.Errorf("doctor codex must report the daemon: %+v", rows)
 	}
 }
@@ -111,7 +139,7 @@ func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T)
 		}
 		return innerLookup(key)
 	}
-	rows := residentDriftRows(buildDoctor(context.Background(), app, "", false))
+	rows := residentDriftRows(doctorWithResidentSocket(app, ""))
 	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), "is not using the live credential's account") {
 		t.Fatalf("want the real home's differs warning, got %+v", rows)
 	}
@@ -138,9 +166,9 @@ func TestResidentDriftRunsNoToolSubprocessAndDialsOnlyTheSocket(t *testing.T) {
 		envRunnerCalls++
 		return "", "", 1
 	}
-	runner.LaunchWithEnv = func(context.Context, []string, string, ...string) (int, error) {
+	runner.LaunchWithEnv = func(context.Context, []string, string, ...string) (string, int, error) {
 		envRunnerCalls++
-		return 1, nil
+		return "", 1, nil
 	}
 	runner.RunInteractive = func(context.Context, []string, string, ...string) (int, error) {
 		envRunnerCalls++
@@ -181,7 +209,7 @@ func TestResidentDriftPrintsNoPersonalData(t *testing.T) {
 		app, _, h := probeFixture(t, probeAccount)
 		linkSocket(t, app, h, startFakeDaemon(t, answer).socket)
 		_, stdout, stderr := captureBoth(t, func() int {
-			return runDoctor(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolCodex)
+			return runDoctor(context.Background(), app, commonOpts{Format: formatJSON, Yes: true}, constants.ToolCodex)
 		})
 		var raw struct {
 			Checks []struct{ Tool, Code, Status, Message string } `json:"checks"`
@@ -199,7 +227,7 @@ func TestResidentDriftPrintsNoPersonalData(t *testing.T) {
 		if !found {
 			t.Errorf("JSON lacks the codex resident_drift warning: %s", stdout)
 		}
-		rows := residentDriftRows(buildDoctor(context.Background(), app, constants.ToolCodex, false))
+		rows := residentDriftRows(doctorWithResidentSocket(app, constants.ToolCodex))
 		texts := []string{stdout, stderr}
 		for _, row := range rows {
 			texts = append(texts, row.Message.Error(), l10n.Render(row.Message))
@@ -222,7 +250,7 @@ func TestResidentDriftMessagesInJapanese(t *testing.T) {
 	} {
 		app, _, h := probeFixture(t, probeAccount)
 		linkSocket(t, app, h, startFakeDaemon(t, tc.answer).socket)
-		rows := residentDriftRows(buildDoctor(context.Background(), app, constants.ToolCodex, false))
+		rows := residentDriftRows(doctorWithResidentSocket(app, constants.ToolCodex))
 		if len(rows) != 1 {
 			t.Fatalf("rows = %+v", rows)
 		}

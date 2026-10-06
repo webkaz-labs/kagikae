@@ -23,12 +23,6 @@ import (
 // so none of them runs in parallel.
 
 const (
-	// The warning `kae add --no-login` gives, doctor's resident_drift finding.
-	warnCaptureDiffers = "kae: warning: codex's managed daemon is not using the live credential's account, and neither are the sessions connected to it; to make it use the live account, run: codex app-server daemon restart"
-	// The same in Japanese.
-	warnCaptureDiffersJA = "kae: warning: codex の管理デーモンは現在の認証情報のアカウントを使っておらず、デーモンに接続したセッションも同じです。現在のアカウントを使わせるには codex app-server daemon restart を実行してください。"
-	// The same finding when the daemon's account cannot be read.
-	warnCaptureUnknown = "kae: warning: kae cannot read which account codex's managed daemon holds, so it cannot tell whether the daemon uses the live account; if it does not, run: codex app-server daemon restart"
 	// Any line about the daemon contains this.
 	daemonMention = "managed daemon"
 	// The kae add (login flow) and kae rollback renderings of the switch's lines.
@@ -236,32 +230,30 @@ func TestAddResidentsInJapanese(t *testing.T) {
 	assertNoResidentPII(t, stdout, stderr)
 }
 
-// `kae add --no-login` leaves the live login as it is: a daemon on another
-// account gets a warning only, with or without --dry-run, and no session warning;
-// absent and matching daemons print nothing.
-func TestAddNoLoginOnlyWarns(t *testing.T) {
-	differs := []residentEntry{daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeWarned)}
-	unknown := []residentEntry{daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned)}
+// `kae add --no-login` leaves the live login as it is and cannot restart the
+// daemon, so it does not connect to it: whatever the daemon holds, with or
+// without --dry-run, it prints no daemon line and no session warning, and its
+// residents are empty.
+func TestAddNoLoginLeavesTheDaemonAlone(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		daemon    string // "" for none
-		answer    string // replaces the daemon's answer; "" keeps it holding daemon
-		dryRun    bool
-		warning   string // "" for none
-		residents []residentEntry
+		name   string
+		daemon string // "" for none
+		answer string // replaces the daemon's answer; "" keeps it holding daemon
+		dryRun bool
 	}{
-		{"differs", residentMain, "", false, warnCaptureDiffers, differs},
-		{"differs dry-run", residentMain, "", true, warnCaptureDiffers, differs},
-		{"differs, no account", residentMain, noAccountReply, false, warnCaptureDiffers, differs},
-		{"unknown", residentMain, apiKeyReply, false, warnCaptureUnknown, unknown},
-		{"matches", residentSide, "", false, "", []residentEntry{}},
-		{"absent", "", "", false, "", []residentEntry{}},
+		{"another account", residentMain, "", false},
+		{"another account dry-run", residentMain, "", true},
+		{"no account", residentMain, noAccountReply, false},
+		{"unreadable", residentMain, apiKeyReply, false},
+		{"same account", residentSide, "", false},
+		{"absent", "", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, format := range []string{formatText, formatJSON} {
 				f := newResidentFixture(t)
+				var d *fakeDaemon
 				if tc.daemon != "" {
-					d := f.withDaemon(t, tc.daemon)
+					d = f.withDaemon(t, tc.daemon)
 					if tc.answer != "" {
 						d.answers(tc.answer)
 					}
@@ -274,17 +266,17 @@ func TestAddNoLoginOnlyWarns(t *testing.T) {
 				if f.restartCount() != 0 {
 					t.Errorf("%s: restarted", format)
 				}
-				if tc.warning != "" && !strings.Contains(stderr, tc.warning+"\n") {
-					t.Errorf("%s: stderr lacks %q:\n%s", format, tc.warning, stderr)
+				if d != nil && d.accepted.Load() != 0 {
+					t.Errorf("%s: connected to the daemon %d time(s)", format, d.accepted.Load())
 				}
-				if tc.warning == "" && strings.Contains(stderr, daemonMention) {
+				if strings.Contains(stderr, daemonMention) {
 					t.Errorf("%s: printed a daemon line:\n%s", format, stderr)
 				}
 				if strings.Contains(stderr, "codex sessions started before") {
 					t.Errorf("%s: warned about sessions though the account is unchanged:\n%s", format, stderr)
 				}
 				if format == formatJSON {
-					wantCodexResidents(t, stdout, tc.residents...)
+					wantCodexResidents(t, stdout, []residentEntry{}...)
 				}
 				assertNoResidentPII(t, stdout, stderr)
 			}
@@ -305,19 +297,6 @@ func TestAddNoLoginResidentsEmptyForClaude(t *testing.T) {
 	}
 	if strings.Contains(stderr, daemonMention) {
 		t.Errorf("a claude capture printed a daemon line:\n%s", stderr)
-	}
-}
-
-func TestAddNoLoginWarningInJapanese(t *testing.T) {
-	f := newResidentFixture(t)
-	f.withDaemon(t, residentMain)
-	l10ntest.UseJapanese(t)
-	code, stdout, stderr := captureBoth(t, func() int {
-		return runCapture(context.Background(), f.app, commonOpts{Format: formatText}, constants.ToolCodex, "side")
-	})
-	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if !strings.Contains(stderr, warnCaptureDiffersJA+"\n") {
-		t.Errorf("stderr lacks %q:\n%s", warnCaptureDiffersJA, stderr)
 	}
 }
 
@@ -436,7 +415,8 @@ func TestRollbackComparesTheDaemonWithTheBackup(t *testing.T) {
 }
 
 // --dry-run stops at the notice with the planned outcome; --no-restart warns and
-// leaves the daemon running; neither restarts.
+// leaves the daemon running; neither restarts nor connects to the daemon, whose
+// socket reads present.
 func TestRollbackSuppressesTheRestart(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -459,9 +439,12 @@ func TestRollbackSuppressesTheRestart(t *testing.T) {
 			if f.restartCount() != 0 {
 				t.Error("restarted")
 			}
-			want := []residentEntry{daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry}
+			want := []residentEntry{daemonEntry(constants.ResidentObservedPresent, tc.outcome), sessionEntry}
 			if got := rollbackResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, want) {
 				t.Errorf("codex residents = %+v, want %+v", got, want)
+			}
+			if n := f.daemon.accepted.Load(); n != 0 {
+				t.Errorf("connected to the daemon %d time(s)", n)
 			}
 			for _, line := range []string{tc.line, tc.session} {
 				if !strings.Contains(stderr, line+"\n") {
@@ -594,8 +577,8 @@ func TestAddRestoreFailureDoesNotReconcile(t *testing.T) {
 	}
 }
 
-// The rollback's probe runs before its locks: every connection to the daemon,
-// the first probe's and the restart's re-probes, finds the codex lock free.
+// The rollback's probe runs before its locks and finds the codex lock free; the
+// restart is judged by its report, so the probe is the only connection.
 func TestRollbackProbesWithoutTheLock(t *testing.T) {
 	f := newRollbackFixture(t)
 	f.withDaemon(t, residentMain)
@@ -612,8 +595,8 @@ func TestRollbackProbesWithoutTheLock(t *testing.T) {
 	}
 	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatText})
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	if dials < 2 {
-		t.Fatalf("dialled the daemon %d times, want the probe and a re-probe", dials)
+	if dials != 1 {
+		t.Fatalf("dialled the daemon %d times, want the probe alone", dials)
 	}
 	if held != 0 {
 		t.Errorf("%d of %d probes ran while the rollback held the codex lock", held, dials)

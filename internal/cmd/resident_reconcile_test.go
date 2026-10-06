@@ -52,6 +52,9 @@ type residentFixture struct {
 	app    *App
 	holder adapter.ResidentHolder
 	daemon *fakeDaemon
+	// restartOutput is what a stubbed restart prints on stdout: by default the
+	// report of a restart at the real home's declared socket.
+	restartOutput string
 
 	mu       sync.Mutex
 	restarts []restartCall
@@ -86,6 +89,7 @@ func newResidentFixture(t *testing.T) *residentFixture {
 		t.Fatal(err)
 	}
 	f := &residentFixture{app: app, holder: ad.(adapter.ResidentHolder)}
+	f.restartOutput = restartedReport(f.holder.ResidentDaemon(app.Env).Socket)
 	now := app.Now()
 	app.Now = func() time.Time {
 		f.mu.Lock()
@@ -94,7 +98,7 @@ func newResidentFixture(t *testing.T) *residentFixture {
 	}
 	app.sleepForTest = func(d time.Duration) {
 		if d != 250*time.Millisecond {
-			t.Errorf("waited %v between re-probes, want 250ms", d)
+			t.Errorf("waited %v between checks, want 250ms", d)
 		}
 		f.mu.Lock()
 		f.sleeps++
@@ -130,14 +134,21 @@ func (f *residentFixture) liveAccountID(t *testing.T) string {
 	return doc.Tokens.AccountID
 }
 
+// restartedReport is what codex app-server daemon restart prints when it has
+// restarted the daemon at socket (docs/ACCEPTANCE.md, the shape it printed).
+func restartedReport(socket string) string {
+	return `{"status":"restarted","backend":"pid","pid":4242,"managedCodexPath":"/opt/codex","socketPath":"` +
+		socket + `","cliVersion":"0.160.1","appServerVersion":"0.160.1"}` + "\n"
+}
+
 // stubRestart replaces runner.LaunchWithEnv for the test: it records the call and
-// returns what run returns. restartTo is the usual run: the daemon comes back on
-// the live account and the command succeeds.
+// returns what run returns, with f.restartOutput on stdout. restartTo is the
+// usual run: the daemon comes back on the live account and the command succeeds.
 func (f *residentFixture) stubRestart(t *testing.T, run func(*restartCall) int) {
 	t.Helper()
 	saved := runner.LaunchWithEnv
 	t.Cleanup(func() { runner.LaunchWithEnv = saved })
-	runner.LaunchWithEnv = func(_ context.Context, extraEnv []string, name string, args ...string) (int, error) {
+	runner.LaunchWithEnv = func(_ context.Context, extraEnv []string, name string, args ...string) (string, int, error) {
 		call := restartCall{argv: append([]string{name}, args...), env: append([]string(nil), extraEnv...)}
 		for _, kv := range append(os.Environ(), extraEnv...) {
 			if v, ok := strings.CutPrefix(kv, "CODEX_HOME="); ok {
@@ -152,7 +163,7 @@ func (f *residentFixture) stubRestart(t *testing.T, run func(*restartCall) int) 
 		f.mu.Lock()
 		f.restarts = append(f.restarts, call)
 		f.mu.Unlock()
-		return code, nil
+		return f.restartOutput, code, nil
 	}
 }
 
@@ -240,7 +251,8 @@ const (
 	warnSession    = "kae: warning: codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted"
 	warnSessionDry = "kae: warning: codex sessions started before the switch and not connected to the managed daemon would keep the previous account until they are restarted"
 	noteRestarted  = "kae: note: codex: restarted the managed daemon"
-	warnUnverfied  = "kae: warning: codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: codex app-server daemon restart"
+	warnUnverfied  = "kae: warning: codex: codex app-server daemon restart succeeded, but kae could not read its report or it named another socket, so kae cannot tell whether the managed daemon restarted; if it is not using the live account, run: codex app-server daemon restart"
+	warnOriginator = "kae: warning: codex: kae's check was the first client to connect to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: codex app-server daemon restart"
 	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
 
@@ -301,7 +313,8 @@ func TestUseRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 
 // A daemon that answers it holds no account, as one on 0.160.1 did after a
 // switch, differs from a target that names one: kae restarts it, and
-// --no-restart leaves it running with the opted_out warning.
+// --no-restart, which does not ask it, leaves it running with the opted_out
+// warning.
 func TestUseRestartsADaemonHoldingNoAccount(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -322,7 +335,12 @@ func TestUseRestartsADaemonHoldingNoAccount(t *testing.T) {
 			opts := tc.opts
 			opts.Format = formatJSON
 			stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
-			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
+			observed := constants.ResidentObservedDiffers
+			if tc.restarts == 0 {
+				// --no-restart does not connect: the socket reads present.
+				observed = constants.ResidentObservedPresent
+			}
+			wantCodexResidents(t, stdout, daemonEntry(observed, tc.outcome), sessionEntry)
 			if f.restartCount() != tc.restarts {
 				t.Errorf("restarted %d times, want %d", f.restartCount(), tc.restarts)
 			}
@@ -372,8 +390,9 @@ func TestUseWithoutADaemonOrAnAccountChange(t *testing.T) {
 }
 
 // What suppresses the restart, each on a daemon that differs: nothing is
-// restarted, the warning names the manual step, and the outcome says why.
-// --yes changes none of it.
+// restarted, kae does not connect to the daemon and reads its socket as present,
+// the warning names the manual step because the command changes the account,
+// and the outcome says why. --yes changes none of it.
 func TestUseSuppressesTheRestart(t *testing.T) {
 	// The three forms of a shared use: explicit `kae use codex main`, bare
 	// `kae use --quiet -P main` and the hook's `kae use --auto -P main`.
@@ -428,7 +447,10 @@ func TestUseSuppressesTheRestart(t *testing.T) {
 					t.Errorf("%s: announced a restart:\n%s", format, stderr)
 				}
 				if format == formatJSON {
-					wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
+					wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedPresent, tc.outcome), sessionEntry)
+				}
+				if n := f.daemon.accepted.Load(); n != 0 {
+					t.Errorf("%s: connected to the daemon %d time(s) in a run that cannot restart it", format, n)
 				}
 				wantLive := residentMain
 				if opts.DryRun {
@@ -474,7 +496,7 @@ func TestProfileSwitchReconcilesOnce(t *testing.T) {
 	f.stubRestart(t, f.restartTo(t))
 	claudeLockFree := false
 	inner := runner.LaunchWithEnv
-	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, int, error) {
 		if held, err := lock.Acquire(f.app.Paths.LocksDir(), constants.ToolClaude); err == nil {
 			claudeLockFree = true
 			held.Release()
@@ -545,58 +567,69 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 	}
 }
 
-// A daemon that still differs, or cannot be read, when the re-probes run out is
-// restart_unverified; the waits are 250 ms apart and stop at 5 s.
-func TestRestartUnverifiedAfterTheWait(t *testing.T) {
-	for name, after := range map[string]func(d *fakeDaemon){
-		"still differs":    func(*fakeDaemon) {},
-		"holds no account": func(d *fakeDaemon) { d.answers(noAccountReply) },
-		"unreadable": func(d *fakeDaemon) {
-			d.answers(apiKeyReply)
-		},
+// A restart that exits 0 is judged by its report alone: restarted when it
+// reports a restart at the declared socket, by its path or the one the link
+// resolves to, restart_unverified otherwise. kae does not connect to the
+// restarted daemon, so what it then holds does not matter.
+func TestRestartIsJudgedByItsReport(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		report  func(declared, target string) string
+		outcome string
+	}{
+		{"declared socket", func(declared, _ string) string { return restartedReport(declared) }, constants.ResidentOutcomeRestarted},
+		{"resolved socket", func(_, target string) string { return restartedReport(target) }, constants.ResidentOutcomeRestarted},
+		{"another socket", func(string, string) string { return restartedReport("/tmp/kae-elsewhere/app-server-control.sock") }, constants.ResidentOutcomeRestartUnverified},
+		{"no report", func(string, string) string { return "" }, constants.ResidentOutcomeRestartUnverified},
+		{"not JSON", func(string, string) string { return "restarted\n" }, constants.ResidentOutcomeRestartUnverified},
+		{"not restarted", func(declared, _ string) string {
+			return `{"status":"running","socketPath":"` + declared + `"}`
+		}, constants.ResidentOutcomeRestartUnverified},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			f := newResidentFixture(t)
 			d := f.withDaemon(t, residentSide)
-			f.stubRestart(t, func(*restartCall) int { after(d); return 0 })
+			declared := f.holder.ResidentDaemon(f.app.Env).Socket
+			target, err := filepath.EvalSymlinks(declared)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.restartOutput = tc.report(declared, target)
+			var before int32
+			// The restarted daemon still answers the old account: only the report counts.
+			f.stubRestart(t, func(*restartCall) int { before = d.accepted.Load(); return 0 })
 			stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
-			if !strings.Contains(stderr, warnUnverfied+"\n") {
-				t.Errorf("stderr lacks the unverified warning:\n%s", stderr)
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
+			if got := d.accepted.Load(); got != before {
+				t.Errorf("connected to the daemon %d time(s) after the restart", got-before)
 			}
-			// 5 s of 250 ms waits (docs/CLI.md), spelled out rather than derived from
-			// the constants under test.
-			if want := 20; f.sleeps != want {
-				t.Errorf("waited %d times, want %d", f.sleeps, want)
+			unverified := tc.outcome == constants.ResidentOutcomeRestartUnverified
+			if strings.Contains(stderr, warnUnverfied+"\n") != unverified {
+				t.Errorf("unverified warning present = %v, want %v:\n%s", !unverified, unverified, stderr)
 			}
+			if strings.Contains(stderr, noteRestarted) == unverified {
+				t.Errorf("restarted note present = %v, want %v:\n%s", unverified, !unverified, stderr)
+			}
+			if f.sleeps != 0 {
+				t.Errorf("waited %d times after the restart", f.sleeps)
+			}
+			assertNoResidentPII(t, stdout, stderr)
 		})
 	}
 }
 
-// The re-probe compares the daemon with the credential live at that moment, so
-// a switch another kae process makes during the wait (here: back to side, with
-// the daemon following it) still reads as restarted.
-func TestRestartVerifiesAgainstTheLiveCredential(t *testing.T) {
-	f := newResidentFixture(t)
-	d := f.withDaemon(t, residentSide)
-	f.stubRestart(t, func(*restartCall) int {
-		writeFile(t, filepath.Join(f.app.Env.Home, ".codex", "auth.json"), codexChatGPTAuth(residentSide, "codex-side-token"))
-		d.holds(residentSide)
-		return 0
-	})
-	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
-	if f.sleeps != 0 {
-		t.Errorf("waited %d times for a daemon already on the live account", f.sleeps)
-	}
-}
-
-// unknown is never restarted, whatever the flags, and names the manual step.
+// unknown is never restarted, whatever the flags, and names the manual step: a
+// run that may restart reads it from an answer it cannot read, one that cannot
+// from a socket it does not own, without connecting either way to the latter.
 func TestUnknownDaemonOnlyWarns(t *testing.T) {
-	for _, opts := range []commonOpts{{}, {NoRestart: true}, {DryRun: true}} {
+	for _, opts := range []commonOpts{{}, {NoRestart: true}, {DryRun: true}, {ResidentHook: true}} {
 		f := newResidentFixture(t)
 		d := f.withDaemon(t, residentSide)
 		d.answers(apiKeyReply)
+		act := !opts.NoRestart && !opts.DryRun && !opts.ResidentHook
+		if !act {
+			f.app.euidForTest = func() int { return os.Geteuid() + 1 }
+		}
 		opts.Format = formatJSON
 		stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
 		wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned), sessionEntry)
@@ -605,6 +638,9 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 		}
 		if f.restartCount() != 0 {
 			t.Errorf("%+v: restarted an unknown daemon", opts)
+		}
+		if connected := d.accepted.Load() != 0; connected != act {
+			t.Errorf("%+v: connected = %v, want %v", opts, connected, act)
 		}
 		assertNoResidentPII(t, stdout, stderr)
 	}
@@ -682,7 +718,8 @@ func TestUseSuppressedRestartInJapanese(t *testing.T) {
 
 // The switch's warnings when the restart fails, cannot be verified, or the
 // daemon cannot be read render in Japanese, worded so that they hold for a daemon
-// that held no account.
+// that held no account; so does the warning of a probe that became the daemon's
+// first client.
 func TestUseRestartWarningsInJapanese(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -696,8 +733,19 @@ func TestUseRestartWarningsInJapanese(t *testing.T) {
 		},
 		{
 			"unverified",
-			func(t *testing.T, f *residentFixture) { f.stubRestart(t, func(*restartCall) int { return 0 }) },
-			"kae: warning: codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、codex app-server daemon restart を実行してください。",
+			func(t *testing.T, f *residentFixture) {
+				f.restartOutput = ""
+				f.stubRestart(t, func(*restartCall) int { return 0 })
+			},
+			"kae: warning: codex: codex app-server daemon restart は成功しましたが、その報告を読み取れないか、報告が別のソケットを示していたため、管理デーモンが再起動したか判断できません。現在有効なアカウントを使っていない場合は、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"originator",
+			func(t *testing.T, f *residentFixture) {
+				f.daemon.holds(residentMain)
+				f.daemon.initializes(probeOriginatorAgent)
+			},
+			"kae: warning: codex: kae の確認が管理デーモンに最初に接続したクライアントになったため、デーモンがこれから作るスレッドは、デーモンを再起動するまでクライアント名が kae_probe になります。元に戻すには、codex app-server daemon restart を実行してください。",
 		},
 		{
 			"unknown",
@@ -848,13 +896,13 @@ func TestRestartLeftRunningAtTheLimit(t *testing.T) {
 	var probesBefore int32
 	saved := runner.LaunchWithEnv
 	t.Cleanup(func() { runner.LaunchWithEnv = saved })
-	runner.LaunchWithEnv = func(ctx context.Context, _ []string, _ string, _ ...string) (int, error) {
+	runner.LaunchWithEnv = func(ctx context.Context, _ []string, _ string, _ ...string) (string, int, error) {
 		if dl, ok := ctx.Deadline(); ok {
 			deadline = time.Until(dl)
 		}
 		probesBefore = d.accepted.Load()
 		<-ctx.Done()
-		return -1, runner.ErrStillRunning
+		return "", -1, runner.ErrStillRunning
 	}
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
@@ -883,41 +931,6 @@ func TestRestartLimitDefault(t *testing.T) {
 	}
 }
 
-// Each re-probe is bounded by what is left of the 5 s: a daemon that stops
-// answering after a restart that took 4.9 s costs 0.1 s more, not a whole probe
-// timeout.
-func TestReprobesStayWithinTheWait(t *testing.T) {
-	f := newResidentFixture(t)
-	d := f.withDaemon(t, residentSide)
-	f.app.residentProbeTimeout = 10 * time.Second
-	// After the restart, the first clock reading (the 5 s deadline) is the
-	// fixture's; every later one is 4.9 s on, as if the wait had nearly run out.
-	restarted, reads := false, 0
-	f.stubRestart(t, func(*restartCall) int {
-		d.answers("")
-		restarted = true
-		return 0
-	})
-	base := f.app.Now
-	f.app.Now = func() time.Time {
-		now := base()
-		if restarted {
-			reads++
-			if reads > 1 {
-				return now.Add(4900 * time.Millisecond)
-			}
-		}
-		return now
-	}
-	start := time.Now()
-	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	elapsed := time.Since(start)
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
-	if elapsed > 3*time.Second {
-		t.Errorf("the wait took %v; a re-probe outlived the 5 s", elapsed)
-	}
-}
-
 // A launcher that answers exit 0 after the limit has passed restarted the daemon:
 // only its ErrStillRunning makes a restart restart_pending, not the limit itself.
 func TestRestartExitingZeroAfterTheLimitIsRestarted(t *testing.T) {
@@ -926,7 +939,7 @@ func TestRestartExitingZeroAfterTheLimitIsRestarted(t *testing.T) {
 	f.app.residentRestartTimeout = 20 * time.Millisecond
 	f.stubRestart(t, f.restartTo(t))
 	inner := runner.LaunchWithEnv
-	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, int, error) {
 		<-ctx.Done()
 		return inner(ctx, env, name, args...)
 	}
@@ -935,20 +948,23 @@ func TestRestartExitingZeroAfterTheLimitIsRestarted(t *testing.T) {
 }
 
 // Through the real runner, a restart command that leaves a process running (as
-// codex app-server daemon restart leaves the daemon) does not hold kae: the
-// process inherits no pipe kae waits on. A stand-in codex on a temporary PATH
-// backgrounds a sleep and exits 0. Neither touches HOME, and no real codex runs.
+// codex app-server daemon restart leaves the daemon) does not hold kae, and kae
+// still reads the report it printed: the process inherits the stdout file, not a
+// pipe kae waits on. A stand-in codex on a temporary PATH prints a report,
+// backgrounds a sleep that holds its stdout and exits 0. Neither touches HOME,
+// and no real codex runs.
 func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
 	f.app.residentRestartTimeout = 300 * time.Millisecond
 	// The background sleep outlasts the 3 s bound below, so a kae that waited for
 	// it would fail the bound.
-	standInCodex(t, "#!/bin/sh\nsleep 5 &\nexit 0\n")
+	report := strings.TrimSuffix(restartedReport(f.holder.ResidentDaemon(f.app.Env).Socket), "\n")
+	standInCodex(t, "#!/bin/sh\nprintf '%s\\n' '"+report+"'\nsleep 5 &\nexit 0\n")
 	start := time.Now()
 	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	elapsed := time.Since(start)
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 	if elapsed > 3*time.Second {
 		t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
 	}
@@ -969,13 +985,13 @@ func TestRestartStillRunningAtTheLimitKeepsRunning(t *testing.T) {
 	var waited time.Duration
 	finishedInTime := false
 	launch := runner.LaunchWithEnv
-	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, int, error) {
 		start := time.Now()
-		code, err := launch(ctx, env, name, args...)
+		out, code, err := launch(ctx, env, name, args...)
 		waited = time.Since(start)
 		_, statErr := os.Stat(marker)
 		finishedInTime = statErr == nil
-		return code, err
+		return out, code, err
 	}
 	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	if finishedInTime {
@@ -1038,7 +1054,7 @@ func TestRestartThatCannotStart(t *testing.T) {
 }
 
 // The probe and the account-change check share one read of the target
-// credential.
+// credential, in a run that may restart and so probes.
 func TestResidentsBeforeSwitchReadsTheTargetOnce(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
@@ -1049,11 +1065,14 @@ func TestResidentsBeforeSwitchReadsTheTargetOnce(t *testing.T) {
 	}
 	var slot residentSlot
 	_, stderr := captureStderr(t, func() int {
-		f.app.residentsBeforeSwitch(context.Background(), constants.ToolCodex, target, &slot, residentMode{dryRun: true})
+		f.app.residentsBeforeSwitch(context.Background(), constants.ToolCodex, target, &slot, residentMode{})
 		return 0
 	})
 	if reads != 1 {
 		t.Errorf("read the target %d times, want once", reads)
+	}
+	if f.daemon.accepted.Load() != 1 {
+		t.Errorf("connected %d times, want once", f.daemon.accepted.Load())
 	}
 	if !reflect.DeepEqual(slot.Residents, []residentEntry{
 		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomePlanned), sessionEntry,
@@ -1071,11 +1090,89 @@ func TestUseAutoIsTheHookShapeWithoutTheFlag(t *testing.T) {
 		return runUseAuto(context.Background(), f.app, commonOpts{Format: formatJSON}, "main", true)
 	})
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeWarned), sessionEntry)
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedPresent, constants.ResidentOutcomeWarned), sessionEntry)
 	if !strings.Contains(stderr, warnHook+"\n") || strings.Contains(stderr, noticeRestart) {
 		t.Errorf("stderr is not the hook's warning:\n%s", stderr)
 	}
 	if f.restartCount() != 0 {
 		t.Error("the hook shape restarted the daemon")
+	}
+}
+
+// When kae's probe became the first client of a daemon the run does not restart
+// (matches or unknown), a warning says so and names the manual restart; a daemon
+// the run restarts (differs), one another client initialized first, and a run
+// that does not connect get none. The user agent itself is never printed.
+func TestUseWarnsWhenTheProbeBecameTheOriginator(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		userAgent string
+		answer    string
+		opts      commonOpts
+		warns     bool
+	}{
+		{"matches", probeOriginatorAgent, accountReadReply(residentMain), commonOpts{}, true},
+		{"unknown", probeOriginatorAgent, apiKeyReply, commonOpts{}, true},
+		{"differs, restarted", probeOriginatorAgent, accountReadReply(residentSide), commonOpts{}, false},
+		{"another client first", otherOriginatorAgent, accountReadReply(residentMain), commonOpts{}, false},
+		{"no-restart, not connected", probeOriginatorAgent, accountReadReply(residentMain), commonOpts{NoRestart: true}, false},
+		{"hook, not connected", probeOriginatorAgent, accountReadReply(residentMain), commonOpts{ResidentHook: true}, false},
+	} {
+		for _, format := range []string{formatText, formatJSON} {
+			f := newResidentFixture(t)
+			d := f.withDaemon(t, residentSide)
+			d.answers(tc.answer)
+			d.initializes(tc.userAgent)
+			f.stubRestart(t, f.restartTo(t))
+			opts := tc.opts
+			opts.Format = format
+			stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
+			if got := strings.Contains(stderr, warnOriginator+"\n"); got != tc.warns {
+				t.Errorf("%s %s: originator warning present = %v, want %v:\n%s", tc.name, format, got, tc.warns, stderr)
+			}
+			for _, out := range []string{stdout, stderr} {
+				if strings.Contains(out, uaMarker) || strings.Contains(out, "0.160.1") {
+					t.Errorf("%s %s: the user agent was printed:\n%s", tc.name, format, out)
+				}
+			}
+			assertNoResidentPII(t, stdout, stderr)
+		}
+	}
+}
+
+// A run that cannot restart does not connect: with the command leaving the
+// account as it is, a present socket is silent and its outcome none; and
+// `kae add --no-login` neither connects nor reports a daemon.
+func TestRunsThatCannotRestartDoNotConnect(t *testing.T) {
+	for _, opts := range []commonOpts{{NoRestart: true}, {ResidentHook: true}, {DryRun: true}} {
+		f := newResidentFixture(t)
+		d := f.withDaemon(t, residentMain)
+		opts.Format = formatJSON
+		// side is live: switching to side changes nothing.
+		stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "side")
+		wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedPresent, constants.ResidentOutcomeNone))
+		if daemonLines(stderr) != "" {
+			t.Errorf("%+v: a present daemon with no account change printed:\n%s", opts, stderr)
+		}
+		if n := d.accepted.Load(); n != 0 {
+			t.Errorf("%+v: connected %d time(s)", opts, n)
+		}
+	}
+	for _, dryRun := range []bool{false, true} {
+		f := newResidentFixture(t)
+		d := f.withDaemon(t, residentMain)
+		code, stdout, stderr := captureBoth(t, func() int {
+			return runCapture(context.Background(), f.app, commonOpts{Format: formatJSON, DryRun: dryRun}, constants.ToolCodex, "side")
+		})
+		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		if got := codexResidents(t, stdout)[constants.ToolCodex]; len(got) != 0 {
+			t.Errorf("add --no-login dry-run=%v: residents = %+v, want []", dryRun, got)
+		}
+		if daemonLines(stderr) != "" {
+			t.Errorf("add --no-login dry-run=%v printed:\n%s", dryRun, stderr)
+		}
+		if n := d.accepted.Load(); n != 0 {
+			t.Errorf("add --no-login dry-run=%v connected %d time(s)", dryRun, n)
+		}
 	}
 }

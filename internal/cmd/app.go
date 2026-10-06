@@ -97,8 +97,8 @@ type App struct {
 	// test cannot otherwise fail without a file owned by another user. Nil in
 	// production.
 	euidForTest func() int
-	// sleepForTest replaces the wait between the re-probes that verify a daemon
-	// restart (App.sleep); a test advances its clock (Now) there instead of
+	// sleepForTest replaces the waits of the reconcile (App.sleep), such as the one
+	// for a desktop app to quit; a test advances its clock (Now) there instead of
 	// sleeping. Nil in production.
 	sleepForTest func(time.Duration)
 	// Test seams for failures and pre-lock races that cannot be scheduled

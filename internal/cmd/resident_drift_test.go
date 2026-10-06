@@ -96,17 +96,18 @@ func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T)
 	linkSocket(t, app, h, startFakeDaemon(t, accountReadReply(probeOtherAcct)).socket)
 	realHome := strings.TrimPrefix(h.ResidentDaemon(app.Env).Env[0], "CODEX_HOME=")
 	bound := app.Paths.IsolatedConfigDir("abcdef0123456789", constants.ToolCodex, "main")
+	inner, innerLookup := app.Env.Getenv, app.Env.LookupEnv
 	app.Env.Getenv = func(key string) string {
 		if key == "CODEX_HOME" {
 			return bound
 		}
-		return ""
+		return inner(key)
 	}
 	app.Env.LookupEnv = func(key string) (string, bool) {
 		if key == "CODEX_HOME" {
 			return bound, true
 		}
-		return "", false
+		return innerLookup(key)
 	}
 	rows := residentDriftRows(buildDoctor(context.Background(), app, "", false))
 	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), "holds a different account") {
@@ -126,21 +127,21 @@ func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T)
 // The fixture's credential is auth.json, so no keychain reader runs either and
 // any subprocess at all is a finding here.
 func TestResidentDriftRunsNoToolSubprocessAndDialsOnlyTheSocket(t *testing.T) {
-	withEnv := 0
+	envRunnerCalls := 0
 	savedRun, savedLaunch, savedInteractive := runner.RunWithEnv, runner.LaunchWithEnv, runner.RunInteractive
 	t.Cleanup(func() {
 		runner.RunWithEnv, runner.LaunchWithEnv, runner.RunInteractive = savedRun, savedLaunch, savedInteractive
 	})
 	runner.RunWithEnv = func(context.Context, []string, string, ...string) (string, string, int) {
-		withEnv++
+		envRunnerCalls++
 		return "", "", 1
 	}
 	runner.LaunchWithEnv = func(context.Context, []string, string, ...string) (int, error) {
-		withEnv++
+		envRunnerCalls++
 		return 1, nil
 	}
 	runner.RunInteractive = func(context.Context, []string, string, ...string) (int, error) {
-		withEnv++
+		envRunnerCalls++
 		return 1, nil
 	}
 	for _, answer := range []string{accountReadReply(probeOtherAcct), residentDaemonError, ""} {
@@ -154,11 +155,11 @@ func TestResidentDriftRunsNoToolSubprocessAndDialsOnlyTheSocket(t *testing.T) {
 			dials = append(dials, network)
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		}
-		withEnv = 0
+		envRunnerCalls = 0
 		fake := &runnertest.Fake{}
 		runner.With(fake, func() { app.residentDriftChecks(context.Background(), "") })
-		if fake.Name != "" || withEnv != 0 {
-			t.Errorf("answer %q: ran %q %v and %d env-runner call(s)", answer, fake.Name, fake.Args, withEnv)
+		if fake.Name != "" || envRunnerCalls != 0 {
+			t.Errorf("answer %q: ran %q %v and %d env-runner call(s)", answer, fake.Name, fake.Args, envRunnerCalls)
 		}
 		for _, network := range dials {
 			if network != "unix" {

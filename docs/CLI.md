@@ -2540,10 +2540,11 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
     half does not run. Once that is recorded, it runs by default. kae runs
     `codex app-server daemon version` with `CODEX_HOME` set to the real codex home,
     in the same concurrent round as `upstream_version`'s `--version` probes and
-    under that round's 5 s deadline, and reads its `status` and `socketPath`. A daemon that reports itself running at a
-    `socketPath` other than the one the adapter declares, or while the declared
-    socket is absent, warns that codex's socket rule has changed; the two paths are
-    compared after resolving symlinks, and neither is printed. That is the case a
+    under that round's 5 s deadline, and reads its `status` and `socketPath`. A daemon that reports itself running at an
+    existing `socketPath` other than the one the adapter declares, or at an existing
+    one while the declared socket is absent, warns that codex's socket rule has
+    changed; the two paths are compared after resolving symlinks, a reported path
+    that does not exist is no evidence and is skipped, and neither path is printed. That is the case a
     switch cannot see: a moved socket reads `absent` there and prints nothing.
     Output kae cannot parse — a running daemon without an absolute `socketPath`
     included — is skipped, like a failing `--version`.

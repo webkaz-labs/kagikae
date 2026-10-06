@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"io/fs"
 	"path/filepath"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -48,6 +46,23 @@ func (app *App) planDaemonVersion(tool string, ad adapter.Adapter, realHome adap
 	return daemonVersionProbe{tool: tool, holder: h, spec: spec}, true
 }
 
+// daemonVersionProbes plans one `daemon version` probe per tool in tools for
+// doctorProbeRound; a nil entry spawns nothing (planDaemonVersion).
+func (app *App) daemonVersionProbes(tools []string) []roundProbe {
+	probes := make([]roundProbe, len(tools))
+	realHome := app.realHomeEnv()
+	for i, tool := range tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			continue
+		}
+		if p, ok := app.planDaemonVersion(tool, ad, realHome); ok {
+			probes[i] = func(ctx context.Context) (adapter.Check, bool) { return p.run(ctx, app) }
+		}
+	}
+	return probes
+}
+
 // run executes the status command under ctx (the round's deadline) through
 // runner.QueryWithEnv, which waits for the command only and not for a daemon it
 // may leave running, and returns the finding, if any.
@@ -70,19 +85,19 @@ func (p daemonVersionProbe) run(ctx context.Context, app *App) (adapter.Check, b
 }
 
 // socketMoved reports whether a running daemon's reported socket is not the
-// declared one: the declared socket does not exist, or the two resolve to
-// different paths. Both are compared after resolving symlinks, as the socket
-// half resolves the declared one. A reported path that does not resolve cannot
-// be the existing declared socket. An error other than a missing declared
-// socket is no evidence either way.
+// declared one, compared after resolving symlinks as the socket half resolves
+// the declared one (resolveDeclaredSocket): the declared socket does not exist
+// while the reported one does, or both exist and resolve to different paths. A
+// reported path that does not resolve is no evidence either way, nor is an error
+// other than a missing declared socket.
 func socketMoved(reported, declared string) bool {
-	want, err := filepath.EvalSymlinks(declared)
-	if errors.Is(err, fs.ErrNotExist) {
-		return true
-	}
+	got, err := filepath.EvalSymlinks(reported)
 	if err != nil {
 		return false
 	}
-	got, err := filepath.EvalSymlinks(reported)
-	return err != nil || got != want
+	want, absent, err := resolveDeclaredSocket(declared)
+	if err != nil {
+		return false
+	}
+	return absent || got != want
 }

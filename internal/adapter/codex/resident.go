@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
 	"runtime"
@@ -61,14 +62,16 @@ func (Codex) ParseDaemonAccount(result []byte) (adapter.ResidentAccount, bool) {
 const daemonRunning = "running"
 
 // ParseDaemonStatus reads the JSON object `codex app-server daemon version`
-// prints, its `status` and `socketPath` only. Both must be strings; the socket
-// path matters, and must be absolute, only while the daemon is running.
+// prints first, its `status` and `socketPath` only; whatever follows the object
+// (a log line a daemon it started writes to the same stdout) is not read. Both
+// must be strings; the socket path matters, and must be absolute, only while the
+// daemon is running.
 func (Codex) ParseDaemonStatus(output []byte) (running bool, socket string, ok bool) {
 	var doc struct {
 		Status     *string `json:"status"`
 		SocketPath *string `json:"socketPath"`
 	}
-	if err := json.Unmarshal(output, &doc); err != nil || doc.Status == nil {
+	if err := json.NewDecoder(bytes.NewReader(output)).Decode(&doc); err != nil || doc.Status == nil {
 		return false, "", false
 	}
 	if *doc.Status != daemonRunning {

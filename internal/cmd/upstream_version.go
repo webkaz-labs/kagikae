@@ -4,7 +4,6 @@ import (
 	"context"
 	"regexp"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -57,64 +56,28 @@ func (v upstreamVersion) movedPast(verified upstreamVersion) bool {
 	return v.minor > verified.minor
 }
 
-// upstreamVersionProbeDeadline bounds the whole probe round. `--version` is
-// *assumed* offline, but that is a property of six third-party binaries, not of
-// kae (copilot's already prints "Run 'copilot update' to check for updates."), so
-// the deadline turns the assumption into something kae enforces: doctor cannot
-// hang on a tool that decides to phone home or wedge. A var so a test can shrink
-// it. exec.CommandContext kills the probe when it fires, and a killed probe is a
-// non-zero exit, i.e. the same silent skip as any other failing `--version`.
-var upstreamVersionProbeDeadline = 5 * time.Second
-
-// upstreamProbeRound runs every doctor probe that launches an upstream AI CLI,
-// concurrently under upstreamVersionProbeDeadline, and returns the findings of
-// each half: upstream_version's `--version` probes (version) and, when
-// residentDaemonVersionEnabled, resident_drift's `daemon version` half
-// (resident; resident_daemon_version.go).
+// upstreamVersionProbes plans one `--version` probe per tool in tools for
+// doctorProbeRound; a nil entry spawns nothing. Each probe warns when the
+// installed tool is a newer major/minor than the version its adapter's
+// behaviour assumptions were verified against (adapter.VerifiedVersion). It is
+// the companion to identityDriftChecks: that one catches an assumption already
+// broken, this one flags the release where one *could* have broken, before a
+// silent switch failure.
 //
-// The `--version` half warns for each installed tool that is a newer
-// major/minor than the version its adapter's behaviour assumptions were
-// verified against (adapter.VerifiedVersion). It is the companion to
-// identityDriftChecks: that one catches an assumption already broken, this one
-// flags the release where one *could* have broken, before a silent switch
-// failure.
-//
-// `<binary> --version` through the runner seam, one process per installed tool.
-// The probes run concurrently under upstreamVersionProbeDeadline: they are
-// independent process spawns, and serially they dominated doctor's runtime (2.9s
+// `<binary> --version` through the runner seam, one process per installed tool,
+// run concurrently by the round: serially they dominated doctor's runtime (2.9s
 // vs 1.3s for the whole command, six tools installed, against a doctor that
-// launched no upstream CLI at all before this check existed). Each goroutine
-// writes its own index, so the findings stay in canonical tool order without a
-// lock, exactly as detectTools does.
+// launched no upstream CLI at all before this check existed).
 //
 // A tool that is not installed, declares no verified version, or prints nothing
 // parseable is skipped — a false warning here would train the user to ignore a
 // real one.
-func (app *App) upstreamProbeRound(ctx context.Context, toolFilter string) (version, resident []adapter.Check) {
-	ctx, cancel := context.WithTimeout(ctx, upstreamVersionProbeDeadline)
-	defer cancel()
-
-	tools := []string{}
-	for _, tool := range app.enabledTools() {
-		if toolFilter == "" || tool == toolFilter {
-			tools = append(tools, tool)
-		}
-	}
-	realHome := app.realHomeEnv()
-	versionFound := make([]adapter.Check, len(tools))
-	residentFound := make([]adapter.Check, len(tools))
-	var wg sync.WaitGroup
+func (app *App) upstreamVersionProbes(tools []string) []roundProbe {
+	probes := make([]roundProbe, len(tools))
 	for i, tool := range tools {
 		ad, err := adapter.ForTool(tool)
 		if err != nil {
 			continue
-		}
-		if p, ok := app.planDaemonVersion(tool, ad, realHome); ok {
-			wg.Go(func() {
-				if check, ok := p.run(ctx, app); ok {
-					residentFound[i] = check
-				}
-			})
 		}
 		verified := ad.VerifiedVersion()
 		if verified == "" {
@@ -123,29 +86,15 @@ func (app *App) upstreamProbeRound(ctx context.Context, toolFilter string) (vers
 		if _, err := app.Env.LookPath(ad.Binary()); err != nil {
 			continue // binary_present already reports a missing CLI
 		}
-		wg.Go(func() {
+		probes[i] = func(ctx context.Context) (adapter.Check, bool) {
 			stdout, _, code := runner.Run(ctx, ad.Binary(), "--version")
 			if code != 0 {
-				return
+				return adapter.Check{}, false
 			}
-			if check, ok := upstreamVersionCheck(tool, stdout, verified); ok {
-				versionFound[i] = check
-			}
-		})
-	}
-	wg.Wait()
-	return foundChecks(versionFound), foundChecks(residentFound)
-}
-
-// foundChecks drops the zeroed slots a skipped or silent tool left.
-func foundChecks(found []adapter.Check) []adapter.Check {
-	checks := []adapter.Check{}
-	for _, check := range found {
-		if check.Code != "" {
-			checks = append(checks, check)
+			return upstreamVersionCheck(tool, stdout, verified)
 		}
 	}
-	return checks
+	return probes
 }
 
 // assumptionMaxAge is how long a tool's behaviour assumptions may go unchecked

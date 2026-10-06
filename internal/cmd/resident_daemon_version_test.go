@@ -72,47 +72,42 @@ func doctorDaemonVersionRows(t *testing.T, app *App, filter string) []adapter.Ch
 	return rows
 }
 
-// The outcomes of `daemon version`: only a running daemon away from the declared
-// socket, or with no declared socket at all, warns. The declared socket is a
-// symlink to a live fake daemon holding the live account, so the socket half is
-// silent throughout.
+// movedSocket is a live socket other than the declared one: a second fake
+// daemon, which `daemon version` can report the daemon running at.
+func movedSocket(t *testing.T) string {
+	t.Helper()
+	return startFakeDaemon(t, accountReadReply(probeAccount)).socket
+}
+
+// The outcomes of `daemon version`: only a running daemon at another live socket
+// than the declared one, or at a live socket while the declared one is absent,
+// warns. When linked, the declared socket is a symlink to a live fake daemon
+// holding the live account, so the socket half is silent throughout.
 func TestDoctorDaemonVersionOutcomes(t *testing.T) {
-	other := filepath.Join(t.TempDir(), "moved.sock")
+	other := movedSocket(t)
+	gone := filepath.Join(t.TempDir(), "gone.sock")
 	for _, tc := range []struct {
 		name     string
 		declared bool // link the declared socket to a fake daemon
-		reply    func(target, declared string) func(context.Context) (string, int)
+		output   func(target, declared string) string
+		code     int
 		warn     bool
 	}{
-		{"reports the declared path", true, func(_, declared string) func(context.Context) (string, int) {
-			return statusReply(runningAt(declared))
-		}, false},
-		{"reports the symlink's target", true, func(target, _ string) func(context.Context) (string, int) {
-			return statusReply(runningAt(target))
-		}, false},
-		{"reports another path", true, func(string, string) func(context.Context) (string, int) {
-			return statusReply(runningAt(other))
-		}, true},
-		{"declared socket is absent", false, func(string, string) func(context.Context) (string, int) {
-			return statusReply(runningAt(other))
-		}, true},
-		{"not running", false, func(string, string) func(context.Context) (string, int) {
-			return statusReply(`{"status":"stopped"}`)
-		}, false},
-		{"unparseable", false, func(string, string) func(context.Context) (string, int) {
-			return statusReply("codex-cli 0.160.0\n")
-		}, false},
-		{"exits non-zero", false, func(string, string) func(context.Context) (string, int) {
-			return func(context.Context) (string, int) { return runningAt(other), 2 }
-		}, false},
-		{"killed at the deadline", false, func(string, string) func(context.Context) (string, int) {
-			return func(context.Context) (string, int) { return runningAt(other), -1 }
-		}, false},
+		{"reports the declared path", true, func(_, declared string) string { return runningAt(declared) }, 0, false},
+		{"reports the symlink's target", true, func(target, _ string) string { return runningAt(target) }, 0, false},
+		{"reports another live socket", true, func(string, string) string { return runningAt(other) }, 0, true},
+		{"reports a path that does not exist", true, func(string, string) string { return runningAt(gone) }, 0, false},
+		{"declared socket is absent", false, func(string, string) string { return runningAt(other) }, 0, true},
+		{"both are absent", false, func(string, string) string { return runningAt(gone) }, 0, false},
+		{"not running", false, func(string, string) string { return `{"status":"stopped"}` }, 0, false},
+		{"unparseable", false, func(string, string) string { return "codex-cli 0.160.0\n" }, 0, false},
+		{"exits non-zero", false, func(string, string) string { return runningAt(other) }, 2, false},
+		{"killed at the deadline", false, func(string, string) string { return runningAt(other) }, -1, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var target, declared string
-			app, h, calls := daemonVersionFixture(t, true, func(ctx context.Context) (string, int) {
-				return tc.reply(target, declared)(ctx)
+			app, h, calls := daemonVersionFixture(t, true, func(context.Context) (string, int) {
+				return tc.output(target, declared), tc.code
 			})
 			declared = h.ResidentDaemon(app.Env).Socket
 			if tc.declared {
@@ -152,7 +147,7 @@ func TestDoctorDaemonVersionOutcomes(t *testing.T) {
 // home, even when kae runs inside a bound directory that exports another one;
 // the restart it names carries the real home for that shell.
 func TestDoctorDaemonVersionRunsAgainstTheRealHome(t *testing.T) {
-	app, h, calls := daemonVersionFixture(t, true, statusReply(runningAt(filepath.Join(t.TempDir(), "moved.sock"))))
+	app, h, calls := daemonVersionFixture(t, true, statusReply(runningAt(movedSocket(t))))
 	realHome := strings.TrimPrefix(h.ResidentDaemon(app.Env).Env[0], "CODEX_HOME=")
 	bound := app.Paths.IsolatedConfigDir("abcdef0123456789", constants.ToolCodex, "main")
 	inner, innerLookup := app.Env.Getenv, app.Env.LookupEnv
@@ -190,7 +185,7 @@ func TestDoctorDaemonVersionDisabledByDefault(t *testing.T) {
 	if residentDaemonVersionEnabled {
 		t.Fatal("the daemon version half is enabled before the acceptance records that it is safe")
 	}
-	app, _, calls := daemonVersionFixture(t, false, statusReply(runningAt("/elsewhere.sock")))
+	app, _, calls := daemonVersionFixture(t, false, statusReply(runningAt(movedSocket(t))))
 	for _, filter := range []string{"", constants.ToolCodex} {
 		if rows := doctorDaemonVersionRows(t, app, filter); len(rows) != 0 {
 			t.Errorf("filter %q: rows = %+v", filter, rows)
@@ -203,7 +198,7 @@ func TestDoctorDaemonVersionDisabledByDefault(t *testing.T) {
 
 // A filter naming another tool, or codex missing from PATH, runs nothing.
 func TestDoctorDaemonVersionSkips(t *testing.T) {
-	app, _, calls := daemonVersionFixture(t, true, statusReply(runningAt("/elsewhere.sock")))
+	app, _, calls := daemonVersionFixture(t, true, statusReply(runningAt(movedSocket(t))))
 	if rows := doctorDaemonVersionRows(t, app, constants.ToolClaude); len(rows) != 0 || len(*calls) != 0 {
 		t.Errorf("doctor claude: rows %+v, calls %+v", rows, *calls)
 	}
@@ -237,7 +232,7 @@ func TestDoctorDaemonVersionSharesTheProbeRound(t *testing.T) {
 
 // The warning renders in Japanese while JSON and Error() keep English.
 func TestDoctorDaemonVersionMessageInJapanese(t *testing.T) {
-	app, _, _ := daemonVersionFixture(t, true, statusReply(runningAt("/elsewhere.sock")))
+	app, _, _ := daemonVersionFixture(t, true, statusReply(runningAt(movedSocket(t))))
 	rows := doctorDaemonVersionRows(t, app, constants.ToolCodex)
 	if len(rows) != 1 {
 		t.Fatalf("rows = %+v", rows)
@@ -254,8 +249,9 @@ func TestDoctorDaemonVersionMessageInJapanese(t *testing.T) {
 }
 
 // socketMoved compares resolved paths: a reported path under a symlinked
-// directory equals its target, and a declared socket that is a dangling link is
-// absent.
+// directory equals its target, two existing paths that resolve apart differ, a
+// declared socket that is a dangling link is absent, and a reported path that
+// does not exist is no evidence.
 func TestSocketMovedResolvesSymlinks(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "real")
@@ -281,7 +277,18 @@ func TestSocketMovedResolvesSymlinks(t *testing.T) {
 	if !socketMoved(sock, dangling) {
 		t.Error("a dangling declared socket did not read as absent")
 	}
-	if !socketMoved(filepath.Join(real, "other.sock"), sock) {
-		t.Error("another socket in the same directory did not read as moved")
+	other := filepath.Join(real, "other.sock")
+	if socketMoved(other, sock) {
+		t.Error("a reported path that does not exist read as moved")
+	}
+	writeFile(t, other, "")
+	if !socketMoved(other, sock) {
+		t.Error("another existing socket in the same directory did not read as moved")
+	}
+	if !socketMoved(filepath.Join(alias, "other.sock"), filepath.Join(alias, "s.sock")) {
+		t.Error("two existing sockets reached through the same symlinked directory did not read as moved")
+	}
+	if socketMoved(filepath.Join(dir, "gone.sock"), dangling) {
+		t.Error("a missing reported path read as moved while the declared socket is absent")
 	}
 }

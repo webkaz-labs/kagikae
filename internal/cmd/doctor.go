@@ -193,7 +193,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// filter, and needs no secret backend.
 	// The same round runs resident_drift's `daemon version` half, whose findings
 	// join the socket half's below.
-	versionChecks, daemonVersionChecks := app.upstreamProbeRound(ctx, toolFilter)
+	versionChecks, daemonVersionChecks := app.doctorProbeRound(ctx, toolFilter)
 	report.Checks = append(report.Checks, versionChecks...)
 	// ...and the assumptions nobody has re-checked in six months, which the
 	// version comparison cannot see because it needs the tool to have moved.

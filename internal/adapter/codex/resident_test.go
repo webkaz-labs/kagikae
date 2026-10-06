@@ -155,6 +155,10 @@ func TestParseDaemonAccountRejectsUnreadableAnswers(t *testing.T) {
 
 // `codex app-server daemon version` names the daemon's status and socket path
 // (docs/ADAPTERS.md § Resident processes); only those two members are read.
+func daemonRunningAt(sock string) string {
+	return `{"status":"running","socketPath":"` + sock + `"}` + "\n"
+}
+
 func TestParseDaemonStatus(t *testing.T) {
 	const sock = "/home/you/.codex/app-server-control/app-server-control.sock"
 	for _, tc := range []struct {
@@ -172,6 +176,8 @@ func TestParseDaemonStatus(t *testing.T) {
 		{"no status", `{"socketPath":"` + sock + `"}`, false, false, ""},
 		{"status is a bool", `{"status":true,"socketPath":"` + sock + `"}`, false, false, ""},
 		{"not JSON", "codex-cli 0.160.0\n", false, false, ""},
+		{"followed by a log line", daemonRunningAt(sock) + "daemon: listening\n{", true, true, sock},
+		{"array", `[{"status":"running"}]`, false, false, ""},
 		{"JSON after a banner", "note\n" + `{"status":"running","socketPath":"` + sock + `"}`, false, false, ""},
 		{"empty", ``, false, false, ""},
 	} {

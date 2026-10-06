@@ -15,7 +15,7 @@ import (
 // silent.
 //
 // It runs no subprocess of the tool: the `daemon version` half
-// (DaemonSpec.Status, resident_daemon_version.go) runs in upstreamProbeRound's
+// (DaemonSpec.Status, resident_daemon_version.go) runs in doctorProbeRound's
 // round instead. Reading the live credential may still run the platform's
 // keychain reader (`security` on darwin) under the keyring store.
 //

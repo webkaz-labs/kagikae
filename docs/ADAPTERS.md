@@ -411,7 +411,8 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
   switched home.
 - **status** `codex app-server daemon version`, whose JSON names `status` and
-  `socketPath`, read by `ParseDaemonStatus`: `status` `running` with an absolute
+  `socketPath`, read by `ParseDaemonStatus` from the first JSON value printed
+  (what follows it is ignored): `status` `running` with an absolute
   `socketPath` is a running daemon, another `status` is not, and anything else is
   unreadable; doctor only, and not run until the acceptance records that it starts
   no daemon when none runs and makes no network call (enabled by default once that

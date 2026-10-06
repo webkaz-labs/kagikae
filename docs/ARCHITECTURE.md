@@ -106,8 +106,7 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
   `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
   framing is exercised. The daemon restart goes through `runner.LaunchWithEnv`
-  (`Launch` with extra environment entries and all three stdio streams on the null
-  device, so the daemon it leaves running holds no pipe kae waits on), the
+  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), the
   app's `osascript` through `runner.Run` and its relaunch through `runner.Launch`.
   Waits use `App.Now` and an injected sleeper. [SECURITY.md](SECURITY.md)
   § Resident processes owns the limits on all of them.

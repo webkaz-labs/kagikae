@@ -309,20 +309,23 @@ Nothing is restarted or quit, and a warning names the manual step instead, when:
 
 A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
-`codex app-server daemon restart`. `absent` and `matches` print nothing. Every
-warning that names that manual step names it as
+`codex app-server daemon restart`. `absent` and `matches` print nothing. A socket
+upstream has moved also reads `absent`, so the switch is silent about it;
+`resident_drift`'s `daemon version` half reports that case once it is enabled, and
+until then kae does not report it.
+
+**The manual step.** Every warning that names the manual restart names it as
+`codex app-server daemon restart`, or as
 `CODEX_HOME='<real codex home>' codex app-server daemon restart` when the shell kae
 runs in resolves another codex home — it exports a bound directory's or a global
 isolation's `CODEX_HOME` — because the bare command typed there would restart
 that home's daemon instead. The prefix is the POSIX shell form of a variable
 assignment for one command, as bash and zsh read it.
+
 The daemon's `outcome` is `none` for `absent` and `matches` and `warned` for
 `unknown`; for `differs` it is `opted_out` under `--no-restart`, otherwise `warned`
 in the hook shape, otherwise `planned` under `--dry-run`, otherwise what the restart
-of step 4 settled. A socket
-upstream has moved also reads `absent`, so the switch is silent about it;
-`resident_drift`'s `daemon version` half reports that case once it is enabled, and
-until then kae does not report it.
+of step 4 settled.
 
 The ChatGPT app's `outcome` by condition, for a run where the app is running and
 this command changed codex's account:
@@ -605,9 +608,8 @@ offer to quit and relaunch the ChatGPT app (§ kae use Semantics); long-running
 sessions still have to be restarted by hand. The manual steps are for a login made
 without kae, a run with `--no-restart` or a hook, and a restart kae reported as
 failed or unverified: quit the app and the long-running sessions and run
-`codex app-server daemon restart` — in a shell that exports a bound directory's or a
-global isolation's `CODEX_HOME`, as `CODEX_HOME='<real codex home>' codex app-server
-daemon restart`, which is how kae's own warnings name it. If codex says "Your access token could not be
+`codex app-server daemon restart`, in the form § kae use Semantics gives under
+**The manual step** when the shell exports another `CODEX_HOME`. If codex says "Your access token could not be
 refreshed because you have since logged out or signed in to another account.
 Please sign in again." right after a switch or login, restart the same processes.
 Observed on 2026-10-05: that message after a `kae add` cleared once the app and the
@@ -2514,8 +2516,8 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   comparison, in two halves, and kae makes no network call for either:
   - kae connects to the daemon's socket and sends the read-only requests
     [SECURITY.md](SECURITY.md) § Resident processes allows. A readable `differs`
-    warns and names `codex app-server daemon restart` (with the real home's
-    `CODEX_HOME` in a shell that exports another, as § kae use Semantics says);
+    warns and names the manual restart as § kae use Semantics gives it (**The
+    manual step**);
     `unknown` warns that the
     daemon's answer could not be read — doctor is where a protocol change has to
     surface, and a switch warns on `unknown` for the same reason.

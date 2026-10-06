@@ -371,8 +371,9 @@ daemon is not part of that read-modify-write, and codex does not take kae's lock
 so holding them would only turn the restart's seconds into `lock_busy` for other kae
 commands. The restart therefore follows the transaction, after state is saved and
 the locks are released: a restart before the state save would, if the save failed,
-leave the backup restored on disk while the daemon ran the new account. A failed
-restart does not roll the switch back. That is not the mixed-state rule of
+leave the backup restored on disk while the daemon ran the new account. A restart
+command (kae's own child) still running at its 30 s limit is killed; the daemon it
+started is left alone. A failed restart does not roll the switch back. That is not the mixed-state rule of
 § Mutation Safety Rules, which governs files kae writes; the daemon's memory is not
 one of them.
 

@@ -72,16 +72,10 @@ ships only part of what the contract describes: the release notes of each releas
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
 GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
 and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
-from slice 6. Each slice is its own commit and review. Slices 1 to 3 are done on
-the integration branch, git log records how, and the contract describes what they
-do:
-
-1. `internal/wsrpc`, the WebSocket-over-Unix-socket client.
-2. The codex adapter's `ResidentHolder` and the daemon probe.
-3. The reconcile in `kae use`, `--no-restart`, the `residents` report and the
-   session warning.
-
-What remains:
+from slice 6. Slices 1 to 3 — the WebSocket client (`internal/wsrpc`), the codex
+adapter's `ResidentHolder` with the daemon probe, and the reconcile in `kae use` —
+are done on the integration branch; git log records them. The rest, each its own
+commit and review:
 
 4. The same reconcile in `kae add` and `kae rollback`.
 5. `internal/desktopapp`: the ChatGPT app's confirmation, quit and relaunch.
@@ -90,10 +84,12 @@ What remains:
 6. `doctor resident_drift`. Its socket half runs by default. Its moved-socket half
    (`codex app-server daemon version`) ships disabled and stays disabled until the
    acceptance records that the command starts no daemon when none runs and makes no
-   network call; once that is recorded it is enabled by default. Its findings name
-   the manual restart through the helper the switch's warnings use
-   (`residentRestartCommand` in `internal/cmd`), so a shell that exports another
-   `CODEX_HOME` is told the real home.
+   network call; once that is recorded it is enabled by default. `daemon version`
+   is read, so it needs the capturing `runner.RunWithEnv`, which a daemon the
+   command starts would hold open; enabling it needs `WaitDelay` or a seam of its
+   own first. Its findings name the manual restart through the helper the switch's
+   warnings use (`residentRestartCommand` in `internal/cmd`), so a shell that
+   exports another `CODEX_HOME` is told the real home.
 7. Usage attribution: a veto on a codex usage reading kae would attribute to the
    wrong account (a veto only, no re-attribution). Last, as a separate slice.
 8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with

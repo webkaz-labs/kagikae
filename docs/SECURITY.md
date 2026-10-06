@@ -168,9 +168,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   the active account's live state, and a bound directory's own store.
 - The `resident_drift` doctor check is a **local probe** of codex's managed daemon
   under the rules of § Resident processes: it connects to the daemon's Unix socket
-  and, once enabled, runs `codex app-server daemon version` — that half stays
-  disabled until the acceptance records that the command starts no daemon when none
-  runs and makes no network call, and is enabled by default after that
+  and runs `codex app-server daemon version`, which the local acceptance observed
+  to start no daemon when none runs and to answer with IP traffic denied
   ([CLI.md](CLI.md) § `kae doctor --json`). kae makes no network call for it;
   whether the daemon contacts the network to answer is not established
   (§ Resident processes). Neither account it compares reaches the output.
@@ -336,8 +335,8 @@ owns the limits on how.
 **kae sends no signal to a resident process and never identifies a process by
 name, argv or pid.** It does not enumerate processes and does not read another
 process's argv. It observes a resident process only through the daemon probe
-below, `codex app-server daemon version` (doctor only, and only once enabled as
-`resident_drift` describes) and an `osascript` query
+below, `codex app-server daemon version` (doctor only, as `resident_drift`
+describes) and an `osascript` query
 of whether the app is running. It acts on one through exactly two paths:
 
 1. **The owner's lifecycle command.** `codex app-server daemon restart`, run with
@@ -511,6 +510,6 @@ credential it holds, and a mislabelled token is undetectable afterwards
 | `secret-tool` (Linux) | libsecret read/write | stdin used for store; output of lookup is secret |
 | upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |
 | `codex app-server daemon restart` | restart codex's managed daemon after a switch changed the account it holds | argv and environment from the adapter; `CODEX_HOME` set to the switched home, never inherited; no credential in argv or environment (§ Resident processes) |
-| `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path; disabled until the acceptance records that it starts no daemon and makes no network call, then enabled by default | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output, and neither is printed (§ Resident processes) |
+| `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path; enabled by default, as the local acceptance observed that it starts no daemon and answers with IP traffic denied | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output, and neither is printed (§ Resident processes) |
 | `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; with exit 0, stdout `true` means running, and `false` or `absent` (the app is not installed) not running; anything else means kae cannot tell, and it then acts on nothing; stderr is localized, so the only things read from it are the Apple Events error numbers `-1743` (automation not permitted) and `-1712` (the quit request timed out; kae keeps waiting) (§ Resident processes) |
 | `open -b` (macOS) | relaunch the ChatGPT app after its quit was observed | allowlisted bundle id only, through `runner.Launch` |

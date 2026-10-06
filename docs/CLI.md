@@ -251,9 +251,11 @@ them as follows; tools without resident processes are unaffected.
 
 1. **Probe, before anything is written.** Without a lock, kae asks the daemon of the
    real codex home which account it holds, compares it with the account the switch
-   will leave live, and reads `absent` (no daemon socket), `matches`, `differs` or
-   `unknown` (the socket exists but kae could not read an account from it, or the
-   credential it is compared with names none, as an API-key login does). It also
+   will leave live, and reads `absent` (no daemon socket), `matches`, `differs` (the
+   daemon holds another account, or answers that it holds none — `account` null —
+   while the credential names one) or `unknown` (the socket exists but kae could
+   not read the daemon's answer, or the credential it is compared with names no
+   account, as an API-key login does, whatever the daemon answers). It also
    asks whether this command changes codex's account at all: it does when the live
    credential and the target's name different accounts. When either names none or
    cannot be read, byte-identical credentials count as no change and anything else
@@ -317,8 +319,7 @@ A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
 `codex app-server daemon restart`. `absent` and `matches` print nothing. A socket
 upstream has moved also reads `absent`, so the switch is silent about it;
-`resident_drift`'s `daemon version` half reports that case once it is enabled, and
-until then kae does not report it.
+`resident_drift`'s `daemon version` half reports that case.
 
 **The manual step.** Every warning that names the manual restart names it as
 `codex app-server daemon restart`, or as
@@ -2551,10 +2552,10 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   apply offline. The message names the one-time fix (start the tool once, then
   `kae add --no-login <tool> <account>`).
 - `resident_drift`: codex's managed daemon for the real codex home holds an account
-  other than the live credential's, kae cannot read which account it holds, or
-  kae cannot find it where the adapter says it is (once the `daemon version` half
-  is enabled; § kae use Semantics,
-  **Resident processes (codex)**). It is a **local probe**, not an offline
+  other than the live credential's, or none while the credential names one, kae
+  cannot read which account it holds, or kae cannot find it where the adapter says
+  it is (§ kae use Semantics, **Resident processes (codex)**, which defines
+  `differs` and `unknown` for both). It is a **local probe**, not an offline
   comparison, in two halves, and kae makes no network call for either:
   - kae connects to the daemon's socket and sends the read-only requests
     [SECURITY.md](SECURITY.md) § Resident processes allows. A readable `differs`
@@ -2563,10 +2564,11 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
     `unknown` warns that the
     daemon's answer could not be read — doctor is where a protocol change has to
     surface, and a switch warns on `unknown` for the same reason.
-  - **Off by default until the acceptance records that it is safe**: that
-    `codex app-server daemon version` starts no daemon when none runs and makes no
-    network call ([ROADMAP.md](ROADMAP.md) § Current work order). Until then this
-    half does not run. Once that is recorded, it runs by default. kae runs
+  - **On by default**, because the local acceptance recorded that
+    `codex app-server daemon version` starts no daemon when none runs (it exits
+    non-zero, which this half skips) and gives the same answer with IP traffic
+    denied ([ACCEPTANCE.md](ACCEPTANCE.md) § codex resident processes — local
+    acceptance (2026-10-06)). kae runs
     `codex app-server daemon version` with `CODEX_HOME` set to the real codex home,
     in the same concurrent round as `upstream_version`'s `--version` probes and
     under that round's 5 s deadline, and reads its `status` and `socketPath`. A daemon that reports itself running at an

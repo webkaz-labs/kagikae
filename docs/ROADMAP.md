@@ -122,6 +122,10 @@ Before slice 8 can pass, the acceptance has to settle what is not yet verified:
 - whether a codex TUI session connects to the managed daemon at all, which decides
   whether a restart reaches it and what the session warning should say;
 - what an automatic daemon restart interrupts in the clients connected to it;
+- whether the daemon `codex app-server daemon restart` starts closes the stdio it
+  inherits. kae gives the restart the null device rather than pipes, so it does not
+  wait on the daemon either way; a daemon that keeps them open would hold a caller
+  that captures the restart's output;
 - whether a resident process still on the old account can write a refreshed token
   back to `auth.json`, which would overwrite a switch while a hook or
   `--no-restart` leaves it running.

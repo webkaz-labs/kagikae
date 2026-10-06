@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type Runner interface {
@@ -99,6 +100,37 @@ func Launch(ctx context.Context, name string, args ...string) (int, error) {
 func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = os.Stderr // Stdin and Stdout nil: the null device
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), nil
+	}
+	return 1, err
+}
+
+// launchWaitDelay bounds how long LaunchWithEnv waits, once ctx is done and the
+// program is killed, for it to be reaped.
+const launchWaitDelay = time.Second
+
+// LaunchWithEnv is Launch for a program kae starts with extra KEY=VALUE entries
+// appended to its environment (the last entry for a key wins, as os/exec
+// documents), and whose output nobody reads: stdin, stdout and stderr are all
+// the null device. Like Launch it uses files rather than pipes, because a pipe
+// is inherited by whatever the program leaves running — a daemon that a
+// lifecycle command (codex app-server daemon restart) starts — and Wait would
+// not return until that exits, past any deadline on ctx. WaitDelay is a
+// backstop on the wait after ctx is done; with no pipe there is nothing left for
+// it to bound, so no test can show it working (a mutation removing it survives),
+// and this comment stands in for one. It returns the exit code, or an error when the
+// program could not be started or reaped. Overridable in tests.
+var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
+	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stdout, Stderr nil: the null device
+	cmd.WaitDelay = launchWaitDelay
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	err := cmd.Run()
 	if err == nil {
 		return 0, nil

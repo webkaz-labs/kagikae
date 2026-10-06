@@ -314,7 +314,8 @@ warning that names that manual step names it as
 `CODEX_HOME='<real codex home>' codex app-server daemon restart` when the shell kae
 runs in resolves another codex home — it exports a bound directory's or a global
 isolation's `CODEX_HOME` — because the bare command typed there would restart
-that home's daemon instead.
+that home's daemon instead. The prefix is the POSIX shell form of a variable
+assignment for one command, as bash and zsh read it.
 The daemon's `outcome` is `none` for `absent` and `matches` and `warned` for
 `unknown`; for `differs` it is `opted_out` under `--no-restart`, otherwise `warned`
 in the hook shape, otherwise `planned` under `--dry-run`, otherwise what the restart
@@ -605,7 +606,7 @@ sessions still have to be restarted by hand. The manual steps are for a login ma
 without kae, a run with `--no-restart` or a hook, and a restart kae reported as
 failed or unverified: quit the app and the long-running sessions and run
 `codex app-server daemon restart` — in a shell that exports a bound directory's or a
-global isolation's `CODEX_HOME`, as `CODEX_HOME=<real codex home> codex app-server
+global isolation's `CODEX_HOME`, as `CODEX_HOME='<real codex home>' codex app-server
 daemon restart`, which is how kae's own warnings name it. If codex says "Your access token could not be
 refreshed because you have since logged out or signed in to another account.
 Please sign in again." right after a switch or login, restart the same processes.

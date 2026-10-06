@@ -21,7 +21,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/wsrpctest"
 )
 
-// The tests in this file swap runner.RunWithEnv and os.Stdout/os.Stderr, so none
+// The tests in this file swap runner.LaunchWithEnv and os.Stdout/os.Stderr, so none
 // of them runs in parallel.
 
 // Accounts of the two captured codex logins: main's and side's account ids.
@@ -70,7 +70,7 @@ func startResidentDaemon(t *testing.T, accountID string) *residentDaemon {
 	return d
 }
 
-// restartCall is one call of runner.RunWithEnv the reconcile made.
+// restartCall is one call of runner.LaunchWithEnv the reconcile made.
 type restartCall struct {
 	argv []string
 	env  []string
@@ -167,14 +167,14 @@ func (f *residentFixture) liveAccountID(t *testing.T) string {
 	return doc.Tokens.AccountID
 }
 
-// stubRestart replaces runner.RunWithEnv for the test: it records the call and
+// stubRestart replaces runner.LaunchWithEnv for the test: it records the call and
 // returns what run returns. restartTo is the usual run: the daemon comes back on
 // the live account and the command succeeds.
 func (f *residentFixture) stubRestart(t *testing.T, run func(*restartCall) int) {
 	t.Helper()
-	saved := runner.RunWithEnv
-	t.Cleanup(func() { runner.RunWithEnv = saved })
-	runner.RunWithEnv = func(_ context.Context, extraEnv []string, name string, args ...string) (string, string, int) {
+	saved := runner.LaunchWithEnv
+	t.Cleanup(func() { runner.LaunchWithEnv = saved })
+	runner.LaunchWithEnv = func(_ context.Context, extraEnv []string, name string, args ...string) (int, error) {
 		call := restartCall{argv: append([]string{name}, args...), env: append([]string(nil), extraEnv...)}
 		for _, kv := range append(os.Environ(), extraEnv...) {
 			if v, ok := strings.CutPrefix(kv, "CODEX_HOME="); ok {
@@ -189,7 +189,7 @@ func (f *residentFixture) stubRestart(t *testing.T, run func(*restartCall) int) 
 		f.mu.Lock()
 		f.restarts = append(f.restarts, call)
 		f.mu.Unlock()
-		return "", "", code
+		return code, nil
 	}
 }
 
@@ -466,8 +466,8 @@ func TestProfileSwitchReconcilesOnce(t *testing.T) {
 	f.withDaemon(t, residentSide)
 	f.stubRestart(t, f.restartTo(t))
 	claudeLockFree := false
-	inner := runner.RunWithEnv
-	runner.RunWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, string, int) {
+	inner := runner.LaunchWithEnv
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
 		if held, err := lock.Acquire(f.app.Paths.LocksDir(), constants.ToolClaude); err == nil {
 			claudeLockFree = true
 			held.Release()
@@ -769,14 +769,14 @@ func TestRestartTimesOut(t *testing.T) {
 	f.app.residentRestartTimeout = 50 * time.Millisecond
 	var deadline time.Duration
 	f.stubRestart(t, f.restartTo(t))
-	saved := runner.RunWithEnv
-	runner.RunWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, string, int) {
+	saved := runner.LaunchWithEnv
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
 		if d, ok := ctx.Deadline(); ok {
 			deadline = time.Until(d)
 		}
 		select {
 		case <-ctx.Done():
-			return "", "", -1
+			return -1, nil
 		case <-time.After(2 * time.Second):
 			return saved(ctx, env, name, args...)
 		}
@@ -847,5 +847,96 @@ func TestReprobesStayWithinTheWait(t *testing.T) {
 	}
 	if elapsed > 3*time.Second {
 		t.Errorf("the wait took %v; a re-probe outlived the 5 s", elapsed)
+	}
+}
+
+// A command that exits 0 as the deadline passes restarted the daemon: the
+// timeout is judged only for a command that did not succeed.
+func TestRestartExitingZeroAtTheDeadlineIsNotATimeout(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	f.app.residentRestartTimeout = 20 * time.Millisecond
+	f.stubRestart(t, f.restartTo(t))
+	inner := runner.LaunchWithEnv
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+		<-ctx.Done()
+		return inner(ctx, env, name, args...)
+	}
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
+		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry,
+	}) {
+		t.Errorf("residents = %+v\n%s", got, stderr)
+	}
+}
+
+// An interrupt (the parent context cancelled) is a plain failure, not reported
+// as the restart running out of time.
+func TestRestartInterruptedIsNotATimeout(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.stubRestart(t, func(*restartCall) int { cancel(); return -1 })
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runSwitch(ctx, f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
+		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry,
+	}) {
+		t.Errorf("residents = %+v", got)
+	}
+	if strings.Contains(stderr, "did not finish within") {
+		t.Errorf("an interrupt was reported as a timeout:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "codex app-server daemon restart failed (exit -1)") {
+		t.Errorf("stderr lacks the failure warning:\n%s", stderr)
+	}
+}
+
+// Through the real runner, a restart command that leaves a process running (as
+// codex app-server daemon restart leaves the daemon) does not hold kae: the
+// process inherits no pipe kae waits on. A stand-in codex on a temporary PATH
+// backgrounds a sleep and exits 0; another also hangs in the foreground and is
+// cut at the limit. Neither touches HOME, and no real codex runs.
+func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
+	for _, tc := range []struct {
+		name, script, outcome string
+	}{
+		{"exits", "sleep 10 &\nexit 0\n", constants.ResidentOutcomeRestartUnverified},
+		{"hangs", "sleep 10 &\nexec sleep 10\n", constants.ResidentOutcomeRestartFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newResidentFixture(t)
+			f.withDaemon(t, residentSide)
+			f.app.residentRestartTimeout = 300 * time.Millisecond
+			bin := t.TempDir()
+			writeFile(t, filepath.Join(bin, "codex"), "#!/bin/sh\n"+tc.script)
+			if err := os.Chmod(filepath.Join(bin, "codex"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+":/bin:/usr/bin")
+			saved := runner.LaunchWithEnv
+			runner.LaunchWithEnv = osLaunchWithEnv
+			t.Cleanup(func() { runner.LaunchWithEnv = saved })
+			start := time.Now()
+			code, stdout, stderr := captureBoth(t, func() int {
+				return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+			})
+			elapsed := time.Since(start)
+			mustExit(t, constants.ExitOK, code, stdout+stderr)
+			if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
+				daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry,
+			}) {
+				t.Errorf("residents = %+v\n%s", got, stderr)
+			}
+			if elapsed > 3*time.Second {
+				t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
+			}
+		})
 	}
 }

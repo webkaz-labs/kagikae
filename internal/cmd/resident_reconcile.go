@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -223,7 +224,9 @@ func (app *App) reconcileResidents(ctx context.Context, results []switchResult, 
 // restartDaemon runs the daemon's restart command with the spec's environment,
 // which sets CODEX_HOME to the real home after everything inherited, so a bound
 // directory's value cannot select another daemon, and bounds it by
-// residentRestartLimit. It then re-probes against the live credential as it
+// residentRestartLimit. It goes through runner.LaunchWithEnv, which reads no
+// output, so a daemon the command leaves running cannot hold kae past the
+// limit. It then re-probes against the live credential as it
 // reads at each attempt — not the switch's target, so a later switch by another
 // kae process does not make this restart look unverified — each probe bounded by
 // what is left of the 5 s.
@@ -231,14 +234,18 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	manual := app.residentRestartCommand(p.holder, p.spec)
 	limit := app.residentRestartLimit()
 	runCtx, cancel := context.WithTimeout(ctx, limit)
-	_, _, code := runner.RunWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
-	timedOut := runCtx.Err() != nil
+	code, err := runner.LaunchWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
+	// Only a command that did not succeed is judged against the deadline: one
+	// that exited 0 just as it passed restarted the daemon. A cancelled parent
+	// (an interrupt) is a plain failure, not a timeout.
+	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded)
 	cancel()
-	if timedOut {
+	failed := code != 0 || err != nil
+	if failed && timedOut {
 		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
 		return constants.ResidentOutcomeRestartFailed
 	}
-	if code != 0 {
+	if failed {
 		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
 		return constants.ResidentOutcomeRestartFailed
 	}

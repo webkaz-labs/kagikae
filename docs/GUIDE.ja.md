@@ -355,12 +355,14 @@ codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`�
 
 kae を使わずにログインした場合、`kae add` や `kae rollback` の後、`--no-restart` やフックで
 切り替えた場合、再起動の失敗や再起動後の確認ができなかったこと（未確認）が表示された場合は、
-アプリと長時間のセッションを終了し、`codex app-server daemon restart` を実行してください。
-固定したディレクトリやグローバルな独立環境の `CODEX_HOME` を export しているシェルでは、
-そのホームのデーモンが再起動されてしまうため、`CODEX_HOME=<実ホーム側の codex ホーム>` を
-前に付けて実行してください。kae の警告は、その場合この形でコマンドを表示します。
+アプリと長時間のセッションを終了し、`codex app-server daemon restart` を
+実行してください。固定したディレクトリやグローバルな独立環境の `CODEX_HOME` を export して
+いるシェルでは、そのホームのデーモンが再起動されてしまうため、
+`CODEX_HOME='<実ホーム側の codex ホーム>'` を前に付けて実行してください。kae の警告は、
+その場合この形でコマンドを表示します（bash や zsh などの POSIX シェルの書き方です）。
 切替やログインの直後に「Your access token could not be refreshed because you have since
-logged out or signed in to another account. Please sign in again.」と出た場合も、同じプロセスを終了・再起動してください。2026-10-05 に、`kae add` の直後に出た
+logged out or signed in to another account. Please sign in again.」と出た場合も、
+同じプロセスを終了・再起動してください。2026-10-05 に、`kae add` の直後に出た
 この表示は、アプリとデーモンの再起動で消えました。翌日、デーモンがディスク上の別アカウントを
 取り込まないことを観測しましたが、この表示が同じ原因によるものかは確かめていません。
 

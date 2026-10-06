@@ -228,9 +228,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   managed daemon's own lifecycle commands), `osascript` and `open -b` (the ChatGPT
   app on macOS) run through
   `internal/runner` with argv arrays and no shell, under the limits of
-  § Resident processes: the restart and `daemon version` through
-  `runner.RunWithEnv`, `osascript` through `runner.Run`, and `open -b` through
-  `runner.Launch`.
+  § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
+  stdout and stderr are the null device rather than pipes, because the daemon the
+  restart leaves running would inherit a pipe and hold kae past the restart's
+  30 s limit; `daemon version` through `runner.RunWithEnv`, `osascript` through
+  `runner.Run`, and `open -b` through `runner.Launch`.
 
 ## File Permissions
 

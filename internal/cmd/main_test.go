@@ -126,21 +126,22 @@ func envWithoutGitRepositoryOverrides(env []string) []string {
 }
 
 // cmdTestRunnerGuard is the package baseline, not a fixture reply. Credential
-// programs panic until a test explicitly supplies a runner; other programs
-// delegate because ensureGitExcluded deliberately measures a real repository.
+// programs, and the programs that control a desktop app (osascript, open), panic
+// until a test explicitly supplies a runner; other programs delegate because
+// ensureGitExcluded deliberately measures a real repository.
 type cmdTestRunnerGuard struct {
 	next runner.Runner
 }
 
 func (g cmdTestRunnerGuard) Run(ctx context.Context, name string, args ...string) (string, string, int) {
-	if isCredentialProgram(name) {
+	if isCredentialProgram(name) || isDesktopProgram(name) {
 		panicUnstubbedRunner("runner.Default.Run", name, args)
 	}
 	return g.next.Run(ctx, name, args...)
 }
 
 func (g cmdTestRunnerGuard) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
-	if isCredentialProgram(name) {
+	if isCredentialProgram(name) || isDesktopProgram(name) {
 		panicUnstubbedRunner("runner.Default.RunInput", name, args)
 	}
 	return g.next.RunInput(ctx, stdin, name, args...)
@@ -149,6 +150,17 @@ func (g cmdTestRunnerGuard) RunInput(ctx context.Context, stdin, name string, ar
 func isCredentialProgram(name string) bool {
 	switch filepath.Base(name) {
 	case "security", "secret-tool":
+		return true
+	default:
+		return false
+	}
+}
+
+// isDesktopProgram names the programs desktopapp runs: a test that reached them
+// unstubbed would query, quit or open a real app on the developer's Mac.
+func isDesktopProgram(name string) bool {
+	switch filepath.Base(name) {
+	case "osascript", "open":
 		return true
 	default:
 		return false

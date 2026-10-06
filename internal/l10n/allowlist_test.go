@@ -28,6 +28,8 @@ var notLocalized = map[string]string{
 	"internal/wsrpc/wsrpc.go": "its only caller, cmd's resident-daemon probe, reduces every error to the " +
 		"`unknown` token and prints none: a peer's message may carry personal data, so translating one would " +
 		"imply it may be shown; drop this entry if cmd ever shows a wsrpc error",
+	"internal/desktopapp/desktopapp.go": "its only caller, cmd's ChatGPT app handling, reduces every error to a " +
+		"residents token and a fixed warning and prints none of them; drop this entry if cmd ever shows a desktopapp error",
 	"internal/companion/companion.go:Spec.validate": "called only by Register, which panics at init on a " +
 		"programmer error in the companion registry",
 }

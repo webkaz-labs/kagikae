@@ -67,9 +67,10 @@ Intel Mac（darwin/amd64）は v0.24.0 から対象外で、リリースバイ�
 上流サービス側で失効したログインを有効にし直すものではありません。
 
 `kae use`、`kae add`、`kae rollback` の後、kae は codex の管理デーモンを再起動することが
-あります。これはファイルではなくプロセスへの操作なので、バックアップと `kae rollback` の
+あります。端末での確認に同意した場合と `--yes` を付けた場合は、ChatGPT アプリも終了して
+再起動します。これはファイルではなくプロセスへの操作なので、バックアップと `kae rollback` の
 対象外です。
-kae はプロセスにシグナルを送りません。`--no-restart` で止められます
+kae はプロセスにシグナルを送りません。どちらも `--no-restart` で止められます
 （[SECURITY.md](SECURITY.md) § Resident processes）。
 
 `doctor` の上流バージョン警告や確認済みの指紋は、調査の入口です。警告がないことを

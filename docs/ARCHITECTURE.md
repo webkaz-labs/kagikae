@@ -592,9 +592,10 @@ flow), where the child can rotate the live credential behind kae's back and a ca
 value would be stale. `run -s` opens the keychain cache once the child has **exited**
 and while it still holds the per-tool locks, so its re-resolution, recapture, restore
 decision and attribution read one credential and one identity once rather than four
-times. `kae rollback` runs no child at all; it opens the keychain cache only once it
-holds its locks, so the backup does not reuse what its lock-free resident probe read. The distinction is the child, not
-the command.
+times. `kae rollback` runs no child while either cache is open (its daemon restart and
+the ChatGPT app's quit and relaunch follow in `runRollback`, outside both); it opens the keychain
+cache only once it holds its locks, so the backup does not reuse what its lock-free
+resident probe read. The distinction is the child, not the command.
 
 `status` runs each enabled tool's `Detect` concurrently (one goroutine per
 tool, reassembled in canonical `constants.Tools` order, output unchanged), so

@@ -124,7 +124,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app — unless `--no-restart`, `--dry-run` or the hook shape (`--auto`) is also given, each of which wins over `--yes` |
-| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon or quit the ChatGPT app when the daemon holds another account; warn instead (§ kae use Semantics) |
+| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon when it holds another account, or quit the ChatGPT app when the command changed codex's account; warn instead (§ kae use Semantics) |
 | `--no-color` | all | disable color in human text output |
 | `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules) and each `Limit` reading's age (§ Subscription windows in listings); `--json` is unchanged |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
@@ -254,11 +254,12 @@ them as follows; tools without resident processes are unaffected.
    will leave live, and reads `absent` (no daemon socket), `matches`, `differs` or
    `unknown` (the socket exists but kae could not read an account from it, or the
    credential it is compared with names none, as an API-key login does). It also
-   asks whether the ChatGPT app is running (macOS only) and whether this command
-   changes codex's account at all: it does when the live credential and the target's
-   name different accounts. When either names none or cannot be read, byte-identical
-   credentials count as no change and anything else as a change, so a switch kae
-   cannot judge still gets the warning of step 6. The probe only reads, so
+   asks whether this command changes codex's account at all: it does when the live
+   credential and the target's name different accounts. When either names none or
+   cannot be read, byte-identical credentials count as no change and anything else
+   as a change, so a switch kae cannot judge still gets the warning of step 6. Only
+   when it does, kae asks whether the ChatGPT app is running (macOS only): an app
+   that keeps the account it already holds needs nothing. The probe only reads, so
    `--dry-run` runs it too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
    transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
@@ -286,7 +287,10 @@ them as follows; tools without resident processes are unaffected.
    `ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: `.
    The Japanese rendering takes the confirmation shape [L10N-JA.md](L10N-JA.md)
    fixes rather than a question. `--yes` answers yes without asking, on a terminal
-   or not. On yes, kae asks the app to quit, waits for it to stop running (every
+   or not. On yes, kae first asks again whether the app is running: an app the user
+   has closed since the probe is left closed — kae does not start an app the user
+   quit — and one kae cannot tell about is treated as below. Otherwise kae asks the
+   app to quit, waits for it to stop running (every
    250 ms, at most 20 s counted from the quit request, so an app slow to answer it
    shortens the wait rather than extending it), and relaunches it only once it has
    stopped. It never forces the quit: an app still running at the deadline is left
@@ -339,14 +343,16 @@ this command changed codex's account:
 | `--dry-run` | `planned` |
 | no terminal or `--json`, without `--yes` | `warned` |
 | asked and answered no | `declined` |
+| consented, but no longer running when kae asks again | `none` |
 | quit observed, then relaunched | `relaunched` |
 | quit observed, `open -b` failed | `relaunch_failed` |
 | still running at the deadline | `quit_timeout` |
 | macOS refused permission (`-1743`) | `quit_denied` |
 | the quit request failed otherwise | `quit_failed` |
 
-When kae cannot tell whether the app is running, the entry is `observed: unknown`,
-`outcome: warned`, whatever the condition.
+When kae cannot tell whether the app is running, at the probe or when it asks again
+after consent, the entry is `observed: unknown`, `outcome: warned`, whatever the
+condition.
 
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result
@@ -2634,14 +2640,16 @@ defined in `internal/constants`:
 | Field | Tokens |
 |---|---|
 | `kind` | `daemon` (codex's managed daemon), `desktop_app` (the ChatGPT app, macOS), `session` (codex sessions kae does not look for) |
-| `observed` | `absent`, `matches`, `differs`, `unknown` (daemon); `running`, or `unknown` when kae could not tell (desktop app, listed only in those two cases, and only once the ChatGPT app handling has shipped — until then no `desktop_app` entry appears); `unknown` (session) |
+| `observed` | `absent`, `matches`, `differs`, `unknown` (daemon); `running`, or `unknown` when kae could not tell (desktop app, listed only in those two cases); `unknown` (session) |
 | `outcome` | `none` (nothing to do), `planned` (`--dry-run`: would restart or quit), `restarted`, `restart_unverified`, `restart_failed`, `opted_out` (`--no-restart`), `warned` (a warning instead of an action), `declined` (the app prompt answered no), `relaunched`, `relaunch_failed` (the quit was observed, `open -b` failed), `quit_timeout` (the app was still running at the deadline), `quit_denied` (macOS refused permission to control the app), `quit_failed` (the quit request failed for another reason) |
 
 A `daemon` entry is present for every codex result whose switch writes the real
 codex home, or under `--dry-run` would write it. A `session` entry, outcome
 `warned`, is present when the command changes codex's account, or under `--dry-run`
-would change it. Which `outcome` the app gets under which condition is the table in
-§ kae use Semantics. No entry carries an account, email or plan. Adding the field kept
+would change it. A `desktop_app` entry, listed after the daemon's and before the
+sessions', is present under the same condition when the app reads `running` or
+`unknown`; an app that is not running, and any app off macOS, has none. Which
+`outcome` the app gets under which condition is the table in § kae use Semantics. No entry carries an account, email or plan. Adding the field kept
 `schema_version` at `1`.
 
 `profile` is `null` for the tool+account form. `kae add --no-login --json`

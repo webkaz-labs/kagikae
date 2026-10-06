@@ -37,18 +37,24 @@ type residentEntry struct {
 type residentSlot struct {
 	Residents []residentEntry `json:"residents"`
 	restart   *pendingRestart
+	quits     []pendingQuit
 }
 
 // residentMode is what suppresses a restart: --dry-run, --no-restart and the
-// hook shape (--auto). --yes and --quiet change none of it. op is the command the
-// notices name.
+// hook shape (--auto). --yes and --quiet change none of it. yes and json steer
+// only the ChatGPT app's confirmation: --yes answers it, and --json, like a run
+// without a terminal, cannot show it. op is the command the notices name.
 type residentMode struct {
 	dryRun, noRestart, hook bool
+	yes, json               bool
 	op                      residentOp
 }
 
 func residentModeOf(opts commonOpts) residentMode {
-	return residentMode{dryRun: opts.DryRun, noRestart: opts.NoRestart, hook: opts.ResidentHook}
+	return residentMode{
+		dryRun: opts.DryRun, noRestart: opts.NoRestart, hook: opts.ResidentHook,
+		yes: opts.Yes, json: opts.Format == formatJSON,
+	}
 }
 
 // pendingRestart is a daemon restart a switch owes. entry is the `daemon` item
@@ -123,18 +129,35 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	outcome, owed := daemonOutcomeBefore(observed, mode)
 	noticeBeforeSwitch(mode.op, observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
 	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome}}
+	// The desktop apps matter only to a command that changes the account: one
+	// that does not leaves them on the account they hold, so they are not asked
+	// about and get no entry.
+	var apps []desktopEntry
+	appBase := 0
 	if accountChanges(ctx, holder, live, target) {
+		apps = app.planDesktopApps(ctx, holder, mode)
+		appBase = len(residents)
+		for _, a := range apps {
+			residents = append(residents, a.entry)
+		}
 		residents = append(residents, residentEntry{
 			Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
 			Outcome: constants.ResidentOutcomeWarned,
 		})
 		warnMessage(mode.op.session(mode.dryRun))
 	}
-	// The array is complete before entry points into it.
+	// The array is complete before an entry points into it.
 	slot.Residents = residents
 	if owed {
 		slot.restart = &pendingRestart{
 			entry: &slot.Residents[0], op: mode.op, holder: holder, spec: spec, live: liveReader,
+		}
+	}
+	for i, a := range apps {
+		if a.plan.owed() {
+			slot.quits = append(slot.quits, pendingQuit{
+				entry: &slot.Residents[appBase+i], bundleID: a.bundleID, plan: a.plan,
+			})
 		}
 	}
 }
@@ -290,16 +313,21 @@ func (app *App) reconcileResidents(ctx context.Context, results []switchResult) 
 }
 
 // reconcileSlot runs the restart slot owes, if any, and settles its daemon
-// entry's outcome; the restart reports on stderr. A failed or unverified restart
-// is a warning: the exit code is unchanged and nothing is rolled back. It owes
-// nothing afterwards, so a second call does not restart again.
+// entry's outcome; then, after the restart, it asks about and quits each desktop
+// app slot owes (step 5) and settles that entry. Each reports on stderr. A
+// failed or unverified restart, and every app outcome but a relaunch, is a
+// warning: the exit code is unchanged and nothing is rolled back. It owes
+// nothing afterwards, so a second call does not act again.
 func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
-	if slot.restart == nil {
-		return
+	if p := slot.restart; p != nil {
+		slot.restart = nil
+		p.entry.Outcome = app.restartDaemon(ctx, *p)
 	}
-	p := slot.restart
-	slot.restart = nil
-	p.entry.Outcome = app.restartDaemon(ctx, *p)
+	quits := slot.quits
+	slot.quits = nil
+	for _, q := range quits {
+		app.quitDesktopApp(ctx, q)
+	}
 }
 
 // restartDaemon runs the daemon's restart command with the spec's environment,

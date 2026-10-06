@@ -267,8 +267,9 @@ The others are what `kae` will not do:
   is a property of kae's records, not of an upstream token.
 - One action after a switch is outside that backup-and-rollback promise, because
   it acts on a process rather than files: `kae use`, `kae add` and `kae rollback`
-  may restart codex's managed daemon. kae never signals a process, and
-  `--no-restart` turns the restart off ([SECURITY.md](SECURITY.md) § Resident
+  may restart codex's managed daemon, and quit and relaunch the ChatGPT desktop app
+  when the user agrees on the terminal or passes `--yes`. kae never signals a
+  process, and `--no-restart` turns both off ([SECURITY.md](SECURITY.md) § Resident
   processes, [CLI.md](CLI.md) § kae use Semantics).
 - Companion-auth lockstep is **opt-in and auth-only**: kae drives the env/config
   the companion CLIs already read (a kae-owned `GIT_CONFIG_GLOBAL` that includes

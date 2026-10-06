@@ -210,7 +210,13 @@ does the mise enter hook (`kae use --auto`), even with `--yes`. `kae add --no-lo
 leaves the live login as it is, so it only warns. When the command changes codex's
 account, kae also warns that codex sessions started before it keep the previous
 account until you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics,
-§ kae add Semantics). `kae doctor`
+§ kae add Semantics). The ChatGPT desktop app keeps the account it started with
+too: when the command changes codex's account and the app is running (macOS), kae
+asks on the terminal whether to quit and relaunch it, default No, because tasks
+running in it are interrupted. `--yes` answers yes without asking, so a script that
+already passes `--yes` quits a running app. `--no-restart`, the enter hook and
+`--dry-run` leave the app running with a warning or a plan, even with `--yes`, and so
+does a run without a terminal or with `--json` unless it passes `--yes`. `kae doctor`
 warns when the daemon holds another account than the live credential, or when
 kae cannot read which one it holds; doctor itself never restarts it.
 

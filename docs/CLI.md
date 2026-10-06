@@ -276,35 +276,48 @@ them as follows; tools without resident processes are unaffected.
    below suppresses it, kae runs `codex app-server daemon restart` with `CODEX_HOME`
    set to the real codex home — never the value a bound directory exports — then
    probes again every 250 ms for at most 5 s, each probe bounded by what is left of
-   them, comparing the daemon with the live
-   credential as it reads it at that moment, so a later switch by another kae
-   process does not make this one's restart look unverified. The outcome is
-   `restarted` when the daemon then holds the live account, `restart_unverified`
-   when it does not or cannot be read, and `restart_failed` when the command fails
-   or has not finished within 30 s.
-   A failed or unverified restart is a warning: the switch stays applied and is not
-   rolled back, and the exit code stays `0`. When the transaction failed or rolled
-   any tool back, there is no restart. A profile switch reconciles once, after the
-   whole transaction. What a restart was seen to do to clients connected to the
-   daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
-   what is still open is in [ROADMAP.md](ROADMAP.md) § Current work order.
-5. **The ChatGPT app**, when it is running and this command changed codex's
-   account: kae asks on the terminal, default No:
-   `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `.
-   The Japanese rendering is the short question [L10N-JA.md](L10N-JA.md) fixes for
-   this prompt. `--yes` answers yes without asking, on a terminal
-   or not. On yes, kae first asks again whether the app is running: an app the user
-   has closed since the probe is left closed — kae does not start an app the user
-   quit — and one kae cannot tell about is treated as below. Otherwise kae asks the
-   app to quit, waits for it to stop running (every
-   250 ms, at most 20 s counted from the quit request, so an app slow to answer it
-   shortens the wait rather than extending it), and relaunches it only once it has
-   stopped. It never forces the quit: an app still running at the deadline is left
-   running with a warning. When macOS refuses kae permission to control the app,
-   kae says how to quit and reopen it by hand. An app that is not installed counts
-   as not running. When kae cannot tell whether the app is running at all, it
-   warns and does nothing to it. Without `--yes`, a run that cannot ask — no
-   terminal, `--json` — warns instead.
+   them, comparing the daemon with the live credential as it reads it at that
+   moment, so a later switch by another kae process does not make this one's restart
+   look unverified. The outcome is `restarted` when the daemon then holds the live
+   account, `restart_unverified` when it does not or cannot be read,
+   `restart_failed` when the command cannot be started or exits non-zero, and
+   `restart_pending` when it has not finished within 30 s. kae then stops waiting
+   and leaves the command running, never killing it. The command runs in a session
+   of its own, so the interrupt (Ctrl-C) and hangup of kae's terminal do not reach
+   it: one that ends kae while it waits, which then reports nothing, leaves the
+   command running too. Upstream's restart stops the old daemon, waiting up to its
+   `shutdownGraceSeconds` (60 s by default, 0 to 300 s) for running tasks before it
+   forces the daemon down, and then starts the new daemon itself
+   ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
+   quit dialog), so a command killed midway could leave no daemon running. A
+   `restart_pending` restart is not probed again. A failed, pending or unverified
+   restart is a warning: the switch stays applied and is not rolled back, and the
+   exit code stays `0`. When the transaction failed or rolled any tool back, there
+   is no restart. A profile switch reconciles once, after the whole transaction.
+   What a restart was seen to do to clients connected to the daemon is in
+   [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
+   [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
+   quit dialog; what is still open is in [ROADMAP.md](ROADMAP.md) § Current work
+   order.
+5. **The ChatGPT app**, when it is running and this command changed codex's account:
+   kae asks on the terminal, default No:
+   `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `. The
+   Japanese rendering is the short question [L10N-JA.md](L10N-JA.md) fixes for this
+   prompt. `--yes` answers yes without asking, on a terminal or not. On yes, kae
+   first asks again whether the app is running: an app the user has closed since the
+   probe is left closed — kae does not start an app the user quit — and one kae
+   cannot tell about is treated as below. Otherwise kae asks the app to quit, waits
+   for it to stop running (every 250 ms, at most 20 s counted from the quit request,
+   so an app slow to answer it shortens the wait rather than extending it), and
+   relaunches it only once it has stopped. It never forces the quit: an app still
+   running at the deadline is left running with a warning, and kae does not relaunch
+   it if it quits later. An app with a running task did answer the quit with a
+   confirmation dialog when observed ([ACCEPTANCE.md](ACCEPTANCE.md)
+   § Third part: idle reads, running tasks and the quit dialog). When macOS refuses
+   kae permission to control the app, kae says how to quit and reopen it by hand. An
+   app that is not installed counts as not running. When kae cannot tell whether the
+   app is running at all, it warns and does nothing to it. Without `--yes`, a run
+   that cannot ask — no terminal, `--json` — warns instead.
 6. **Sessions.** Whenever this command changed codex's account, kae warns, before
    the write, that codex sessions started before the switch and not connected to
    the managed daemon keep the previous account until they are restarted. kae does
@@ -375,9 +388,9 @@ except the success, which sits under the command's result line:
   it cannot ask about (no terminal, `--json`, without `--yes`) each get a warning
   of their own.
 - After the transaction, every outcome but the success is a line of its own, as it
-  settles: `restart_unverified`, `restart_failed`, `declined` and the quit outcomes
-  are warnings naming the manual step, and `none` for an app closed meanwhile is a
-  note.
+  settles: `restart_unverified`, `restart_failed`, `restart_pending`, `declined` and
+  the quit outcomes are warnings naming the manual step, and `none` for an app
+  closed meanwhile is a note.
 - The success — a daemon `restarted`, an app `relaunched`, or both as one line — is
   held until the command prints its result, and then goes to stderr, indented and
   without a prefix, right after the line of that result: `Switched codex -> <account>`,
@@ -2616,9 +2629,11 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 
   No socket with no running daemon, and a matching account, are silent. Neither
   account is printed. Doctor never restarts anything. The socket half, which only
-  reads, runs by default; whether the daemon contacts the network to answer
-  `account/read` has not been measured, and the acceptance result for that decides
-  whether it stays default or becomes opt-in like `companion_token_drift`
+  reads, runs by default. The daemon was not seen to contact the network to answer
+  `account/read` in its steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part:
+  idle reads, running tasks and the quit dialog); right after a restart it is not
+  measured, and the acceptance result for that decides whether the half stays
+  default or becomes opt-in like `companion_token_drift`
   ([ROADMAP.md](ROADMAP.md) § Current work order).
 - `upstream_version`: the installed tool's `--version` is a newer **major or
   minor** than the version its adapter's behaviour assumptions were verified
@@ -2709,7 +2724,7 @@ defined in `internal/constants`:
 |---|---|
 | `kind` | `daemon` (codex's managed daemon), `desktop_app` (the ChatGPT app, macOS), `session` (codex sessions kae does not look for) |
 | `observed` | `absent`, `matches`, `differs`, `unknown` (daemon); `running`, or `unknown` when kae could not tell (desktop app, listed only in those two cases); `unknown` (session) |
-| `outcome` | `none` (nothing to do), `planned` (`--dry-run`: would restart or quit), `restarted`, `restart_unverified`, `restart_failed`, `opted_out` (`--no-restart`), `warned` (a warning instead of an action), `declined` (the app prompt answered no), `relaunched`, `relaunch_failed` (the quit was observed, `open -b` failed), `quit_timeout` (the app was still running at the deadline), `quit_denied` (macOS refused permission to control the app), `quit_failed` (the quit request failed for another reason) |
+| `outcome` | `none` (nothing to do), `planned` (`--dry-run`: would restart or quit), `restarted`, `restart_unverified`, `restart_failed`, `restart_pending` (the restart command had not finished at kae's 30 s limit, and kae left it running), `opted_out` (`--no-restart`), `warned` (a warning instead of an action), `declined` (the app prompt answered no), `relaunched`, `relaunch_failed` (the quit was observed, `open -b` failed), `quit_timeout` (the app was still running at the deadline), `quit_denied` (macOS refused permission to control the app), `quit_failed` (the quit request failed for another reason) |
 
 A `daemon` entry is present for every codex result whose switch writes the real
 codex home, or under `--dry-run` would write it. A `session` entry, outcome

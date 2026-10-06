@@ -17,8 +17,8 @@ import (
 const (
 	residentRecheckInterval = 250 * time.Millisecond
 	residentRecheckLimit    = 5 * time.Second
-	// defaultResidentRestartTimeout bounds the restart command itself; one that
-	// has not finished by then is restart_failed.
+	// defaultResidentRestartTimeout bounds kae's wait for the restart command; one
+	// that has not finished by then is left running, restart_pending.
 	defaultResidentRestartTimeout = 30 * time.Second
 )
 
@@ -235,8 +235,8 @@ func readOnce(r credentialReader) credentialReader {
 
 // daemonOutcomeBefore is the daemon entry's outcome as far as it is known before
 // the transaction. owed is true when a restart is owed; the outcome is then
-// `planned` until the restart settles restarted, restart_unverified or
-// restart_failed.
+// `planned` until the restart settles restarted, restart_unverified,
+// restart_failed or restart_pending.
 func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, owed bool) {
 	switch observed {
 	case constants.ResidentObservedDiffers:
@@ -420,29 +420,26 @@ func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
 
 // restartDaemon runs the daemon's restart command with the spec's environment,
 // which sets CODEX_HOME to the real home after everything inherited, so a bound
-// directory's value cannot select another daemon, and bounds it by
+// directory's value cannot select another daemon, and waits for it at most
 // residentRestartLimit. It goes through runner.LaunchWithEnv, which reads no
-// output, so a daemon the command leaves running cannot hold kae past the limit.
-// It then re-probes every residentRecheckInterval for at most
-// residentRecheckLimit, each probe bounded by what is left of that, against the
-// live credential as it reads at each attempt — not the switch's target, so a
-// later switch by another kae process does not make this restart look
-// unverified.
+// output, so a daemon the command leaves running cannot hold kae past the limit,
+// and which never kills it (docs/CLI.md § kae use Semantics, step 4, says why):
+// its ErrStillRunning is restart_pending, not probed again. Otherwise it re-probes
+// every residentRecheckInterval for at most residentRecheckLimit, each probe
+// bounded by what is left of that, against the live credential as it reads at
+// each attempt — not the switch's target, so a later switch by another kae
+// process does not make this restart look unverified.
 func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	manual := func() string { return app.residentRestartCommand(p.holder, p.spec) }
 	limit := app.residentRestartLimit()
 	runCtx, cancel := context.WithTimeout(ctx, limit)
 	code, err := runner.LaunchWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
-	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded)
 	cancel()
-	// A command that exited 0 as the deadline passed restarted the daemon, so
-	// success is judged first. A cancelled parent (an interrupt) is a plain
-	// failure, not a timeout.
 	switch {
 	case code == 0 && err == nil:
-	case timedOut:
-		warnMessage(p.op.restartTimedOut(limit, manual()))
-		return constants.ResidentOutcomeRestartFailed
+	case errors.Is(err, runner.ErrStillRunning):
+		warnMessage(p.op.restartPending(manual()))
+		return constants.ResidentOutcomeRestartPending
 	case err != nil:
 		warnMessage(p.op.restartNotRun(err, manual()))
 		return constants.ResidentOutcomeRestartFailed

@@ -223,7 +223,7 @@ const (
 	appNoteRelaunched = "kae: note: codex: relaunched the ChatGPT app"
 	appNoteClosed     = "kae: note: codex: the ChatGPT app is no longer running, so kae leaves it closed; it uses the codex account now live when you open it"
 	appWarnNoRelaunch = "kae: warning: codex: the ChatGPT app quit, but kae could not open it again (open -b com.openai.codex); open it yourself"
-	appWarnTimeout    = "kae: warning: codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it"
+	appWarnTimeout    = "kae: warning: codex: the ChatGPT app did not quit in time and kae left it running; it may be asking you to confirm the quit, and kae will not reopen it, so open it yourself after it quits; until then it keeps the codex account it started with"
 	appWarnDenied     = "kae: warning: codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again"
 	appWarnQuitFailed = "kae: warning: codex: could not ask the ChatGPT app to quit; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again"
 	// --yes, and the lines a daemon restart shares with the app.

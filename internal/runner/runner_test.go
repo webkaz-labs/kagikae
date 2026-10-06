@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -106,8 +107,8 @@ func TestLaunchFallsBackToRun(t *testing.T) {
 	}
 }
 
-// LaunchWithEnv sets its entries over the inherited environment, waits for the
-// program only, and returns at ctx's deadline even when the program hangs.
+// LaunchWithEnv sets its entries over the inherited environment and waits for
+// the program only.
 func TestLaunchWithEnv(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
@@ -128,18 +129,88 @@ func TestLaunchWithEnv(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 3*time.Second {
 		t.Fatalf("LaunchWithEnv waited %v for the program's background child", elapsed)
 	}
-	deadline, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
-	defer cancel()
-	start = time.Now()
-	if code, _ := LaunchWithEnv(deadline, nil, sh, "-c", "sleep 5 & exec sleep 5"); code == 0 {
-		t.Fatal("a program killed at the deadline reported success")
-	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
-		t.Fatalf("LaunchWithEnv returned %v after a 200ms deadline", elapsed)
-	}
-	if code, err := LaunchWithEnv(ctx, nil, "/nonexistent/kae-restart"); code == 0 || err == nil {
+	if code, err := LaunchWithEnv(ctx, nil, "/nonexistent/kae-restart"); code == 0 || err == nil || errors.Is(err, ErrStillRunning) {
 		t.Fatalf("an unstartable program = %d %v", code, err)
 	}
+}
+
+// At ctx's deadline LaunchWithEnv returns ErrStillRunning and leaves the program
+// running rather than killing it, in a session of its own so that the interrupt
+// and hangup of kae's terminal do not reach it, under sh and dash alike: the
+// program finishes its work after LaunchWithEnv has returned.
+func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
+	for _, shell := range []string{"/bin/sh", "/bin/dash"} {
+		t.Run(filepath.Base(shell), func(t *testing.T) {
+			t.Parallel() // no global is swapped: LaunchWithEnv itself is not stubbed here
+			if _, err := os.Stat(shell); err != nil {
+				t.Skipf("no %s", shell)
+			}
+			dir := t.TempDir()
+			pidFile, marker := filepath.Join(dir, "pid"), filepath.Join(dir, "done")
+			script := `echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; sleep 0.6; echo done > "$2.tmp" && mv "$2.tmp" "$2"`
+			// The bound on the return stays below the program's 0.6 s sleep, so a
+			// return within it always finds the program still running.
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			code, err := LaunchWithEnv(ctx, nil, shell, "-c", script, shell, pidFile, marker)
+			if elapsed := time.Since(start); elapsed > 450*time.Millisecond {
+				t.Fatalf("LaunchWithEnv returned %v after a 50ms deadline", elapsed)
+			}
+			if code != -1 || !errors.Is(err, ErrStillRunning) {
+				t.Fatalf("at the deadline = %d %v, want -1 and ErrStillRunning", code, err)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("the program finished before the deadline; the test proves nothing")
+			}
+			pid := waitForFile(t, pidFile)
+			n, err := strconv.Atoi(strings.TrimSpace(pid))
+			if err != nil {
+				t.Fatalf("pid file %q: %v", pid, err)
+			}
+			// It sleeps for 0.6 s after writing its pid, so it is still there.
+			if sid, err := sessionOf(n); err != nil || sid != n {
+				t.Errorf("the program's session = %d (%v), want its own (%d)", sid, err, n)
+			}
+			if got := waitForFile(t, marker); got != "done\n" {
+				t.Errorf("marker = %q", got)
+			}
+		})
+	}
+}
+
+// A ctx that has already ended starts nothing: LaunchWithEnv returns 1 and ctx's
+// error, not ErrStillRunning, and the program never runs.
+func TestLaunchWithEnvStartsNothingOnAnEndedContext(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	marker := filepath.Join(t.TempDir(), "ran")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code, err := LaunchWithEnv(ctx, nil, sh, "-c", `echo ran > "$1"`, sh, marker)
+	if code != 1 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("on an ended ctx = %d %v, want 1 and context.Canceled", code, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the program ran although ctx had ended before the start")
+	}
+}
+
+// waitForFile polls for path to appear, for at most 5 s, and returns its content.
+// The programs write path through a temporary name and rename it, so it never
+// appears partly written.
+func waitForFile(t *testing.T, path string) string {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if data, err := os.ReadFile(path); err == nil {
+			return string(data)
+		}
+	}
+	t.Fatalf("%s did not appear within 5s: the program did not keep running", filepath.Base(path))
+	return ""
 }
 
 // QueryWithEnv reads the program's stdout, sets its entries over the inherited

@@ -250,6 +250,10 @@ const (
 	// binding of that account refreshes, so this is the migration prompt: re-run
 	// `kae pin` in that directory.
 	CheckCredentialUnsplit = "credential_unsplit"
+	// CheckResidentDrift: a tool's managed daemon for the real home holds another
+	// account than the live credential, or kae cannot read which one it holds.
+	// A local probe of the daemon's socket, not an offline comparison.
+	CheckResidentDrift = "resident_drift"
 )
 
 // Credential freshness states, the `credential` field of a `kae ls` /

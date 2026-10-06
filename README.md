@@ -209,7 +209,9 @@ the switch and says so on stderr. A running ChatGPT desktop app is quit and
 relaunched only after you confirm. `--no-restart` turns both into a warning, and
 so does the mise enter hook (`kae use --auto`). Otherwise `--yes` counts as that
 confirmation — a script that passes `--yes` to `kae use` quits a running app
-([docs/CLI.md](docs/CLI.md) § kae use Semantics).
+([docs/CLI.md](docs/CLI.md) § kae use Semantics). `kae doctor` warns when the
+daemon holds another account than the live credential, or when kae cannot read
+which one it holds; doctor itself never restarts it.
 
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
 restores a selected restorable global backup. `kae use --dry-run` previews its

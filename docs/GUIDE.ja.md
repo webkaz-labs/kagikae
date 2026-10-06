@@ -363,6 +363,10 @@ you have since logged out or signed in to another account. Please sign in again.
 この表示は、アプリとデーモンの再起動で消えました。翌日、デーモンがディスク上の別アカウントを
 取り込まないことを観測しましたが、この表示が同じ原因によるものかは確かめていません。
 
+`kae doctor` は、管理デーモンが現在の認証情報とは別のアカウントを使っている場合と、
+使っているアカウントを読み取れない場合に警告します。doctor 自身はデーモンを再起動しないので、
+警告に従って `codex app-server daemon restart` を実行してください。
+
 `relogin` は固定先のストアを選択します。対応フローと拒否条件は
 [CLI.md](CLI.md#kae-relogin-semantics) を参照してください。手動で固定先にログインする
 場合は、mise の有効化・信頼・有効な環境変数を確認します。ディレクトリ移動だけでは

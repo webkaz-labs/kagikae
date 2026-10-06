@@ -269,12 +269,9 @@ them as follows; tools without resident processes are unaffected.
    byte-identical credentials count as no change and anything else as a change, so a
    switch kae cannot judge still gets the warning of step 6. Only when it does, kae
    asks whether the ChatGPT app is running (macOS only): an app that keeps the
-   account it already holds needs nothing. The connection only reads codex's auth
-   state, but its `initialize` has side effects on the daemon that kae cannot avoid
-   once it connects, above all that a daemon kae is the first client of gives the
-   threads it creates afterwards kae's probe name as their client name
-   ([ADAPTERS.md](ADAPTERS.md) § Resident processes); that is why only a run that may
-   restart the daemon connects to it.
+   account it already holds needs nothing. Only a run that may restart the daemon
+   connects to it; why, and what a connection does to the daemon, is
+   [ADAPTERS.md](ADAPTERS.md) § Resident processes (client name).
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
    transaction, under the warning rules of § Output Rules, in the lines
    **How the lines read** below sets out. `--dry-run` stops here:
@@ -285,18 +282,17 @@ them as follows; tools without resident processes are unaffected.
 4. **Restart, after the locks are released.** When the daemon `differs` and nothing
    below suppresses it, kae runs `codex app-server daemon restart` with `CODEX_HOME`
    set to the real codex home — never the value a bound directory exports — and
-   reads the report the command prints on stdout. It does not ask the restarted
-   daemon anything: upstream's restart returns only once the new daemon answers, and
-   the new daemon reads the login on disk when it starts
-   ([ADAPTERS.md](ADAPTERS.md) § Resident processes), while a connection right after
-   the restart would make kae that daemon's first client. The outcome is `restarted`
-   when the command exits 0 and its report reads `status` `restarted` with a
-   `socketPath` that is the socket kae looked for (compared after resolving
-   symlinks), `restart_unverified` when it exits 0 but its report cannot be read or
-   names another socket — kae does not check which account the daemon then holds,
-   in either case — `restart_failed` when the command cannot be started or exits
-   non-zero, and `restart_pending` when it has not finished within 30 s. kae then stops waiting
-   and leaves the command running, never killing it. The command runs in a session
+   reads the report the command prints on stdout. It does not connect to the
+   restarted daemon: upstream's restart returns only once the new daemon answers,
+   and the new daemon reads the login on disk when it starts
+   ([ADAPTERS.md](ADAPTERS.md) § Resident processes, restart and client name). The
+   outcome is `restarted` when the command exits 0 and its report reads `status`
+   `restarted` with a `socketPath` that is the socket kae looked for (compared after
+   resolving symlinks), `restart_unverified` when it exits 0 but its report cannot
+   be read or names another socket — kae does not check which account the daemon
+   then holds, in either case — `restart_failed` when the command cannot be started
+   or exits non-zero, and `restart_pending` when it has not finished within 30 s.
+   kae then stops waiting and leaves the command running, never killing it. The command runs in a session
    of its own, so the interrupt (Ctrl-C) and hangup of kae's terminal do not reach
    it: one that ends kae while it waits, which then reports nothing, leaves the
    command running too. Upstream's restart stops the old daemon, waiting up to its
@@ -351,10 +347,8 @@ Nothing is restarted or quit, and a warning names the manual step instead, when:
 
 A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
-`codex app-server daemon restart`. A daemon that reads `present` is treated as one
-that `differs` when this command changes codex's account, and prints nothing
-otherwise: kae did not ask it, so a daemon that already holds the target account
-is warned about too. `absent` and `matches` print nothing. A socket
+`codex app-server daemon restart`. A daemon that reads `present` is reported as
+the daemon's `outcome` below says. `absent` and `matches` print nothing. A socket
 upstream has moved also reads `absent`, so the switch is silent about it;
 `resident_drift`'s `daemon version` half reports that case.
 
@@ -371,8 +365,10 @@ The daemon's `outcome` is `none` for `absent` and `matches` and `warned` for
 account, it is `opted_out` under `--no-restart`, otherwise `warned` in the hook
 shape, otherwise `planned` under `--dry-run`, otherwise what the restart of step 4
 settled (a `present` daemon is never restarted, since only a run that cannot
-restart reads it). `present` when the command does not change the account is
-`none`.
+restart reads it). That `present` daemon gets the same lines as one that
+`differs`: kae did not ask it, so a daemon that already holds the target account
+gets them too. `present` when the command does not change the account is `none`
+and prints nothing.
 
 The ChatGPT app's `outcome` by condition, for a run where the app is running and
 this command changed codex's account:
@@ -410,15 +406,12 @@ except the success, which sits under the command's result line:
 - A daemon whose account kae cannot read, an app kae cannot tell about, and an app
   it cannot ask about (no terminal, `--json`, without `--yes`) each get a warning
   of their own.
-- When kae's connection made it the first client of a daemon it does not restart —
-  one that reads `matches` or `unknown` — a warning says that the threads the daemon
-  creates from now on carry kae's probe name as their client name, and names the
-  manual restart that clears it. kae tells from the `userAgent` of the daemon's
-  answer to `initialize`, which begins with the first client's name
-  ([ADAPTERS.md](ADAPTERS.md) § Resident processes): it warns when that begins with
-  `kae_probe/`, and prints nothing of the `userAgent` itself. A daemon kae restarts
-  (`differs`) gets no such warning, because the restart replaces it with a daemon no
-  client has initialized; a restart that fails or is still pending already names the
+- A daemon kae connected to and does not restart — one that reads `matches` or
+  `unknown` — gets a warning, naming the manual restart, when the `userAgent` of
+  its answer to `initialize` begins with `kae_probe/`: kae became the daemon's
+  originator ([ADAPTERS.md](ADAPTERS.md) § Resident processes, client name). kae
+  prints nothing of the `userAgent` itself. A daemon kae restarts (`differs`) gets
+  no such warning; a restart that fails or is still pending already names the
   manual restart.
 - After the transaction, every outcome but the success is a line of its own, as it
   settles: `restart_unverified`, `restart_failed`, `restart_pending`, `declined` and
@@ -2641,10 +2634,9 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   - **Off by default; `--yes` turns it on**, as it does `companion_token_drift`,
     and doctor does not ask for it. kae connects to the daemon's socket and sends
     the requests [SECURITY.md](SECURITY.md) § Resident processes allows, which
-    only read auth state,
-    whose `initialize` can make kae the daemon's first client, with the side effects
-    [ADAPTERS.md](ADAPTERS.md) § Resident processes describes; that is what `--yes`
-    consents to here, and doctor does not warn about it. A readable `differs`
+    only read auth state. Connecting has the side effects
+    [ADAPTERS.md](ADAPTERS.md) § Resident processes (client name) describes; that is
+    what `--yes` consents to here, and doctor does not warn about them. A readable `differs`
     warns and names the manual restart as § kae use Semantics gives it (**The
     manual step**);
     `unknown` warns that the

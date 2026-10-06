@@ -416,35 +416,52 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   whatever the credential (`account_state()` in upstream's `provider.rs`, read
   2026-10-06), so a restart would not change it. Per the same source, a daemon whose
   own token refresh failed also answers no account with `requiresOpenaiAuth` true;
-  kae then restarts it and reports `restart_unverified` when the restarted daemon
-  answers the same. [SECURITY.md](SECURITY.md) § Resident
+  kae then restarts it, and does not ask the restarted daemon whether it now
+  holds the account (step 4 of [CLI.md](CLI.md) § kae use Semantics); the next
+  switch or `doctor --yes` would read it as `differs` again. [SECURITY.md](SECURITY.md) § Resident
   processes owns the limits.
-- **client name** `kae_probe`, the `clientInfo.name` of kae's `initialize`. A
-  daemon takes the originator of the threads it creates from the first client
-  that initializes it, once per process, so kae's probe can be that first client
-  whenever it reaches a daemon no client has initialized yet: above all right
-  after kae's own restart, which kae probes as soon as it returns, but also in the
-  probe before a switch (`use`, `add`, `rollback`, the mise enter hook included)
-  and in doctor's `resident_drift`, for instance after the daemon's updater or a
-  `codex app-server daemon start` started it. Threads created afterwards through
-  that daemon then carry `kae_probe` as their originator, in the rollout and in
-  codex's state, until the daemon next restarts. In upstream's source the same
-  first client also settles the legacy automatic login: unless it asks for
-  explicit gateway OAuth, which kae's probe does not, it allows automatic login,
-  and a later client that asks for explicit login overrides that; what this
-  changes in practice is not established. Both are known limits; the originator
-  was observed ([ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
-  [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
-  app's n and an isolated daemon). kae does not name itself after another client
-  to avoid it: a client's name would pass kae off as that client and attribute
-  threads to it that it did not start, and upstream's reserved names that leave
-  the originator unchanged (`codex_app_server_daemon`, `codex-backend`) are the
-  daemon's and the backend's own, not an interface offered to other clients.
+- **client name** `kae_probe`, the `clientInfo.name` of kae's `initialize`. In
+  upstream's source a daemon takes the originator of the threads it creates from
+  the first client that initializes it under a name other than its reserved ones,
+  once per process; those threads carry it in the rollout, in codex's state and in
+  their requests to the backend until the daemon next restarts, and a thread whose
+  originator is not a first-party client's is not offered the installation of a
+  skill's MCP dependencies. Every such `initialize`, first or not, also replaces
+  the suffix of the user agent of the daemon's later HTTP requests, with
+  `(kae_probe; 0)` for kae's. The first such client also settles the legacy
+  automatic login: unless it asks for explicit gateway OAuth, which kae's probe
+  does not, it allows automatic login, and a later client that asks for explicit
+  login overrides that; what this changes in practice is not established. The
+  originator was observed ([ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch
+  round trips; [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
+  limit, the app's n and an isolated daemon). A client cannot avoid this once it
+  connects: the daemon answers nothing but `initialize` before a client has
+  initialized, and nothing says beforehand whether the client is the first. The
+  answer to `initialize` does say it afterwards: its `userAgent` is built once the
+  originator is settled and begins with `<originator>/`. So kae connects only in a
+  run that may restart the daemon and in `doctor --yes`
+  ([CLI.md](CLI.md) § kae use Semantics), does not connect to the daemon its own
+  restart started (upstream's restart waits for the new daemon to answer under a
+  reserved name, so kae's restart leaves it uninitialized), and warns, naming the
+  manual restart, when a run that does not restart the daemon finds a `userAgent`
+  beginning with `kae_probe/`. What remains: such a run, and `doctor --yes`, which
+  does not warn, still leave kae's name on the daemon until it restarts, and any of
+  them leaves the user-agent suffix until another client initializes. kae does not
+  name itself after another client to avoid it: a client's name would pass kae off
+  as that client and attribute threads to it that it did not start, and upstream's
+  reserved names that leave the originator unchanged (`codex_app_server_daemon`,
+  `codex-backend`) are the daemon's and the backend's own, not an interface offered
+  to other clients.
 - **account key** the credential's account id, `tokens.account_id` in either
   store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
   printed.
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
-  switched home.
+  switched home. In upstream's source it stops the old daemon, starts the new one,
+  waits until the new one answers, and only then prints one JSON object and exits 0;
+  any failure exits non-zero. The object has the shape `daemon version` prints,
+  with `status` `restarted` and a `socketPath` under `CODEX_HOME` canonicalized,
+  read by `ParseDaemonRestart` from the first JSON value printed. The new daemon
+  reads the login on disk when it starts.
 - **status** `codex app-server daemon version`, whose JSON names `status` and
   `socketPath`, read by `ParseDaemonStatus` from the first JSON value printed
   (what follows it is ignored): `status` `running` with an absolute

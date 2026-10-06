@@ -67,7 +67,7 @@ sessions keep the account they started with after a switch
 WebSocket client (`internal/wsrpc`), the codex adapter's `ResidentHolder` with the
 daemon probe, the reconcile in `kae use`, the same reconcile in `kae add` and
 `kae rollback`, the ChatGPT app's confirmation, quit and relaunch in those three
-commands, `doctor resident_drift` with both halves on by default, and the codex
+commands, `doctor resident_drift`, and the codex
 usage veto ([CLI.md](CLI.md) § Subscription windows in listings) — are on main, and
 git log records them; no release ships them yet. What remains is slice 8, the
 real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
@@ -90,7 +90,8 @@ Whether it writes the token back to `auth.json` is not measured; an old session
 not connected to the daemon is inferred to invalidate the token in kae's snapshot
 by rotating it, which a new login of that account repairs. In upstream's source a
 daemon's routing discovery that meets a 401 reloads and refreshes its own token
-only while `auth.json` names the account it holds
+only while its stored login (`auth.json` or the keyring item) names the account
+it holds
 ([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
 app's n and an isolated daemon).
 

@@ -1902,7 +1902,8 @@ in the same transaction.
   resident process after the transaction (§ kae use Semantics) can only be known
   once it has happened, so kae gives the advance notice before the write and the
   outcome after it — a restart's result, a declined or timed-out app quit — once
-  that outcome is settled. Where the account is not known before the write — the
+  that outcome is settled; the success follows the result line (§ kae use Semantics,
+  **How the lines read**). Where the account is not known before the write — the
   login flow of `kae add`, which decides it — there is no advance notice: the
   probe and its outcome both follow the flow (§ kae add Semantics).
 - JSON mode never emits color, progress, prompts, or localized text (§ Localization), on stdout or stderr.

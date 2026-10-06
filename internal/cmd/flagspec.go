@@ -38,7 +38,7 @@ func registerUseFlags(fs *flag.FlagSet, v *useFlagValues) {
 // registerNoRestartFlag is --no-restart, for every command that reconciles
 // resident processes after a switch (docs/CLI.md § Global Flags).
 func registerNoRestartFlag(fs *flag.FlagSet, noRestart *bool) {
-	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon when it holds another account; warn instead")
+	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon when the daemon holds another account; warn instead")
 }
 
 // registerFullFlag is --full and its -f short form, which status, accounts and

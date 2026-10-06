@@ -64,7 +64,7 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code that slices 6 and 8 below still have to write. Slice 3, the reconcile in
+what slice 8 and the one line that enables slice 6's moved-socket half still have to land. Slice 3, the reconcile in
 `kae use`, is the first slice users can see; the contract and the work done on the
 integration branch `feat/resident-reconcile` land on main together, not one before
 the others. The feature then ships stage by stage, so a release cut between slices

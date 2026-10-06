@@ -961,18 +961,14 @@ func TestRestartExitingZeroAfterTheLimitIsRestarted(t *testing.T) {
 func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
-	f.app.residentRestartTimeout = 300 * time.Millisecond
-	// The background sleep outlasts the 3 s bound below, so a kae that waited for
-	// it would fail the bound.
+	// The background sleep outlasts the limit, so a kae that waited for it would
+	// read restart_pending; the limit is wide enough for a loaded machine to start
+	// the script.
+	f.app.residentRestartTimeout = 3 * time.Second
 	report := strings.TrimSuffix(restartedReport(f.holder.ResidentDaemon(f.app.Env).Socket), "\n")
-	standInCodex(t, "#!/bin/sh\nprintf '%s\\n' '"+report+"'\nsleep 5 &\nexit 0\n")
-	start := time.Now()
+	standInCodex(t, "#!/bin/sh\nprintf '%s\\n' '"+report+"'\nsleep 10 &\nexit 0\n")
 	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	elapsed := time.Since(start)
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
-	if elapsed > 3*time.Second {
-		t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
-	}
 }
 
 // Through the real runner, a restart command still running at the limit is not

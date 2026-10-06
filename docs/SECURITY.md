@@ -228,9 +228,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   managed daemon's own lifecycle commands), `osascript` and `open -b` (the ChatGPT
   app on macOS) run through
   `internal/runner` with argv arrays and no shell, under the limits of
-  § Resident processes: the restart and `daemon version` through
-  `runner.RunWithEnv`, `osascript` through `runner.Run`, and `open -b` through
-  `runner.Launch`.
+  § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
+  stdout and stderr are the null device rather than pipes, because the daemon the
+  restart leaves running would inherit a pipe and hold kae past the restart's
+  30 s limit; `daemon version` through `runner.RunWithEnv`, `osascript` through
+  `runner.Run`, and `open -b` through `runner.Launch`.
 
 ## File Permissions
 
@@ -369,8 +371,9 @@ daemon is not part of that read-modify-write, and codex does not take kae's lock
 so holding them would only turn the restart's seconds into `lock_busy` for other kae
 commands. The restart therefore follows the transaction, after state is saved and
 the locks are released: a restart before the state save would, if the save failed,
-leave the backup restored on disk while the daemon ran the new account. A failed
-restart does not roll the switch back. That is not the mixed-state rule of
+leave the backup restored on disk while the daemon ran the new account. A restart
+command (kae's own child) still running at its 30 s limit is killed; the daemon it
+started is left alone. A failed restart does not roll the switch back. That is not the mixed-state rule of
 § Mutation Safety Rules, which governs files kae writes; the daemon's memory is not
 one of them.
 

@@ -46,6 +46,8 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 	if err != nil {
 		return finish(opts, err)
 	}
+	// After teardownSynced (in buildUseBare) and the switch's lock release.
+	app.reconcileResidents(ctx, report.Results)
 	// --quiet suppresses the human success report (for enter hooks); the JSON
 	// report still emits so a script can read `changed`.
 	if opts.Format == formatJSON {

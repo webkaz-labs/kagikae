@@ -105,7 +105,8 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
 - **Resident-process seams.** The daemon probe dials a Unix socket, which is not a
   subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
   `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
-  framing is exercised. The daemon restart goes through `runner.RunWithEnv`, the
+  framing is exercised. The daemon restart goes through `runner.LaunchWithEnv`
+  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), the
   app's `osascript` through `runner.Run` and its relaunch through `runner.Launch`.
   Waits use `App.Now` and an injected sleeper. [SECURITY.md](SECURITY.md)
   § Resident processes owns the limits on all of them.
@@ -289,8 +290,8 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
 
 Before step 2, a tool that implements `ResidentHolder` is probed once, read-only
 and without a lock, so the advance notice reaches stderr before anything is
-written. `--dry-run` runs that probe too, since it only reads, and adds the
-notice and the `planned` outcomes to its plan; it writes nothing and runs no
+written. `--dry-run` runs that probe too, since it only reads, gives the same
+notice and adds the `planned` outcomes to its plan; it writes nothing and runs no
 step 10. Step 10 runs once for the whole
 transaction, only for tools that implement the capability, and not at all when
 step 7 rolled any tool back. It is outside the locks for the reason

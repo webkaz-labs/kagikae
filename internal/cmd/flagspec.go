@@ -18,11 +18,26 @@ func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool, identity *string
 	fs.StringVar(identity, "identity", "", "record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)")
 }
 
-func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, profile *string) {
-	registerScopeFlags(fs, shared, isolated)
-	fs.BoolVar(auto, "auto", false, "apply a resolved profile while preserving global isolated selections")
-	fs.BoolVar(quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
-	registerProfileFlag(fs, profile)
+// useFlagValues is what `kae use` parses beyond commonOpts; fs is the parsed
+// set, for asking which flags were given.
+type useFlagValues struct {
+	shared, isolated, quiet, auto, noRestart bool
+	profile                                  string
+	fs                                       *flag.FlagSet
+}
+
+func registerUseFlags(fs *flag.FlagSet, v *useFlagValues) {
+	registerScopeFlags(fs, &v.shared, &v.isolated)
+	fs.BoolVar(&v.auto, "auto", false, "apply a resolved profile while preserving global isolated selections")
+	fs.BoolVar(&v.quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
+	registerNoRestartFlag(fs, &v.noRestart)
+	registerProfileFlag(fs, &v.profile)
+}
+
+// registerNoRestartFlag is --no-restart, for every command that reconciles
+// resident processes after a switch (docs/CLI.md § Global Flags).
+func registerNoRestartFlag(fs *flag.FlagSet, noRestart *bool) {
+	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon after the switch; warn instead")
 }
 
 // registerFullFlag is --full and its -f short form, which status, accounts and
@@ -141,7 +156,7 @@ type commandFlagSpec struct {
 var commandFlagSpecs = map[string]commandFlagSpec{
 	"uninstall": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUninstallFlags(fs, new([]string)) }},
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
-	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
+	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(useFlagValues)) }},
 	"status":    {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
 	"accounts":  {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},

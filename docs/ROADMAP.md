@@ -71,12 +71,13 @@ the others. The feature then ships stage by stage, so a release cut between slic
 ships only part of what the contract describes: the release notes of each release
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
 GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
-and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
-from slice 6. Slices 1 to 5 — the WebSocket client (`internal/wsrpc`), the codex
+and `kae rollback` from slice 4, the ChatGPT app from slice 5, `resident_drift`
+from slice 6 and, in GUIDE.ja, the usage veto from slice 7. Slices 1 to 5 — the WebSocket client (`internal/wsrpc`), the codex
 adapter's `ResidentHolder` with the daemon probe, the reconcile in `kae use`, the
 same reconcile in `kae add` and `kae rollback`, and the ChatGPT app's confirmation,
-quit and relaunch in those three commands — are done on the integration branch;
-git log records them. The rest, each its own commit and review:
+quit and relaunch in those three commands — are done on the integration branch,
+and slice 7, the codex usage veto ([CLI.md](CLI.md) § Subscription windows in
+listings), on main; git log records them. The rest, each its own commit and review:
 
 6. `doctor resident_drift`. Its socket half is done and runs by default. Its
    moved-socket half (`codex app-server daemon version`) is not built; it ships
@@ -88,8 +89,9 @@ git log records them. The rest, each its own commit and review:
    own first. Its findings name the manual restart through the helper the switch's
    warnings use (`residentRestartCommand` in `internal/cmd`), so a shell that
    exports another `CODEX_HOME` is told the real home.
-7. Usage attribution: done — the codex veto in [CLI.md](CLI.md) § Subscription
-   windows in listings; git log records it.
+
+Then, last:
+
 8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
    placeholder names, and codex's `VerifiedVersion()` raised to 0.160.0.
 

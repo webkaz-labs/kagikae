@@ -1430,7 +1430,7 @@ each tool writes the local record, because that path is adapter knowledge.
 | Tool | Local record | What kae reads |
 |------|----------------|----------------|
 | claude | `<config dir>/usage-exact.json` | `fiveHour` and `sevenDay`: `usedPercent`, `resetsAt` (Unix seconds). The config dir is `configDir` (`CLAUDE_CONFIG_DIR`, otherwise `~/.claude`). Names like `usage-exact.json.<suffix>` are the tool's temp files and are ignored. |
-| codex | newest `sessions/**/*.jsonl` under `CODEX_HOME` | the last `payload.rate_limits` in the file's tail: `primary` / `secondary` with `used_percent`, `window_minutes`, `resets_at`. 300 minutes is `five_hour`; 10080 minutes is `seven_day`. From the file's head, the first `session_meta` line's `payload.creator_account_id`, used only for the codex veto below; rollouts of 0.154 and earlier have none. |
+| codex | newest `sessions/**/*.jsonl` under `CODEX_HOME` | the last `payload.rate_limits` in the file's tail: `primary` / `secondary` with `used_percent`, `window_minutes`, `resets_at`. 300 minutes is `five_hour`; 10080 minutes is `seven_day`. From the file's first line, when it is `session_meta`, `payload.creator_account_id`, used only for the codex veto below; rollouts of 0.154 and earlier have none. |
 
 The shapes are what the parsers accept. They are not a claim that every
 installed build was re-measured. A tool with no row here has no window column.

@@ -2071,27 +2071,31 @@ Where the number comes from, in order:
    **Codex veto.** A process that still holds the previous account after a
    switch (§ kae use Semantics, **Resident processes (codex)**) keeps appending
    that account's windows to a shared home's rollout, which the rule above would
-   attribute to the new account. A codex rollout records, in its `session_meta`,
+   attribute to the new account. A rollout's first line, `session_meta`, records
    the account id of the login that created the session (`creator_account_id`).
-   When a shared home's reading would be attributed to an account whose captured
-   credential names another account id, **and** that creator id is the account
-   id of another captured codex account, kae does not attribute the reading: it
-   is neither shown nor cached for that account, and a remembered reading from
-   the same file and mtime is dropped. The account then shows what the cache or
-   the usage request below gives it, or `-`. kae does not move the reading onto
-   the creator's account. To compare, kae reads the account id of each captured
-   codex credential from its own secret store, and only when a shared home's
-   rollout names a creator; the ids are compared in memory and never printed or
-   stored. Everything else keeps the attribution above: a rollout without the
-   field (codex 0.154 and earlier), a creator that matches no captured account,
-   or an attributed account whose credential names no account id. An isolated
-   home is never vetoed. The limits: the field names the session's creator, not
-   the account of each reading, so a session resumed under another account can
-   have correct readings vetoed (shown as `-`), and a held-over process writing
-   into a session the new account created is not caught. That
-   `creator_account_id` and the credential's `tokens.account_id` are one
-   namespace is not yet verified ([ROADMAP.md](ROADMAP.md) § Current work
-   order); if they are not, no creator matches and nothing is vetoed.
+
+   - **When kae vetoes.** A shared home's reading would be attributed to an
+     account whose captured credential names another account id than the
+     creator, **and** the creator is the account id of another captured codex
+     account. kae then neither shows nor caches the reading for that account,
+     and drops that account's remembered reading from the same rollout, whatever
+     its mtime: the creator does not change within a file. The account shows
+     what the cache or the usage request below gives it, or `-`. kae does not
+     move the reading onto the creator's account.
+   - **When it does not.** A rollout whose first line names no creator (codex
+     0.154 and earlier), a creator that matches no captured account, an
+     attributed account whose credential names no account id, and an isolated
+     home keep the attribution above.
+   - **What it reads.** The account id of each captured codex credential, from
+     kae's own secret store, only when a shared home's rollout names a creator.
+     The ids are compared in memory and never printed or stored.
+   - **Limits.** The creator is the session's, not each reading's: a session
+     resumed under another account can have correct readings vetoed (shown as
+     `-`), and a held-over process writing into a session the new account
+     created is not caught. That `creator_account_id` and the credential's
+     `tokens.account_id` are one namespace is not yet verified
+     ([ROADMAP.md](ROADMAP.md) § Current work order); if they are not, no
+     creator matches and nothing is vetoed.
 2. **The usage cache** (`usage-cache.json` next to `state.json`;
    [DATA-MODEL.md](DATA-MODEL.md) § State). A local reading is remembered so the
    account still shows it after the shared home moves on. A remembered local

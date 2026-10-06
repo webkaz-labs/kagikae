@@ -30,8 +30,9 @@ func residentDriftRows(report *doctorReport) []adapter.Check {
 	return rows
 }
 
-// The four probe answers through the registered check: differs and unknown warn
-// on codex and name the restart; absent and matches are silent.
+// The four observations through the registered check: differs (another account,
+// or none) and unknown warn on codex and name the restart; absent and matches
+// are silent.
 func TestDoctorResidentDriftByObservation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -40,7 +41,8 @@ func TestDoctorResidentDriftByObservation(t *testing.T) {
 	}{
 		{"absent", "", ""},
 		{"matches", accountReadReply(probeAccount), ""},
-		{"differs", accountReadReply(probeOtherAcct), "holds a different account from the live credential"},
+		{"differs", accountReadReply(probeOtherAcct), "is not using the live credential's account"},
+		{"differs, no account", noAccountReply, "is not using the live credential's account"},
 		{"unknown", residentDaemonError, "kae cannot read which account codex's managed daemon holds"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,7 +112,7 @@ func TestDoctorResidentDriftProbesTheRealHomeInsideABoundDirectory(t *testing.T)
 		return innerLookup(key)
 	}
 	rows := residentDriftRows(buildDoctor(context.Background(), app, "", false))
-	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), "holds a different account") {
+	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), "is not using the live credential's account") {
 		t.Fatalf("want the real home's differs warning, got %+v", rows)
 	}
 	want := "; to make it use the live account, run: CODEX_HOME='" + realHome + "' codex app-server daemon restart"
@@ -215,7 +217,7 @@ func TestResidentDriftPrintsNoPersonalData(t *testing.T) {
 // The two warnings render in Japanese while JSON keeps English.
 func TestResidentDriftMessagesInJapanese(t *testing.T) {
 	for _, tc := range []struct{ answer, ja string }{
-		{accountReadReply(probeOtherAcct), "codex の管理デーモンは現在の認証情報とは別のアカウントを使っているため、デーモンに接続したセッションはそのアカウントを使い続けます。現在のアカウントを使わせるには codex app-server daemon restart を実行してください。"},
+		{accountReadReply(probeOtherAcct), "codex の管理デーモンは現在の認証情報のアカウントを使っておらず、デーモンに接続したセッションも同じです。現在のアカウントを使わせるには codex app-server daemon restart を実行してください。"},
 		{residentDaemonError, "kae は codex の管理デーモンが使っているアカウントを読み取れないため、デーモンが現在のアカウントを使っているか判断できません。使っていない場合は codex app-server daemon restart を実行してください。"},
 	} {
 		app, _, h := probeFixture(t, probeAccount)

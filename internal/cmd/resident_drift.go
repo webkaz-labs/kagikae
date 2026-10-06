@@ -7,12 +7,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// residentDriftChecks reports a managed daemon of the real tool home that holds
-// another account than the live credential, or whose account kae cannot read
-// (docs/CLI.md § `kae doctor --json`, resident_drift, which owns the contract).
-// This is the socket half: it probes the daemon's socket only, through
-// probeResidentDaemon, which only reads. `absent` (no daemon) and `matches` are
-// silent.
+// residentDriftChecks is resident_drift's socket half for the real tool home;
+// docs/CLI.md § `kae doctor --json` owns what it reports. It probes the daemon's
+// socket only, through probeResidentDaemon, which only reads.
 //
 // It runs no subprocess of the tool: the `daemon version` half
 // (DaemonSpec.Status, resident_daemon_version.go) runs in doctorProbeRound's
@@ -62,8 +59,8 @@ func (app *App) residentDriftMessage(tool string, h adapter.ResidentHolder, spec
 ) (message, bool) {
 	switch observed {
 	case constants.ResidentObservedDiffers:
-		return msgf("%s's managed daemon holds a different account from the live credential, "+
-			"so sessions connected to it keep using that account; to make it use the live account, run: %s",
+		return msgf("%s's managed daemon is not using the live credential's account, "+
+			"and neither are the sessions connected to it; to make it use the live account, run: %s",
 			tool, app.residentRestartCommand(h, spec)), true
 	case constants.ResidentObservedUnknown:
 		return msgf("kae cannot read which account %s's managed daemon holds, "+

@@ -64,7 +64,7 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-what slice 8 and the one line that enables slice 6's moved-socket half still have to land. Slice 3, the reconcile in
+what slice 8 still has to land. Slice 3, the reconcile in
 `kae use`, is the first slice users can see; the contract and the work done on the
 integration branch `feat/resident-reconcile` land on main together, not one before
 the others. The feature then ships stage by stage, so a release cut between slices
@@ -76,59 +76,40 @@ from slice 6 and, in GUIDE.ja, the usage veto from slice 7. Slices 1 to 5 — th
 adapter's `ResidentHolder` with the daemon probe, the reconcile in `kae use`, the
 same reconcile in `kae add` and `kae rollback`, and the ChatGPT app's confirmation,
 quit and relaunch in those three commands — are done on the integration branch,
-and slice 7, the codex usage veto ([CLI.md](CLI.md) § Subscription windows in
-listings), on main; git log records them. The rest, each its own commit and review:
+and slice 6, `doctor resident_drift` with both halves on by default, and slice 7,
+the codex usage veto ([CLI.md](CLI.md) § Subscription windows in listings), on
+main; git log records them. What remains is slice 8, the real-machine acceptance,
+recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names, after which
+codex's `VerifiedVersion()` is raised to the version it ran against; until then it
+stays where it is.
 
-6. `doctor resident_drift`. Its socket half is done and runs by default. Its
-   moved-socket half (`codex app-server daemon version`) is built and disabled
-   until the acceptance: it stays disabled until slice 8 records that the command
-   starts no daemon when none runs and makes no network call, and is then enabled
-   by default by setting `residentDaemonVersionEnabled` in
-   `internal/cmd/resident_daemon_version.go` to true, the one line that gates it.
-   It reads the output through `runner.QueryWithEnv`, whose stdout is a file
-   rather than a pipe, so a daemon the command starts cannot hold doctor.
+The operator's decisions, which the slices do not reopen, are the behaviour
+[CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
-Then, last:
+The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ codex resident processes — local acceptance (2026-10-06), which answers the
+questions it settled. Before slice 8 can pass, the acceptance still has to settle:
 
-8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
-   placeholder names, and codex's `VerifiedVersion()` raised to 0.160.0.
-
-The operator's decisions, which the slices do not reopen: an explicit or bare
-`kae use`, `kae add` and `kae rollback` restart a daemon that holds another
-account and say so, `--no-restart` suppresses that, and nothing happens when the
-accounts match; the hook shape is `--auto` alone (`--quiet` changes output only)
-and only warns, even with `--yes`; the ChatGPT app is quit and relaunched only after
-a terminal confirmation or `--yes`, which counts as consent; sessions kae does not
-touch get a fixed warning; warnings never change the exit code.
-
-Before slice 8 can pass, the acceptance has to settle what is not yet verified:
-
-- whether the `codex` on `PATH`, which runs the restart, can differ in version from
-  the managed daemon's own copy, and what the restart does then;
-- whether the daemon's `workspaceRouting.chatgptAccountId` and the credential's
-  `tokens.account_id` are one namespace — if not, every probe reads `differs`;
-- whether a rollout's `session_meta.payload.creator_account_id` and the
-  credential's `tokens.account_id` are one namespace — if not, the usage veto
-  never matches and never acts;
+- what the restart does when the `codex` on `PATH` and the daemon's own copy
+  differ in version;
 - whether the daemon contacts the network to answer `account/read` with
-  `refreshToken: false`, or to answer `codex app-server daemon version`, and
-  whether the latter starts a daemon when none runs. The answer decides whether
-  `resident_drift` stays a default check or becomes opt-in;
-- which `osascript` calls need the Automation (TCC) permission, and what the first
-  one does without it;
-- whether a codex TUI session connects to the managed daemon at all, which decides
-  whether a restart reaches it and what the session warning should say;
+  `refreshToken: false`, which decides whether the socket half of
+  `resident_drift` stays a default check or becomes opt-in. A lead, not an answer:
+  in upstream's source, a daemon with no cached routing runs routing discovery
+  through its `BackendClient`, which can connect;
+- whether the app's `quit` needs the Automation (TCC) permission, and what the
+  first one does without it;
+- whether a newly started codex TUI session connects to the managed daemon (an
+  existing `codex resume` one did not), which decides whether a restart reaches it
+  and what the session warning should say;
 - what an automatic daemon restart interrupts in the clients connected to it;
-- whether the daemon `codex app-server daemon restart` starts closes the stdio it
-  inherits. kae gives the restart the null device rather than pipes, so it does not
-  wait on the daemon either way; a daemon that keeps them open would hold a caller
-  that captures the restart's output;
 - whether a resident process still on the old account can write a refreshed token
   back to `auth.json`, which would overwrite a switch while a hook or
   `--no-restart` leaves it running;
-- what happens when the ChatGPT app answers the quit with a confirmation dialog:
-  the quit request then times out (`-1712`), the 20 s wait ends in `quit_timeout`,
-  and if the user chooses to quit afterwards the app is not relaunched.
+- how the ChatGPT app's y / n / `--yes` paths behave on a real app, and what happens
+  when it answers the quit with a confirmation dialog: the quit request then times
+  out (`-1712`), the 20 s wait ends in `quit_timeout`, and if the user chooses to
+  quit afterwards the app is not relaunched.
 
 Done when slice 8's acceptance is recorded, each question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.

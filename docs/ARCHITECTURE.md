@@ -233,6 +233,7 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   status argv and environment, `CredentialAccount(payload)`
   reads an opaque account key from a credential payload (file or keyring alike),
   `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer,
+  telling a daemon that holds no account apart from an answer it cannot read,
   `ParseDaemonStatus(output)` reads whether the status command reports the daemon
   running and at which socket path, and
   `DesktopApps()` lists the bundle ids of desktop apps that embed the tool (non-empty

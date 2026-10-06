@@ -231,16 +231,16 @@ func assertNoResidentPII(t *testing.T, outputs ...string) {
 }
 
 const (
-	noticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch"
-	noticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it"
-	warnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
-	warnHook       = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
-	warnUnknown    = "kae: warning: codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: codex app-server daemon restart"
+	noticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live; kae restarts it after the switch"
+	noticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this switch would leave live; the switch would restart it"
+	warnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
+	warnHook       = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
+	warnUnknown    = "kae: warning: codex: could not read which account the managed daemon (codex app-server daemon) holds; if it is not using the live account, run: codex app-server daemon restart"
 	warnSession    = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted"
 	warnSessionDry = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted"
 	noteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live"
-	warnUnverfied  = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: codex app-server daemon restart"
-	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
+	warnUnverfied  = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: codex app-server daemon restart"
+	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
 
 // The everyday case: the daemon holds the live account (side), the switch leaves
@@ -284,6 +284,41 @@ func TestUseRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 		t.Errorf("the outcome precedes the notice:\n%s", stderr)
 	}
 	assertNoResidentPII(t, stdout, stderr)
+}
+
+// A daemon that answers it holds no account, as one on 0.160.1 did after a
+// switch, differs from a target that names one: kae restarts it, and
+// --no-restart leaves it running with the opted_out warning.
+func TestUseRestartsADaemonHoldingNoAccount(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		opts     commonOpts
+		outcome  string
+		restarts int
+		line     string
+	}{
+		{"restart", commonOpts{}, constants.ResidentOutcomeRestarted, 1, noteRestarted},
+		{"no-restart", commonOpts{NoRestart: true}, constants.ResidentOutcomeOptedOut, 0, warnOptedOut},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newResidentFixture(t)
+			f.withDaemon(t, residentSide).answers(noAccountReply)
+			if tc.restarts != 0 {
+				f.stubRestart(t, f.restartTo(t))
+			}
+			opts := tc.opts
+			opts.Format = formatJSON
+			stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
+			if f.restartCount() != tc.restarts {
+				t.Errorf("restarted %d times, want %d", f.restartCount(), tc.restarts)
+			}
+			if !strings.Contains(stderr, tc.line+"\n") {
+				t.Errorf("stderr lacks %q:\n%s", tc.line, stderr)
+			}
+			assertNoResidentPII(t, stdout, stderr)
+		})
+	}
 }
 
 // The probe compares the daemon with the account the switch leaves live, not
@@ -499,9 +534,10 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 // restart_unverified; the waits are 250 ms apart and stop at 5 s.
 func TestRestartUnverifiedAfterTheWait(t *testing.T) {
 	for name, after := range map[string]func(d *fakeDaemon){
-		"still differs": func(*fakeDaemon) {},
+		"still differs":    func(*fakeDaemon) {},
+		"holds no account": func(d *fakeDaemon) { d.answers(noAccountReply) },
 		"unreadable": func(d *fakeDaemon) {
-			d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":null}}`)
+			d.answers(apiKeyReply)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -545,7 +581,7 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 	for _, opts := range []commonOpts{{}, {NoRestart: true}, {DryRun: true}} {
 		f := newResidentFixture(t)
 		d := f.withDaemon(t, residentSide)
-		d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail + `"},"workspaceRouting":null}}`)
+		d.answers(apiKeyReply)
 		opts.Format = formatJSON
 		stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
 		wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned), sessionEntry)
@@ -559,6 +595,115 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 	}
 }
 
+// noAccountFixture is a resident fixture whose daemon answers that it holds no
+// account, live on side, for the tests of how kae words that case.
+func noAccountFixture(t *testing.T) *residentFixture {
+	t.Helper()
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide).answers(noAccountReply)
+	return f
+}
+
+// wantStderrLine runs a command, in Japanese when japanese is set, and requires
+// exit 0, line on its stderr and no personal data on either stream.
+func wantStderrLine(t *testing.T, japanese bool, line string, run func() (code int, stdout, stderr string)) {
+	t.Helper()
+	if japanese {
+		l10ntest.UseJapanese(t)
+	}
+	code, stdout, stderr := run()
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if !strings.Contains(stderr, line+"\n") {
+		t.Errorf("stderr lacks %q:\n%s", line, stderr)
+	}
+	assertNoResidentPII(t, stdout, stderr)
+}
+
+// The switch's lines that suppress the restart render in Japanese, on a daemon
+// that holds no account: the wording says only that it is not using the account
+// the switch leaves live, which is true of that daemon too.
+func TestUseSuppressedRestartInJapanese(t *testing.T) {
+	explicit := func(ctx context.Context, app *App, o commonOpts) int {
+		return runSwitch(ctx, app, o, constants.ToolCodex, "main")
+	}
+	hook := func(ctx context.Context, app *App, o commonOpts) int {
+		return runUseAuto(ctx, app, o, "main", true)
+	}
+	for _, tc := range []struct {
+		name string
+		opts commonOpts
+		run  func(ctx context.Context, app *App, opts commonOpts) int
+		line string
+	}{
+		{
+			"dry-run",
+			commonOpts{DryRun: true},
+			explicit,
+			"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替を実行すると、kae が再起動します。",
+		},
+		{
+			"no-restart",
+			commonOpts{NoRestart: true},
+			explicit,
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"auto",
+			commonOpts{ResidentHook: true},
+			hook,
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、enter フック（--auto）では再起動しません。新しいアカウントに切り替えるには、codex app-server daemon restart を実行してください。",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := noAccountFixture(t)
+			opts := tc.opts
+			opts.Format = formatText
+			wantStderrLine(t, true, tc.line, func() (int, string, string) {
+				return captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
+			})
+		})
+	}
+}
+
+// The switch's warnings when the restart fails, cannot be verified, or the
+// daemon cannot be read render in Japanese, worded so that they hold for a daemon
+// that held no account.
+func TestUseRestartWarningsInJapanese(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, f *residentFixture)
+		line  string
+	}{
+		{
+			"failed",
+			func(t *testing.T, f *residentFixture) { f.stubRestart(t, func(*restartCall) int { return 3 }) },
+			"kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"unverified",
+			func(t *testing.T, f *residentFixture) { f.stubRestart(t, func(*restartCall) int { return 0 }) },
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"unknown",
+			func(t *testing.T, f *residentFixture) {
+				f.daemon.answers(apiKeyReply)
+			},
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。現在有効なアカウントを使っていない場合は、codex app-server daemon restart を実行してください。",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := noAccountFixture(t)
+			tc.setup(t, f)
+			wantStderrLine(t, true, tc.line, func() (int, string, string) {
+				return captureBoth(t, func() int {
+					return runSwitch(context.Background(), f.app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
+				})
+			})
+		})
+	}
+}
+
 // The notices and the outcome render in Japanese.
 func TestUseResidentsInJapanese(t *testing.T) {
 	f := newResidentFixture(t)
@@ -567,7 +712,7 @@ func TestUseResidentsInJapanese(t *testing.T) {
 	l10ntest.UseJapanese(t)
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatText}, constants.ToolCodex, "main")
 	for _, line := range []string{
-		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
+		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替の後に kae が再起動します。",
 		"kae: warning: この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 		"kae: note: codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",
 	} {
@@ -698,7 +843,7 @@ func TestRestartTimesOut(t *testing.T) {
 	}
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
-	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
+	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
 	if deadline <= 0 || deadline > 50*time.Millisecond {
@@ -833,7 +978,7 @@ func TestRestartThatCannotStart(t *testing.T) {
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
 	if !strings.Contains(stderr, "kae: warning: codex: could not run codex app-server daemon restart (") ||
-		!strings.Contains(stderr, "); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart\n") {
+		!strings.Contains(stderr, "); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n") {
 		t.Errorf("stderr lacks the could-not-run warning:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "failed (exit") {

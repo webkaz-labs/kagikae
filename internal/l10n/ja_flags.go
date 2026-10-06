@@ -24,9 +24,9 @@ var jaFlags = map[string]string{
 	"record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)": "自動検出できない場合にアカウントに記録するログイン識別子（例: 現行の Antigravity での agy）",
 
 	// kae use.
-	"apply a resolved profile while preserving global isolated selections":                      "グローバルな独立環境の選択を保ったまま、解決したプロファイルを適用",
-	"suppress the success report (for hooks; bare use)":                                         "成功の報告の抑止（フック用、引数なしの kae use のみ）",
-	"do not restart codex's managed daemon when the daemon holds another account; warn instead": "codex の管理デーモンが別のアカウントを使っていても再起動せず、警告だけを表示",
+	"apply a resolved profile while preserving global isolated selections":                                         "グローバルな独立環境の選択を保ったまま、解決したプロファイルを適用",
+	"suppress the success report (for hooks; bare use)":                                                            "成功の報告の抑止（フック用、引数なしの kae use のみ）",
+	"do not restart codex's managed daemon when it is not using the account the command leaves live; warn instead": "codex の管理デーモンがコマンドの後に有効なアカウントを使っていなくても再起動せず、警告だけを表示",
 
 	// Account tables (status, accounts, ls).
 	"show every column of the account tables, Identity and Driver included": "アカウント表の全列を表示（識別子とドライバーを含む）",

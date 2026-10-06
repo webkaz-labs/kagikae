@@ -20,29 +20,30 @@ import (
 
 const daemonVersionMoved = "has changed where it puts the socket"
 
-// queryCall is one runner.QueryWithEnv invocation a test recorded.
+// queryCall is one `daemon version` run a test recorded.
 type queryCall struct {
 	env  []string
 	name string
 	args []string
 }
 
-// daemonVersionFixture is probeFixture with codex (only) on PATH and
-// runner.QueryWithEnv answering reply; it returns the recorded calls.
-// enabled sets residentDaemonVersionEnabled for the test.
+// daemonVersionFixture is probeFixture with codex (only) on PATH and the
+// `daemon version` command answering reply in place of testApp's no-daemon
+// default; it returns the recorded calls. enabled sets
+// residentDaemonVersionEnabled for the test.
 func daemonVersionFixture(t *testing.T, enabled bool,
 	reply func(ctx context.Context) (string, int),
 ) (*App, adapter.ResidentHolder, *[]queryCall) {
 	t.Helper()
-	savedEnabled, savedQuery := residentDaemonVersionEnabled, runner.QueryWithEnv
-	t.Cleanup(func() { residentDaemonVersionEnabled, runner.QueryWithEnv = savedEnabled, savedQuery })
+	saved := residentDaemonVersionEnabled
+	t.Cleanup(func() { residentDaemonVersionEnabled = saved })
 	residentDaemonVersionEnabled = enabled
 	calls := &[]queryCall{}
-	runner.QueryWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, int) {
+	app, _, h := probeFixture(t, probeAccount)
+	app.daemonStatusQuery = func(ctx context.Context, env []string, name string, args ...string) (string, int) {
 		*calls = append(*calls, queryCall{env: slices.Clone(env), name: name, args: slices.Clone(args)})
 		return reply(ctx)
 	}
-	app, _, h := probeFixture(t, probeAccount)
 	app.Env.LookPath = func(name string) (string, error) {
 		if name == "codex" {
 			return "/usr/bin/codex", nil
@@ -180,11 +181,42 @@ func TestDoctorDaemonVersionRunsAgainstTheRealHome(t *testing.T) {
 	}
 }
 
-// Off by default: doctor never runs `daemon version`, whatever the filter.
-func TestDoctorDaemonVersionDisabledByDefault(t *testing.T) {
-	if residentDaemonVersionEnabled {
-		t.Fatal("the daemon version half is enabled before the acceptance records that it is safe")
+// On by default since the local acceptance (docs/ACCEPTANCE.md): doctor runs
+// `daemon version` without a test turning the half on, and reports a moved socket.
+func TestDoctorDaemonVersionRunsByDefault(t *testing.T) {
+	app, _, calls := daemonVersionFixture(t, residentDaemonVersionEnabled, statusReply(runningAt(movedSocket(t))))
+	rows := doctorDaemonVersionRows(t, app, "")
+	if len(*calls) != 1 {
+		t.Fatalf("daemon version ran %d time(s) by default, want 1", len(*calls))
 	}
+	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), daemonVersionMoved) {
+		t.Errorf("rows = %+v, want the moved-socket warning", rows)
+	}
+}
+
+// With no daemonStatusQuery, as production builds the App, `daemon version` goes
+// through runner.QueryWithEnv.
+func TestDoctorDaemonVersionWithoutTheSeamUsesTheRunner(t *testing.T) {
+	app, _, _ := daemonVersionFixture(t, true, statusReply(""))
+	app.daemonStatusQuery = nil
+	saved := runner.QueryWithEnv
+	t.Cleanup(func() { runner.QueryWithEnv = saved })
+	var calls []queryCall
+	runner.QueryWithEnv = func(_ context.Context, env []string, name string, args ...string) (string, int) {
+		calls = append(calls, queryCall{env: slices.Clone(env), name: name, args: slices.Clone(args)})
+		return runningAt(movedSocket(t)), 0
+	}
+	rows := doctorDaemonVersionRows(t, app, "")
+	if len(calls) != 1 || calls[0].name != "codex" || !slices.Equal(calls[0].args, []string{"app-server", "daemon", "version"}) {
+		t.Fatalf("runner.QueryWithEnv calls = %+v, want one `codex app-server daemon version`", calls)
+	}
+	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), daemonVersionMoved) {
+		t.Errorf("rows = %+v, want the moved-socket warning", rows)
+	}
+}
+
+// Turned off, doctor never runs `daemon version`, whatever the filter.
+func TestDoctorDaemonVersionDisabledRunsNothing(t *testing.T) {
 	app, _, calls := daemonVersionFixture(t, false, statusReply(runningAt(movedSocket(t))))
 	for _, filter := range []string{"", constants.ToolCodex} {
 		if rows := doctorDaemonVersionRows(t, app, filter); len(rows) != 0 {

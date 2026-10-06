@@ -43,18 +43,44 @@ func (Codex) CredentialAccount(payload []byte) (adapter.ResidentAccount, bool) {
 }
 
 // ParseDaemonAccount reads workspaceRouting.chatgptAccountId from an
-// account/read result. workspaceRouting is null for a login that is not a
-// ChatGPT one, which reads as no account.
-func (Codex) ParseDaemonAccount(result []byte) (adapter.ResidentAccount, bool) {
+// account/read result. A daemon that holds no account is the one shape
+// docs/ADAPTERS.md § Resident processes names (noAccount); every other shape
+// without a string chatgptAccountId, an API-key login's included, is unreadable.
+func (Codex) ParseDaemonAccount(result []byte) (adapter.DaemonAccount, bool) {
 	var doc struct {
-		WorkspaceRouting *struct {
-			ChatGPTAccountID string `json:"chatgptAccountId"`
-		} `json:"workspaceRouting"`
+		Account            json.RawMessage `json:"account"`
+		RequiresOpenaiAuth json.RawMessage `json:"requiresOpenaiAuth"`
+		WorkspaceRouting   json.RawMessage `json:"workspaceRouting"`
 	}
-	if err := json.Unmarshal(result, &doc); err != nil || doc.WorkspaceRouting == nil {
-		return adapter.ResidentAccount{}, false
+	if err := json.Unmarshal(result, &doc); err != nil {
+		return adapter.DaemonAccount{}, false
 	}
-	return adapter.NewResidentAccount(doc.WorkspaceRouting.ChatGPTAccountID)
+	if string(doc.Account) == "null" {
+		return adapter.DaemonAccount{}, noAccount(doc.WorkspaceRouting, doc.RequiresOpenaiAuth)
+	}
+	var routing *struct {
+		ChatGPTAccountID string `json:"chatgptAccountId"`
+	}
+	if nullOrAbsent(doc.WorkspaceRouting) || json.Unmarshal(doc.WorkspaceRouting, &routing) != nil {
+		return adapter.DaemonAccount{}, false
+	}
+	account, ok := adapter.NewResidentAccount(routing.ChatGPTAccountID)
+	return adapter.DaemonAccount{Account: account, Held: ok}, ok
+}
+
+// noAccount reports whether an answer whose account is null says the daemon
+// holds no account: workspaceRouting null or absent and requiresOpenaiAuth the
+// literal true. With requiresOpenaiAuth false upstream answers the same nulls
+// for a model provider that needs no OpenAI login, whatever the credential, so a
+// restart would not change it; that, and anything else, is unreadable.
+func noAccount(routing, requiresOpenaiAuth json.RawMessage) bool {
+	return nullOrAbsent(routing) && string(requiresOpenaiAuth) == "true"
+}
+
+// nullOrAbsent reports whether a raw member is absent or null: encoding/json
+// leaves an absent member empty and keeps a null one as the literal.
+func nullOrAbsent(raw json.RawMessage) bool {
+	return len(raw) == 0 || string(raw) == "null"
 }
 
 // daemonRunning is the `status` `codex app-server daemon version` reports for a

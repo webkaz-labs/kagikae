@@ -125,30 +125,52 @@ func TestParseDaemonAccountComparesWithTheCredential(t *testing.T) {
 	cred, _ := Codex{}.CredentialAccount([]byte(`{"tokens":{"account_id":"` + fixtureAccount + `"}}`))
 
 	same, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(fixtureAccount)))
-	if !ok || !same.Same(cred) {
-		t.Errorf("matching account: got %v, %v", same, ok)
+	if !ok || !same.Held || !same.Account.Same(cred) {
+		t.Errorf("matching account: got %+v, ok %v", same, ok)
 	}
 	other, ok := Codex{}.ParseDaemonAccount([]byte(accountReadResult(otherAccount)))
-	if !ok || other.Same(cred) {
-		t.Errorf("different account: got %v, %v, want a readable key that differs", other, ok)
+	if !ok || !other.Held || other.Account.Same(cred) {
+		t.Errorf("different account: got %+v, ok %v, want a readable key that differs", other, ok)
+	}
+}
+
+// A daemon that answers `account` null with requiresOpenaiAuth true holds no
+// account, as one on 0.160.1 did after a switch (docs/ADAPTERS.md § Resident
+// processes); that is readable, and distinct from an answer kae cannot read.
+func TestParseDaemonAccountReadsNoAccount(t *testing.T) {
+	for name, result := range map[string]string{
+		"measured on 0.160.1":     `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}`,
+		"workspaceRouting absent": `{"account":null,"requiresOpenaiAuth":true}`,
+	} {
+		if got, ok := (Codex{}).ParseDaemonAccount([]byte(result)); !ok || got.Held {
+			t.Errorf("%s: got %+v, ok %v, want no account (Held false, ok true)", name, got, ok)
+		}
 	}
 }
 
 func TestParseDaemonAccountRejectsUnreadableAnswers(t *testing.T) {
 	for name, result := range map[string]string{
-		"api key login":        `{"account":{"type":"apiKey"},"requiresOpenaiAuth":true,"workspaceRouting":null}`,
-		"no workspaceRouting":  `{"account":{"type":"chatgpt","email":"you@example.com","planType":"plus"}}`,
-		"no chatgptAccountId":  `{"workspaceRouting":{"backendOrigin":"https://chatgpt.com"}}`,
-		"empty id":             `{"workspaceRouting":{"chatgptAccountId":""}}`,
-		"null id":              `{"workspaceRouting":{"chatgptAccountId":null}}`,
-		"number id":            `{"workspaceRouting":{"chatgptAccountId":42}}`,
-		"routing is a string":  `{"workspaceRouting":"` + fixtureAccount + `"}`,
-		"result is an array":   `[]`,
-		"not JSON":             `{"workspaceRouting":`,
-		"whole JSON-RPC reply": `{"jsonrpc":"2.0","id":2,"result":` + accountReadResult(fixtureAccount) + `}`,
+		"api key login":                `{"account":{"type":"apiKey"},"requiresOpenaiAuth":true,"workspaceRouting":null}`,
+		"no workspaceRouting":          `{"account":{"type":"chatgpt","email":"you@example.com","planType":"plus"}}`,
+		"no chatgptAccountId":          `{"workspaceRouting":{"backendOrigin":"https://chatgpt.com"}}`,
+		"empty id":                     `{"workspaceRouting":{"chatgptAccountId":""}}`,
+		"null id":                      `{"workspaceRouting":{"chatgptAccountId":null}}`,
+		"number id":                    `{"workspaceRouting":{"chatgptAccountId":42}}`,
+		"routing is a string":          `{"workspaceRouting":"` + fixtureAccount + `"}`,
+		"result is an array":           `[]`,
+		"not JSON":                     `{"workspaceRouting":`,
+		"whole JSON-RPC reply":         `{"jsonrpc":"2.0","id":2,"result":` + accountReadResult(fixtureAccount) + `}`,
+		"no account, routing a string": `{"account":null,"workspaceRouting":"x"}`,
+		"empty result":                 `{}`,
+		// A model provider that needs no OpenAI login answers these nulls whatever
+		// the credential; a restart would not change it.
+		"no OpenAI auth required":                    `{"account":null,"requiresOpenaiAuth":false,"workspaceRouting":null}`,
+		"no workspaceRouting, no requiresOpenaiAuth": `{"account":null}`,
+		"requiresOpenaiAuth a string":                `{"account":null,"requiresOpenaiAuth":"true","workspaceRouting":null}`,
+		"no account, but routing":                    `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":{"chatgptAccountId":"` + fixtureAccount + `"}}`,
 	} {
-		if _, ok := (Codex{}).ParseDaemonAccount([]byte(result)); ok {
-			t.Errorf("%s: ParseDaemonAccount ok", name)
+		if got, ok := (Codex{}).ParseDaemonAccount([]byte(result)); ok || got.Held {
+			t.Errorf("%s: ParseDaemonAccount %+v, ok %v", name, got, ok)
 		}
 	}
 }

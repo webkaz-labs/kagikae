@@ -18,10 +18,10 @@ type ResidentHolder interface {
 	// CredentialAccount reads the account key from a credential payload, from
 	// either store. ok is false when the payload names no account.
 	CredentialAccount(payload []byte) (ResidentAccount, bool)
-	// ParseDaemonAccount reads the account key from the `result` member of the
-	// daemon's answer to the last request in DaemonProbeRequests. ok is false for
+	// ParseDaemonAccount reads what the daemon holds from the `result` member of
+	// its answer to the last request in DaemonProbeRequests. ok is false for
 	// anything it cannot read: missing fields, wrong types, malformed JSON.
-	ParseDaemonAccount(result []byte) (ResidentAccount, bool)
+	ParseDaemonAccount(result []byte) (DaemonAccount, bool)
 	// ParseDaemonStatus reads the stdout of DaemonSpec.Status: whether the daemon
 	// reports itself running and, when it does, the socket path it reports. ok is
 	// false for anything it cannot read, a running daemon without an absolute
@@ -31,6 +31,14 @@ type ResidentHolder interface {
 	// empty except on darwin (the platform kae runs on, not Env.GOOS: the apps
 	// are reached through Apple Events, which exist only there).
 	DesktopApps() []string
+}
+
+// DaemonAccount is what a daemon answers that it holds: Account when Held, or
+// no account at all, which the caller compares as another account than any
+// credential's.
+type DaemonAccount struct {
+	Account ResidentAccount
+	Held    bool
 }
 
 // DaemonSpec is how to reach and control one managed daemon.

@@ -204,7 +204,7 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 // absent and matches print nothing.
 func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
-		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", manual())
+		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it is not using the live account, run: %s", manual())
 		return
 	}
 	if observed != constants.ResidentObservedDiffers {
@@ -219,7 +219,7 @@ func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manu
 		warnMessage(op.optedOut(manual()))
 	case outcome == constants.ResidentOutcomeWarned:
 		// Only a switch has the hook shape.
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
+		warnf("codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
 	}
 }
 
@@ -277,8 +277,8 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 // residentsAtCapture is the reconcile of `kae add --no-login` (docs/CLI.md
 // § kae add Semantics, codex resident processes): the live login stays as it
 // is, so nothing is restarted, and a daemon of the real home that holds another
-// account than the live credential, or whose account kae cannot read, gets a
-// warning only. It only reads, so --dry-run runs it too. It returns the
+// account than the live credential or none, or whose account kae cannot read,
+// gets a warning only. It only reads, so --dry-run runs it too. It returns the
 // result's `residents`: that daemon's entry, outcome `warned`, or none.
 func (app *App) residentsAtCapture(ctx context.Context, tool string) []residentEntry {
 	residents := []residentEntry{}
@@ -377,7 +377,7 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		}
 		app.sleep(ctx, residentRecheckInterval)
 	}
-	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s", manual())
+	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: %s", manual())
 	return constants.ResidentOutcomeRestartUnverified
 }
 

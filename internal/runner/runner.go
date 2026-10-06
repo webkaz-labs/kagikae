@@ -40,9 +40,7 @@ var RunInteractive = func(ctx context.Context, extraEnv []string, name string, a
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
+	setExtraEnv(cmd, extraEnv)
 	err := cmd.Run()
 	if err == nil {
 		return 0, nil
@@ -63,9 +61,7 @@ var RunWithEnv = func(ctx context.Context, extraEnv []string, name string, args 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
+	setExtraEnv(cmd, extraEnv)
 	err := cmd.Run()
 	if err == nil {
 		return stdout.String(), stderr.String(), 0
@@ -111,10 +107,17 @@ func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, e
 // waits for the program only. Overridable in tests.
 var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stdout, Stderr nil: the null device
+	setExtraEnv(cmd, extraEnv)
+	return launchResult(cmd.Run())
+}
+
+// setExtraEnv appends extraEnv to the inherited environment of cmd; the last
+// entry for a key wins, as os/exec documents. A nil extraEnv leaves cmd on the
+// ambient environment.
+func setExtraEnv(cmd *exec.Cmd, extraEnv []string) {
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}
-	return launchResult(cmd.Run())
 }
 
 // QueryMaxOutput caps how much of a QueryWithEnv program's stdout is read.
@@ -127,7 +130,9 @@ const QueryMaxOutput = 1 << 20
 // the null device, so kae waits for the program only: a pipe would keep Wait
 // open until whatever inherited it exits, and closing kae's end early would
 // leave that process writing into a broken pipe. At most QueryMaxOutput bytes
-// are read. code is the exit status, -1 when ctx killed the program, and 1 when
+// are read, from the start of the file without moving the offset the process
+// shares with kae (readQueryOutput); what the program and anything it leaves
+// running write is not capped, only kae's read of it. code is the exit status, -1 when ctx killed the program, and 1 when
 // it could not be started or its output could not be read. Overridable in tests.
 var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (stdout string, code int) {
 	out, err := os.CreateTemp("", "kae-query-*")
@@ -142,21 +147,25 @@ var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, arg
 	}
 	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stderr nil: the null device
 	cmd.Stdout = out
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
+	setExtraEnv(cmd, extraEnv)
 	code, err = launchResult(cmd.Run())
 	if err != nil {
 		return "", 1
 	}
-	if _, err := out.Seek(0, io.SeekStart); err != nil {
-		return "", 1
-	}
-	data, err := io.ReadAll(io.LimitReader(out, QueryMaxOutput))
+	data, err := readQueryOutput(out)
 	if err != nil {
 		return "", 1
 	}
-	return string(data), code
+	return data, code
+}
+
+// readQueryOutput reads up to QueryMaxOutput bytes of f from its start with
+// positioned reads. It never seeks: a process QueryWithEnv's program left running
+// shares f's offset and may still be writing, and moving the offset back would
+// make its next write land over the start of the output.
+func readQueryOutput(f *os.File) (string, error) {
+	data, err := io.ReadAll(io.NewSectionReader(f, 0, QueryMaxOutput))
+	return string(data), err
 }
 
 // launchResult is the (exit code, error) of a launched program from its Run

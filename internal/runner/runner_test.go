@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -214,5 +215,52 @@ func killPidFile(path string) {
 	}
 	if p, err := os.FindProcess(pid); err == nil {
 		_ = p.Kill()
+	}
+}
+
+// readQueryOutput reads from the start without moving the offset a process left
+// running shares with kae: a seek back would make that process's next write
+// land over the start of the output.
+func TestReadQueryOutputLeavesTheSharedOffset(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "query")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(`{"status":"running"}` + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	// The writer's offset need not be the end while kae reads: it is mid-write.
+	before, err := f.Seek(5, io.SeekStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readQueryOutput(f)
+	if err != nil || got != `{"status":"running"}`+"\n" {
+		t.Fatalf("read %q, %v", got, err)
+	}
+	if after, _ := f.Seek(0, io.SeekCurrent); after != before {
+		t.Fatalf("offset moved from %d to %d", before, after)
+	}
+}
+
+// The end to end form of the same property: a background child that keeps
+// writing to the stdout it inherited never overwrites the start of the output.
+// It depends on timing, so it repeats; readQueryOutput's test above is the
+// deterministic one.
+func TestQueryWithEnvKeepsTheStartWhileAChildWrites(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	const first = `{"status":"running"}`
+	for i := range 20 {
+		pidFile := filepath.Join(t.TempDir(), "pid")
+		out, code := QueryWithEnv(context.Background(), nil, sh, "-c",
+			`echo '`+first+`'; (while :; do echo log; done) & echo $! > "$1"`, "query", pidFile)
+		killPidFile(pidFile)
+		if code != 0 || !strings.HasPrefix(out, first+"\n") {
+			t.Fatalf("run %d: code %d, output starts %q", i, code, out[:min(len(out), 40)])
+		}
 	}
 }

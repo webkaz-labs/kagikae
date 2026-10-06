@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
@@ -135,13 +134,17 @@ func (op residentOp) session(dryRun bool) message {
 	return msgf("codex sessions started before the switch and not connected to the managed daemon keep the previous account until they are restarted")
 }
 
-// restartTimedOut, restartNotRun and restartExited are the warnings of a restart
-// command that did not succeed (restartFailed). Upstream's restart waits for
-// running tasks to finish, so the timeout says the daemon may restart after them.
-func (op residentOp) restartTimedOut(limit time.Duration, manual string) message {
-	return op.restartFailed(msgf("codex app-server daemon restart did not finish within %s; it may be waiting for running tasks to finish, and the managed daemon may restart after they do", limit), manual)
+// restartPending is the warning of a restart command kae stopped waiting for and
+// left running. Upstream's restart may be waiting for running tasks before it
+// starts the new daemon, so it names the manual step for a restart that does not
+// go on, not a retry while it may still be running.
+func (op residentOp) restartPending(manual string) message {
+	return msgf("codex: codex app-server daemon restart did not finish in time, so kae left it running and stopped waiting; it may be waiting for running tasks to finish before it restarts the managed daemon; %s; if the managed daemon does not restart, run: %s",
+		op.resultKept(), manual)
 }
 
+// restartNotRun and restartExited are the warnings of a restart command that did
+// not succeed (restartFailed).
 func (op residentOp) restartNotRun(err error, manual string) message {
 	return op.restartFailed(msgf("could not run codex app-server daemon restart (%v)", err), manual)
 }
@@ -237,7 +240,7 @@ func desktopRelaunchFailedMessage(bundleID string) message {
 // desktopQuitTimeoutMessage is the warning of an app still running at the deadline,
 // which may be showing its quit confirmation dialog; kae never relaunches it later.
 func desktopQuitTimeoutMessage() message {
-	return msgf("codex: the ChatGPT app did not quit in time and kae left it running; it may be asking you to confirm the quit; kae does not relaunch it, so after it quits, open it again yourself; until then it keeps the codex account it started with")
+	return msgf("codex: the ChatGPT app did not quit in time and kae left it running; it may be asking you to confirm the quit, and kae will not reopen it, so open it yourself after it quits; until then it keeps the codex account it started with")
 }
 
 // desktopQuitDeniedMessage is the warning when macOS refused kae control of the app.

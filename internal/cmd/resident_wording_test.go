@@ -3,16 +3,18 @@ package cmd
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
-// Every restart-failure warning, for each command and each way the restart
-// fails, in English and in Japanese: restartFailed splices the cause and the kept
-// result into one sentence, so each part's catalog entry is checked here.
-func TestRestartFailureWording(t *testing.T) {
+// The warnings after the transaction, for each command, in English and in
+// Japanese: a failed restart (restartFailed splices the cause and the kept result
+// into one sentence, so each part's catalog entry is checked here), a restart kae
+// left running (restart_pending), and the app still running at the quit deadline,
+// which reads the same for every command (docs/CLI.md § kae use Semantics,
+// steps 4 and 5).
+func TestResidentWarningWording(t *testing.T) {
 	const manual = "codex app-server daemon restart"
 	ops := []struct {
 		op           residentOp
@@ -22,57 +24,72 @@ func TestRestartFailureWording(t *testing.T) {
 		{residentOpLogin, "kae add's result is kept", "kae add の結果はそのまま有効です"},
 		{residentOpRollback, "kae rollback's result is kept", "kae rollback の結果はそのまま有効です"},
 	}
-	causes := []struct {
-		name           string
-		build          func(op residentOp) message
-		cause, causeJA string
+	failed := func(cause string) func(kept string) string {
+		return func(kept string) string {
+			return "codex: " + cause + "; " + kept +
+				", and the managed daemon may not be using the live account yet; to retry, run: " + manual
+		}
+	}
+	failedJA := func(cause string) func(kept string) string {
+		return func(kept string) string {
+			return "codex: " + cause + "。" + kept +
+				"が、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" +
+				manual + " を実行してください。"
+		}
+	}
+	cases := []struct {
+		name              string
+		build             func(op residentOp) message
+		english, japanese func(kept string) string
 	}{
 		{
-			"timed out", func(op residentOp) message { return op.restartTimedOut(30*time.Second, manual) },
-			"codex app-server daemon restart did not finish within 30s; it may be waiting for running tasks to finish, and the managed daemon may restart after they do",
-			"codex app-server daemon restart が 30s 以内に終わりませんでした。実行中のタスクの終了を待っている可能性があり、その後に管理デーモンが再起動されることがあります",
-		},
-		{
 			"not run", func(op residentOp) message { return op.restartNotRun(errors.New("boom"), manual) },
-			"could not run codex app-server daemon restart (boom)", "codex app-server daemon restart を実行できませんでした（boom）",
+			failed("could not run codex app-server daemon restart (boom)"),
+			failedJA("codex app-server daemon restart を実行できませんでした（boom）"),
 		},
 		{
 			"exited", func(op residentOp) message { return op.restartExited(3, manual) },
-			"codex app-server daemon restart failed (exit 3)", "codex app-server daemon restart に失敗しました（終了コード 3）",
+			failed("codex app-server daemon restart failed (exit 3)"),
+			failedJA("codex app-server daemon restart に失敗しました（終了コード 3）"),
+		},
+		{
+			"pending", func(op residentOp) message { return op.restartPending(manual) },
+			func(kept string) string {
+				return "codex: codex app-server daemon restart did not finish in time, so kae left it running and stopped waiting; " +
+					"it may be waiting for running tasks to finish before it restarts the managed daemon; " +
+					kept + "; if the managed daemon does not restart, run: " + manual
+			},
+			func(kept string) string {
+				return "codex: codex app-server daemon restart が時間内に終わらなかったため、kae は実行したままにして待つのをやめました。" +
+					"実行中のタスクの終了を待ってから管理デーモンを再起動する可能性があります。" +
+					kept + "。管理デーモンが再起動されない場合は、" + manual + " を実行してください。"
+			},
+		},
+		{
+			"quit timeout", func(residentOp) message { return desktopQuitTimeoutMessage() },
+			func(string) string {
+				return "codex: the ChatGPT app did not quit in time and kae left it running; " +
+					"it may be asking you to confirm the quit, and kae will not reopen it, so open it yourself after it quits; " +
+					"until then it keeps the codex account it started with"
+			},
+			func(string) string {
+				return "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。" +
+					"アプリが終了の確認を求めている可能性があり、kae は起動し直さないので、終了した後に手動で起動してください。" +
+					"それまでは起動時の codex アカウントを使い続けます。"
+			},
 		},
 	}
 	// Error() stays English whatever the language; Render follows it.
 	l10ntest.UseJapanese(t)
 	for _, o := range ops {
-		for _, c := range causes {
+		for _, c := range cases {
 			m := c.build(o.op)
-			english := "codex: " + c.cause + "; " + o.kept +
-				", and the managed daemon may not be using the live account yet; to retry, run: " + manual
-			if got := m.Error(); got != english {
-				t.Errorf("%s, %s: English = %q, want %q", o.kept, c.name, got, english)
+			if got, want := m.Error(), c.english(o.kept); got != want {
+				t.Errorf("%s, %s: English = %q, want %q", o.kept, c.name, got, want)
 			}
-			japanese := "codex: " + c.causeJA + "。" + o.keptJA +
-				"が、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" +
-				manual + " を実行してください。"
-			if got := l10n.Render(m); got != japanese {
-				t.Errorf("%s, %s: Japanese = %q, want %q", o.kept, c.name, got, japanese)
+			if got, want := l10n.Render(m), c.japanese(o.keptJA); got != want {
+				t.Errorf("%s, %s: Japanese = %q, want %q", o.kept, c.name, got, want)
 			}
 		}
-	}
-}
-
-// The quit-timeout warning, in English and in Japanese: an app still running at
-// the deadline may be showing its quit confirmation dialog, and kae does not
-// relaunch it once it quits (docs/CLI.md § kae use Semantics, step 5).
-func TestQuitTimeoutWording(t *testing.T) {
-	l10ntest.UseJapanese(t)
-	m := desktopQuitTimeoutMessage()
-	const english = "codex: the ChatGPT app did not quit in time and kae left it running; it may be asking you to confirm the quit; kae does not relaunch it, so after it quits, open it again yourself; until then it keeps the codex account it started with"
-	if got := m.Error(); got != english {
-		t.Errorf("English = %q, want %q", got, english)
-	}
-	const japanese = "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。アプリが終了の確認を求めている可能性があります。kae は起動し直さないので、終了した後にアプリを手動で起動してください。それまでは起動時の codex アカウントを使い続けます。"
-	if got := l10n.Render(m); got != japanese {
-		t.Errorf("Japanese = %q, want %q", got, japanese)
 	}
 }

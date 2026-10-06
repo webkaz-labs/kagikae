@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 type Runner interface {
@@ -100,15 +101,41 @@ func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, e
 	return launchResult(cmd.Run())
 }
 
+// ErrStillRunning is LaunchWithEnv's error when ctx ended before the program
+// exited: kae stopped waiting and left the program running.
+var ErrStillRunning = errors.New("still running")
+
 // LaunchWithEnv is Launch for a program kae starts with extra KEY=VALUE entries
 // appended to its environment (the last entry for a key wins, as os/exec
 // documents) and whose output nobody reads. stdin, stdout and stderr are the null
 // device, so a daemon the program leaves running holds no pipe of kae's and kae
-// waits for the program only. Overridable in tests.
+// waits for the program only. The program runs in a session of its own, so the
+// interrupt and hangup of kae's terminal do not reach it, and it is never killed:
+// when ctx ends first, LaunchWithEnv stops waiting and returns -1 and
+// ErrStillRunning, leaving the program running past kae's own exit. A program
+// that has exited by then is reported as exited. Overridable in tests.
 var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
-	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stdout, Stderr nil: the null device
+	cmd := exec.Command(name, args...) // Stdin, Stdout, Stderr nil: the null device
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	setExtraEnv(cmd, extraEnv)
-	return launchResult(cmd.Run())
+	if err := cmd.Start(); err != nil {
+		return 1, err
+	}
+	// The goroutine reaps the program whenever it exits, also after kae stopped
+	// waiting, so a kae that lives on leaves no zombie.
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		return launchResult(err)
+	case <-ctx.Done():
+		select {
+		case err := <-done:
+			return launchResult(err)
+		default:
+			return -1, ErrStillRunning
+		}
+	}
 }
 
 // setExtraEnv appends extraEnv to the inherited environment of cmd; the last

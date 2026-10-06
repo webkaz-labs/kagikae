@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -835,36 +836,43 @@ func TestParseUseFlagsWiresTheResidentFlags(t *testing.T) {
 	}
 }
 
-// A restart command that does not finish in time is restart_failed; the switch
-// stays applied.
-func TestRestartTimesOut(t *testing.T) {
+// A restart command still running at the limit is restart_pending: kae stops
+// waiting, leaves it running (runner.LaunchWithEnv's ErrStillRunning), warns with
+// the manual step for a restart that does not go on, and does not probe the
+// daemon again; the switch stays applied.
+func TestRestartLeftRunningAtTheLimit(t *testing.T) {
 	f := newResidentFixture(t)
-	f.withDaemon(t, residentSide)
+	d := f.withDaemon(t, residentSide)
 	f.app.residentRestartTimeout = 50 * time.Millisecond
 	var deadline time.Duration
-	f.stubRestart(t, f.restartTo(t))
+	var probesBefore int32
 	saved := runner.LaunchWithEnv
-	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
-		if d, ok := ctx.Deadline(); ok {
-			deadline = time.Until(d)
+	t.Cleanup(func() { runner.LaunchWithEnv = saved })
+	runner.LaunchWithEnv = func(ctx context.Context, _ []string, _ string, _ ...string) (int, error) {
+		if dl, ok := ctx.Deadline(); ok {
+			deadline = time.Until(dl)
 		}
-		select {
-		case <-ctx.Done():
-			return -1, nil
-		case <-time.After(2 * time.Second):
-			return saved(ctx, env, name, args...)
-		}
+		probesBefore = d.accepted.Load()
+		<-ctx.Done()
+		return -1, runner.ErrStillRunning
 	}
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
-	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; it may be waiting for running tasks to finish, and the managed daemon may restart after they do; the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
+	const want = "kae: warning: codex: codex app-server daemon restart did not finish in time, so kae left it running and stopped waiting; it may be waiting for running tasks to finish before it restarts the managed daemon; the switch is kept; if the managed daemon does not restart, run: codex app-server daemon restart\n"
+	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
+	}
+	if got := d.accepted.Load(); got != probesBefore {
+		t.Errorf("the daemon was probed %d more times after a pending restart", got-probesBefore)
+	}
+	if strings.Contains(stderr, "to retry") {
+		t.Errorf("a pending restart was reported as failed:\n%s", stderr)
 	}
 	if deadline <= 0 || deadline > 50*time.Millisecond {
 		t.Errorf("the restart ran with %v left, want at most the 50ms limit", deadline)
 	}
 	if f.liveAccountID(t) != residentMain {
-		t.Error("a timed-out restart rolled the switch back")
+		t.Error("a pending restart rolled the switch back")
 	}
 }
 
@@ -926,58 +934,73 @@ func TestRestartExitingZeroAtTheDeadlineIsNotATimeout(t *testing.T) {
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry)
 }
 
-// An interrupt (the parent context cancelled) is a plain failure, not reported
-// as the restart running out of time.
-func TestRestartInterruptedIsNotATimeout(t *testing.T) {
-	f := newResidentFixture(t)
-	f.withDaemon(t, residentSide)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	f.stubRestart(t, func(*restartCall) int { cancel(); return -1 })
-	stdout, stderr := f.use(t, ctx, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
-	if strings.Contains(stderr, "did not finish within") {
-		t.Errorf("an interrupt was reported as a timeout:\n%s", stderr)
-	}
-	if !strings.Contains(stderr, "codex app-server daemon restart failed (exit -1)") {
-		t.Errorf("stderr lacks the failure warning:\n%s", stderr)
-	}
-}
-
 // Through the real runner, a restart command that leaves a process running (as
 // codex app-server daemon restart leaves the daemon) does not hold kae: the
 // process inherits no pipe kae waits on. A stand-in codex on a temporary PATH
-// backgrounds a sleep and exits 0; another also hangs in the foreground and is
-// cut at the limit. Neither touches HOME, and no real codex runs.
+// backgrounds a sleep and exits 0. Neither touches HOME, and no real codex runs.
 func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
-	for _, tc := range []struct {
-		name, script, outcome string
-	}{
-		{"exits", "sleep 10 &\nexit 0\n", constants.ResidentOutcomeRestartUnverified},
-		{"hangs", "sleep 10 &\nexec sleep 10\n", constants.ResidentOutcomeRestartFailed},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	f.app.residentRestartTimeout = 300 * time.Millisecond
+	standInCodex(t, "#!/bin/sh\nsleep 10 &\nexit 0\n")
+	start := time.Now()
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	elapsed := time.Since(start)
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry)
+	if elapsed > 3*time.Second {
+		t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
+	}
+}
+
+// Through the real runner, under sh and dash, a restart command still running at
+// the limit is not killed: kae returns restart_pending, and the command goes on
+// to finish its work afterwards, as upstream's restart starts the new daemon only
+// after the old one has stopped.
+func TestRestartStillRunningAtTheLimitKeepsRunning(t *testing.T) {
+	for _, shell := range []string{"/bin/sh", "/bin/dash"} {
+		t.Run(filepath.Base(shell), func(t *testing.T) {
+			if _, err := os.Stat(shell); err != nil {
+				t.Skipf("no %s", shell)
+			}
 			f := newResidentFixture(t)
 			f.withDaemon(t, residentSide)
-			f.app.residentRestartTimeout = 300 * time.Millisecond
-			bin := t.TempDir()
-			writeFile(t, filepath.Join(bin, "codex"), "#!/bin/sh\n"+tc.script)
-			if err := os.Chmod(filepath.Join(bin, "codex"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+":/bin:/usr/bin")
-			saved := runner.LaunchWithEnv
-			runner.LaunchWithEnv = osLaunchWithEnv
-			t.Cleanup(func() { runner.LaunchWithEnv = saved })
+			f.app.residentRestartTimeout = 100 * time.Millisecond
+			marker := filepath.Join(t.TempDir(), "restarted")
+			standInCodex(t, fmt.Sprintf("#!%s\nsleep 1\necho done > '%s'\n", shell, marker))
 			start := time.Now()
 			stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			elapsed := time.Since(start)
-			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
-			if elapsed > 3*time.Second {
-				t.Errorf("the switch took %v: it waited on the process the restart left running", elapsed)
+			if elapsed := time.Since(start); elapsed > 900*time.Millisecond {
+				t.Errorf("the switch took %v: it waited for the restart past the 100ms limit", elapsed)
+			}
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("the restart finished within the limit; the test proves nothing")
+			}
+			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+				if _, err := os.Stat(marker); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the restart command did not go on after kae stopped waiting for it")
+				}
 			}
 		})
 	}
+}
+
+// standInCodex puts an executable codex with script on a temporary PATH and
+// restores the real runner.LaunchWithEnv for the test.
+func standInCodex(t *testing.T, script string) {
+	t.Helper()
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "codex"), script)
+	if err := os.Chmod(filepath.Join(bin, "codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":/bin:/usr/bin")
+	saved := runner.LaunchWithEnv
+	runner.LaunchWithEnv = osLaunchWithEnv
+	t.Cleanup(func() { runner.LaunchWithEnv = saved })
 }
 
 // A restart command that cannot be started (no codex on PATH) is restart_failed

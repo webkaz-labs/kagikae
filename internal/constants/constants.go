@@ -310,14 +310,16 @@ const (
 )
 
 // The `outcome` of a `residents` entry: nothing to do, what --dry-run would do,
-// the three results of a restart, --no-restart, and a warning in place of an
-// action (docs/CLI.md § `kae use ... --json` (the switch report)).
+// the four results of a restart (restart_pending: kae stopped waiting for the
+// command at its limit and left it running), --no-restart, and a warning in place
+// of an action (docs/CLI.md § `kae use ... --json` (the switch report)).
 const (
 	ResidentOutcomeNone              = "none"
 	ResidentOutcomePlanned           = "planned"
 	ResidentOutcomeRestarted         = "restarted"
 	ResidentOutcomeRestartUnverified = "restart_unverified"
 	ResidentOutcomeRestartFailed     = "restart_failed"
+	ResidentOutcomeRestartPending    = "restart_pending"
 	ResidentOutcomeOptedOut          = "opted_out"
 	ResidentOutcomeWarned            = "warned"
 )

@@ -228,9 +228,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   managed daemon's own lifecycle commands), `osascript` and `open -b` (the ChatGPT
   app on macOS) run through
   `internal/runner` with argv arrays and no shell, under the limits of
-  § Resident processes: the restart and `daemon version` through
-  `runner.RunWithEnv`, `osascript` through `runner.Run`, and `open -b` through
-  `runner.Launch`.
+  § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
+  stdout and stderr are the null device rather than pipes, because the daemon the
+  restart leaves running would inherit a pipe and hold kae past the restart's
+  30 s limit; `daemon version` through `runner.RunWithEnv`, `osascript` through
+  `runner.Run`, and `open -b` through `runner.Launch`.
 
 ## File Permissions
 
@@ -369,8 +371,9 @@ daemon is not part of that read-modify-write, and codex does not take kae's lock
 so holding them would only turn the restart's seconds into `lock_busy` for other kae
 commands. The restart therefore follows the transaction, after state is saved and
 the locks are released: a restart before the state save would, if the save failed,
-leave the backup restored on disk while the daemon ran the new account. A failed
-restart does not roll the switch back. That is not the mixed-state rule of
+leave the backup restored on disk while the daemon ran the new account. A restart
+command (kae's own child) still running at its 30 s limit is killed; the daemon it
+started is left alone. A failed restart does not roll the switch back. That is not the mixed-state rule of
 § Mutation Safety Rules, which governs files kae writes; the daemon's memory is not
 one of them.
 
@@ -502,5 +505,5 @@ credential it holds, and a mislabelled token is undetectable afterwards
 | upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |
 | `codex app-server daemon restart` | restart codex's managed daemon after a switch changed the account it holds | argv and environment from the adapter; `CODEX_HOME` set to the switched home, never inherited; no credential in argv or environment (§ Resident processes) |
 | `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path; disabled until the acceptance records that it starts no daemon and makes no network call, then enabled by default | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output (§ Resident processes) |
-| `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; stdout `true` with exit 0 means running and `false` with exit 0 not running; anything else means kae cannot tell, and it then acts on nothing; stderr is localized, so the only thing read from it is the Apple Events error number `-1743` (automation not permitted) (§ Resident processes) |
+| `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; with exit 0, stdout `true` means running, and `false` or `absent` (the app is not installed) not running; anything else means kae cannot tell, and it then acts on nothing; stderr is localized, so the only things read from it are the Apple Events error numbers `-1743` (automation not permitted) and `-1712` (the quit request timed out; kae keeps waiting) (§ Resident processes) |
 | `open -b` (macOS) | relaunch the ChatGPT app after its quit was observed | allowlisted bundle id only, through `runner.Launch` |

@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -155,4 +157,29 @@ func liveCredential(ad adapter.Adapter, env adapter.Env) credentialReader {
 		}
 		return live.Data, true
 	}
+}
+
+// residentRestartCommand is the command a person types to restart the daemon
+// spec describes, for every message that names that manual step (the switch's
+// warnings, and doctor's resident_drift). It is the bare restart argv when the
+// shell kae was started from resolves the same daemon; otherwise it prefixes
+// the spec's environment (CODEX_HOME=<real home>), because a shell that exports
+// a bound directory's or a global isolation's CODEX_HOME would otherwise
+// restart that home's daemon (docs/SECURITY.md § Resident processes). Values
+// are single-quoted like kae's other printed shell lines.
+func (app *App) residentRestartCommand(h adapter.ResidentHolder, spec adapter.DaemonSpec) string {
+	command := strings.Join(spec.Restart, " ")
+	shell := app.Env
+	if app.shellEnv != nil {
+		shell = *app.shellEnv
+	}
+	if slices.Equal(h.ResidentDaemon(shell).Env, spec.Env) {
+		return command
+	}
+	parts := make([]string, 0, len(spec.Env)+1)
+	for _, kv := range spec.Env {
+		key, value, _ := strings.Cut(kv, "=")
+		parts = append(parts, key+"="+shellSingleQuote(value))
+	}
+	return strings.Join(append(parts, command), " ")
 }

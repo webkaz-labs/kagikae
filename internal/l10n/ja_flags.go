@@ -7,7 +7,7 @@ var jaFlags = map[string]string{
 	// Common flags (internal/cmd/app.go).
 	"output format: text or json":             "出力形式: text または json",
 	"shorthand for --format json":             "--format json の短縮形",
-	"non-interactive confirmation (reserved)": "非対話の確認（予約済み）",
+	"answer confirmations yes without asking": "確認を求めずに yes と回答",
 	"disable color in human text output":      "人向けテキスト出力の色の無効化",
 	"explicit config file path":               "明示する設定ファイルのパス",
 	"print planned actions without writing":   "書き込まずに変更予定を表示",
@@ -26,6 +26,7 @@ var jaFlags = map[string]string{
 	// kae use.
 	"apply a resolved profile while preserving global isolated selections": "グローバルな独立環境の選択を保ったまま、解決したプロファイルを適用",
 	"suppress the success report (for hooks; bare use)":                    "成功の報告の抑止（フック用、引数なしの kae use のみ）",
+	"do not restart codex's managed daemon after the switch; warn instead": "切替の後に codex の管理デーモンを再起動せず、警告だけを表示",
 
 	// Account tables (status, accounts, ls).
 	"show every column of the account tables, Identity and Driver included": "アカウント表の全列を表示（識別子とドライバーを含む）",

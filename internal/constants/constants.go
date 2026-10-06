@@ -294,6 +294,28 @@ const (
 	ResidentObservedUnknown = "unknown"
 )
 
+// The `kind` of a switch report's `residents` entry: codex's managed daemon, and
+// the codex sessions kae does not look for (docs/CLI.md § `kae use ... --json`
+// (the switch report)). A session entry's `observed` is always
+// ResidentObservedUnknown.
+const (
+	ResidentKindDaemon  = "daemon"
+	ResidentKindSession = "session"
+)
+
+// The `outcome` of a `residents` entry: nothing to do, what --dry-run would do,
+// the three results of a restart, --no-restart, and a warning in place of an
+// action (docs/CLI.md § `kae use ... --json` (the switch report)).
+const (
+	ResidentOutcomeNone              = "none"
+	ResidentOutcomePlanned           = "planned"
+	ResidentOutcomeRestarted         = "restarted"
+	ResidentOutcomeRestartUnverified = "restart_unverified"
+	ResidentOutcomeRestartFailed     = "restart_failed"
+	ResidentOutcomeOptedOut          = "opted_out"
+	ResidentOutcomeWarned            = "warned"
+)
+
 // Backup reasons, the `reason` field of a backup's metadata and of every
 // `kae backup list --json` row. They are a JSON contract vocabulary, so they live
 // here rather than as literals at the five createBackup call sites — where they

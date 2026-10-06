@@ -6,6 +6,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -99,11 +100,30 @@ func Launch(ctx context.Context, name string, args ...string) (int, error) {
 func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = os.Stderr // Stdin and Stdout nil: the null device
-	err := cmd.Run()
+	return launchResult(cmd.Run())
+}
+
+// LaunchWithEnv is Launch for a program kae starts with extra KEY=VALUE entries
+// appended to its environment (the last entry for a key wins, as os/exec
+// documents) and whose output nobody reads. stdin, stdout and stderr are the null
+// device, so a daemon the program leaves running holds no pipe of kae's and kae
+// waits for the program only. Overridable in tests.
+var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
+	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stdout, Stderr nil: the null device
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
+	return launchResult(cmd.Run())
+}
+
+// launchResult is the (exit code, error) of a launched program from its Run
+// error: 0 on success, the exit code when it exited non-zero, or an error when
+// it could not be started.
+func launchResult(err error) (int, error) {
 	if err == nil {
 		return 0, nil
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
 		return exitErr.ExitCode(), nil
 	}
 	return 1, err

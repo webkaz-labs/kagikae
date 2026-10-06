@@ -16,6 +16,9 @@ type preservedSelection struct {
 }
 
 func runUseAuto(ctx context.Context, app *App, opts commonOpts, profile string, quiet bool) int {
+	// The hook shape only warns about a resident daemon, whatever the caller set,
+	// and nothing here runs the reconcile that a restart would need.
+	opts.ResidentHook = true
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}

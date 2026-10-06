@@ -255,22 +255,27 @@ them as follows; tools without resident processes are unaffected.
    `unknown` (the socket exists but kae could not read an account from it, or the
    credential it is compared with names none, as an API-key login does). It also
    asks whether the ChatGPT app is running (macOS only) and whether this command
-   changes codex's account at all. The probe only reads, so `--dry-run` runs it
-   too.
+   changes codex's account at all: it does when the live credential and the target's
+   name different accounts. When either names none or cannot be read, byte-identical
+   credentials count as no change and anything else as a change, so a switch kae
+   cannot judge still gets the warning of step 6. The probe only reads, so
+   `--dry-run` runs it too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
    transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
-   it writes nothing and reconciles nothing, and its plan carries the notice and the
-   `planned` outcome.
+   it writes nothing and reconciles nothing, its notice goes to stderr as a real
+   run's does, and its plan carries the `planned` outcome.
 3. **The transaction** runs unchanged ([ARCHITECTURE.md](ARCHITECTURE.md)
    § Switch Transaction), including the teardown of global isolation.
 4. **Restart, after the locks are released.** When the daemon `differs` and nothing
    below suppresses it, kae runs `codex app-server daemon restart` with `CODEX_HOME`
    set to the real codex home — never the value a bound directory exports — then
-   probes again every 250 ms for at most 5 s, comparing the daemon with the live
+   probes again every 250 ms for at most 5 s, each probe bounded by what is left of
+   them, comparing the daemon with the live
    credential as it reads it at that moment, so a later switch by another kae
    process does not make this one's restart look unverified. The outcome is
    `restarted` when the daemon then holds the live account, `restart_unverified`
-   when it does not or cannot be read, and `restart_failed` when the command fails.
+   when it does not or cannot be read, and `restart_failed` when the command fails
+   or has not finished within 30 s.
    A failed or unverified restart is a warning: the switch stays applied and is not
    rolled back, and the exit code stays `0`. When the transaction failed or rolled
    any tool back, there is no restart. A profile switch reconciles once, after the
@@ -282,10 +287,12 @@ them as follows; tools without resident processes are unaffected.
    The Japanese rendering takes the confirmation shape [L10N-JA.md](L10N-JA.md)
    fixes rather than a question. `--yes` answers yes without asking, on a terminal
    or not. On yes, kae asks the app to quit, waits for it to stop running (every
-   250 ms, at most 20 s), and relaunches it only once it has stopped. It never forces
-   the quit: an app still running at the deadline is left running with a warning.
-   When macOS refuses kae permission to control the app, kae says how to quit and
-   reopen it by hand. When kae cannot tell whether the app is running at all, it
+   250 ms, at most 20 s counted from the quit request, so an app slow to answer it
+   shortens the wait rather than extending it), and relaunches it only once it has
+   stopped. It never forces the quit: an app still running at the deadline is left
+   running with a warning. When macOS refuses kae permission to control the app,
+   kae says how to quit and reopen it by hand. An app that is not installed counts
+   as not running. When kae cannot tell whether the app is running at all, it
    warns and does nothing to it. Without `--yes`, a run that cannot ask — no
    terminal, `--json` — warns instead.
 6. **Sessions.** Whenever this command changed codex's account, kae warns that a
@@ -308,6 +315,19 @@ could not read the daemon's account and names
 upstream has moved also reads `absent`, so the switch is silent about it;
 `resident_drift`'s `daemon version` half reports that case once it is enabled, and
 until then kae does not report it.
+
+**The manual step.** Every warning that names the manual restart names it as
+`codex app-server daemon restart`, or as
+`CODEX_HOME='<real codex home>' codex app-server daemon restart` when the shell kae
+runs in resolves another codex home — it exports a bound directory's or a global
+isolation's `CODEX_HOME` — because the bare command typed there would restart
+that home's daemon instead. The prefix is the POSIX shell form of a variable
+assignment for one command, as bash and zsh read it.
+
+The daemon's `outcome` is `none` for `absent` and `matches` and `warned` for
+`unknown`; for `differs` it is `opted_out` under `--no-restart`, otherwise `warned`
+in the hook shape, otherwise `planned` under `--dry-run`, otherwise what the restart
+of step 4 settled.
 
 The ChatGPT app's `outcome` by condition, for a run where the app is running and
 this command changed codex's account:
@@ -590,7 +610,8 @@ offer to quit and relaunch the ChatGPT app (§ kae use Semantics); long-running
 sessions still have to be restarted by hand. The manual steps are for a login made
 without kae, a run with `--no-restart` or a hook, and a restart kae reported as
 failed or unverified: quit the app and the long-running sessions and run
-`codex app-server daemon restart`. If codex says "Your access token could not be
+`codex app-server daemon restart`, in the form § kae use Semantics gives under
+**The manual step** when the shell exports another `CODEX_HOME`. If codex says "Your access token could not be
 refreshed because you have since logged out or signed in to another account.
 Please sign in again." right after a switch or login, restart the same processes.
 Observed on 2026-10-05: that message after a `kae add` cleared once the app and the
@@ -2497,7 +2518,9 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   comparison, in two halves, and kae makes no network call for either:
   - kae connects to the daemon's socket and sends the read-only requests
     [SECURITY.md](SECURITY.md) § Resident processes allows. A readable `differs`
-    warns and names `codex app-server daemon restart`; `unknown` warns that the
+    warns and names the manual restart as § kae use Semantics gives it (**The
+    manual step**);
+    `unknown` warns that the
     daemon's answer could not be read — doctor is where a protocol change has to
     surface, and a switch warns on `unknown` for the same reason.
   - **Off by default until the acceptance records that it is safe**: that

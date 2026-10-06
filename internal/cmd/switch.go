@@ -19,6 +19,9 @@ type switchResult struct {
 	Applied  bool      `json:"applied"`
 	Actions  []action  `json:"actions"`
 	Warnings []message `json:"warnings"`
+	// residentSlot carries `residents`: what the switch observed and did about
+	// the tool's resident processes, [] for a tool without them.
+	residentSlot
 }
 
 type switchReport struct {
@@ -46,17 +49,11 @@ type switchReport struct {
 // at a per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile", "P")
-	var shared, isolated, quiet, auto bool
-	var profileFlag string
-	var useFlags *flag.FlagSet
-	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
-		useFlags = fs
-		registerUseFlags(fs, &shared, &isolated, &quiet, &auto, &profileFlag)
-	})
+	opts, uf, ok := parseUseFlags(flags)
 	if !ok {
 		return constants.ExitUsage
 	}
-	isolatedMode, ok := resolveScope(shared, isolated)
+	isolatedMode, ok := resolveScope(uf.shared, uf.isolated)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -64,22 +61,22 @@ func CmdUse(ctx context.Context, args []string) int {
 		return usageLine("use [-s|-i] [-P <profile>] | " + toolName + " use [-s|-i] <profile> | " + toolName + " use [-s|-i] <tool> <account>")
 	}
 	scopeExplicit := false
-	useFlags.Visit(func(f *flag.Flag) {
+	uf.fs.Visit(func(f *flag.Flag) {
 		if f.Name == "s" || f.Name == "shared" || f.Name == "i" || f.Name == "isolated" {
 			scopeExplicit = true
 		}
 	})
-	if auto && (scopeExplicit || len(positionals) != 0) {
+	if uf.auto && (scopeExplicit || len(positionals) != 0) {
 		return usageError("--auto accepts only a resolved profile (-P); do not combine it with positional arguments or -s/-i")
 	}
 	app := newApp(opts.ConfigPath)
-	if auto {
-		return runUseAuto(ctx, app, opts, profileFlag, quiet)
+	if uf.auto {
+		return runUseAuto(ctx, app, opts, uf.profile, uf.quiet)
 	}
 	if len(positionals) == 0 {
-		return runUseBare(ctx, app, opts, isolatedMode, profileFlag, quiet)
+		return runUseBare(ctx, app, opts, isolatedMode, uf.profile, uf.quiet)
 	}
-	if profileFlag != "" {
+	if uf.profile != "" {
 		return usageError("-P <profile> selects a profile for bare `kae use`; drop the positional or the flag")
 	}
 	target, name := "all", positionals[0]
@@ -90,6 +87,19 @@ func CmdUse(ctx context.Context, args []string) int {
 		return runUseIsolated(ctx, app, opts, target, name)
 	}
 	return runSwitch(ctx, app, opts, target, name)
+}
+
+// parseUseFlags parses `kae use`'s flags and carries the two that steer the
+// resident reconcile into opts: --no-restart as NoRestart and --auto as the hook
+// shape (ResidentHook).
+func parseUseFlags(flags []string) (commonOpts, useFlagValues, bool) {
+	var v useFlagValues
+	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
+		v.fs = fs
+		registerUseFlags(fs, &v)
+	})
+	opts.NoRestart, opts.ResidentHook = v.noRestart, v.auto
+	return opts, v, ok
 }
 
 func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) int {
@@ -106,6 +116,7 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 			return finish(opts, err)
 		}
 	}
+	app.reconcileResidents(ctx, report.Results)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -193,12 +204,24 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 				}
 			}
 		}
+	} else {
+		if beErr != nil {
+			return nil, beErr
+		}
+		warnBeforeApply(report.Results, staleTools)
+	}
+	// Steps 1 and 2 of the resident reconcile: probe and notice, before the locks
+	// and the first write, against what each plan leaves live. A dry-run runs the
+	// probe too (it only reads) and owes no restart; the restarts a real run owes
+	// ride in the results and run in the caller, once the transaction has
+	// succeeded and the deferred releaseLocks below has run.
+	mode := residentModeOf(opts)
+	for i, plan := range plans {
+		app.residentsBeforeSwitch(ctx, plan.Tool, snapshotCredential(be, plan), &report.Results[i].residentSlot, mode)
+	}
+	if opts.DryRun {
 		return report, nil
 	}
-	if beErr != nil {
-		return nil, beErr
-	}
-	warnBeforeApply(report.Results, staleTools)
 
 	tools := make([]string, len(plans))
 	for i, plan := range plans {

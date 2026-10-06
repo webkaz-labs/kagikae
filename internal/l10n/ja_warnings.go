@@ -239,6 +239,31 @@ var jaWarnings = map[string]string{
 	"recorded a %s credential for %s/%s that kae cannot compare with the one in %s":       "%[2]s/%[3]s の %[1]s の認証情報として、「%[4]s」にあるものと kae が比較できないものを記録しています",
 	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
+	// resident_reconcile.go.
+	"codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。前のアカウントのままの場合は、%s を実行してください。",
+
+	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
+
+	"codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替を実行すると、kae が再起動します。",
+
+	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
+
+	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っていますが、enter フック（--auto）では再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
+
+	"codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted": "この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
+
+	"codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted": "この切替を実行すると、それより前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
+
+	"codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+
+	"codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+
+	"codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+
+	"codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live": "codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",
+
+	"codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。前のアカウントのままの場合は、%s を実行してください。",
+
 	// run.go.
 	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、実ホームのままです（%s で独立させられるのは claude と codex だけです）。",
 

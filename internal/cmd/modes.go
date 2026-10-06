@@ -385,6 +385,11 @@ func (app *App) applyGlobalScope() {
 		return
 	}
 	app.globalScope = true
+	// Kept before masking: the shell kae runs in still exports what is masked
+	// here, and a command kae tells the person to type runs under it
+	// (residentRestartCommand).
+	shellEnv := app.Env
+	app.shellEnv = &shellEnv
 	isolated := map[string]bool{}
 	credential := map[string]bool{}
 	for _, tool := range constants.Tools {

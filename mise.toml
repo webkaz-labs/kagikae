@@ -28,7 +28,7 @@ hide = true
 description = "Run bug-class Staticcheck analyzers"
 run = """
 set -eu
-cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/kae-lint}"
+. tools/devtools/shell/lint-cache.sh
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"
@@ -42,7 +42,7 @@ hide = true
 description = "Run curated golangci-lint checks"
 run = """
 set -eu
-cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/kae-lint}"
+. tools/devtools/shell/lint-cache.sh
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"
@@ -65,7 +65,7 @@ if [ -z "$files" ]; then
   printf 'shellcheck: no shell scripts\\n'
   exit 0
 fi
-shellcheck -S warning $files
+shellcheck -x -P SCRIPTDIR -S warning $files
 """
 
 [tasks.lint]

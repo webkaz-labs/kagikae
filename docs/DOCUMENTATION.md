@@ -130,7 +130,9 @@ the target module. The formatters report files without rewriting them. Missing
 modules, formatter errors and formatting findings fail the command. Without
 arguments, the existing current-directory behavior is retained for mise and CI.
 Analyzer versions are pinned in the script. Go may download those analyzers and
-populate caches; `GOCLI_LINT_CACHE_DIR` selects their cache root.
+populate caches. `GOCLI_LINT_CACHE_DIR` selects their cache root; the default is
+`${XDG_CACHE_HOME:-$HOME/.cache}/kae-lint` (`${TMPDIR:-/tmp}/kae-lint` when neither is
+set), outside `TMPDIR` because macOS prunes it and strips extracted modules.
 
 ## Reuse distribution and completion verification
 

@@ -821,6 +821,26 @@ func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 	}
 }
 
+// A restart command that cannot be started (no codex on PATH) is restart_failed
+// with its own warning, not an exit status it never had.
+func TestRestartThatCannotStart(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	t.Setenv("PATH", t.TempDir())
+	saved := runner.LaunchWithEnv
+	runner.LaunchWithEnv = osLaunchWithEnv
+	t.Cleanup(func() { runner.LaunchWithEnv = saved })
+	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
+	if !strings.Contains(stderr, "kae: warning: codex: could not run codex app-server daemon restart (") ||
+		!strings.Contains(stderr, "); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart\n") {
+		t.Errorf("stderr lacks the could-not-run warning:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "failed (exit") {
+		t.Errorf("an unstarted command was reported with an exit status:\n%s", stderr)
+	}
+}
+
 // The probe and the account-change check share one read of the target
 // credential.
 func TestResidentsBeforeSwitchReadsTheTargetOnce(t *testing.T) {

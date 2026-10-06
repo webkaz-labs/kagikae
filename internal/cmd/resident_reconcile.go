@@ -269,6 +269,9 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	case timedOut:
 		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual())
 		return constants.ResidentOutcomeRestartFailed
+	case err != nil:
+		warnf("codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", err, manual())
+		return constants.ResidentOutcomeRestartFailed
 	default:
 		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual())
 		return constants.ResidentOutcomeRestartFailed

@@ -256,6 +256,8 @@ var jaWarnings = map[string]string{
 
 	"codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart に失敗しました（終了コード %d）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
 
+	"codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart を実行できませんでした（%v）。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
+
 	"codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s": "codex: codex app-server daemon restart が %s 以内に終わりませんでした。切替はそのまま有効ですが、管理デーモン（codex app-server daemon）は前のアカウントのままの可能性があります。再試行するには、%s を実行してください。",
 
 	"codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live": "codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",

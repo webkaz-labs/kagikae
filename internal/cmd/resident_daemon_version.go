@@ -67,7 +67,11 @@ func (app *App) daemonVersionProbes(tools []string) []roundProbe {
 // runner.QueryWithEnv, which waits for the command only and not for a daemon it
 // may leave running, and returns the finding, if any.
 func (p daemonVersionProbe) run(ctx context.Context, app *App) (adapter.Check, bool) {
-	stdout, code := runner.QueryWithEnv(ctx, p.spec.Env, p.spec.Status[0], p.spec.Status[1:]...)
+	query := runner.QueryWithEnv
+	if app.daemonStatusQuery != nil {
+		query = app.daemonStatusQuery
+	}
+	stdout, code := query(ctx, p.spec.Env, p.spec.Status[0], p.spec.Status[1:]...)
 	if code != 0 {
 		return adapter.Check{}, false // a failing or killed probe is skipped, like `--version`
 	}

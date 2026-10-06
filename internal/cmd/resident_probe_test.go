@@ -36,6 +36,11 @@ func accountReadReply(accountID string) string {
 // processes).
 const noAccountReply = `{"jsonrpc":"2.0","id":2,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}}`
 
+// apiKeyReply is a daemon on an API-key login: it names an account but no
+// workspaceRouting, so kae cannot read an account id from it (unknown).
+const apiKeyReply = `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail +
+	`"},"requiresOpenaiAuth":true,"workspaceRouting":null}}`
+
 // fakeDaemon is a codex managed daemon on a real Unix socket (wsrpctest): it
 // completes the WebSocket upgrade, records every client message, and answers
 // the third one with its current answer, after a notification as the real
@@ -308,9 +313,10 @@ func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 		"null result":    `{"jsonrpc":"2.0","id":2,"result":null}`,
 		"error beside result": `{"jsonrpc":"2.0","id":2,"error":{"code":-1,"message":"x"},"result":` +
 			`{"workspaceRouting":{"chatgptAccountId":"` + probeAccount + `"}}}`,
-		"no workspaceRouting": `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"` + probeEmail + `"}}}`,
-		"routing null":        `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey"},"workspaceRouting":null}}`,
-		"id is a number":      `{"jsonrpc":"2.0","id":2,"result":{"workspaceRouting":{"chatgptAccountId":7}}}`,
+		"no workspaceRouting":     `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"` + probeEmail + `"}}}`,
+		"routing null":            apiKeyReply,
+		"no OpenAI auth required": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"requiresOpenaiAuth":false,"workspaceRouting":null}}`,
+		"id is a number":          `{"jsonrpc":"2.0","id":2,"result":{"workspaceRouting":{"chatgptAccountId":7}}}`,
 		"no account, but routing": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":{"chatgptAccountId":"` +
 			probeAccount + `"}}}`,
 		"empty result": `{"jsonrpc":"2.0","id":2,"result":{}}`,

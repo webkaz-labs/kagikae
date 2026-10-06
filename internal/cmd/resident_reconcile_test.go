@@ -537,7 +537,7 @@ func TestRestartUnverifiedAfterTheWait(t *testing.T) {
 		"still differs":    func(*fakeDaemon) {},
 		"holds no account": func(d *fakeDaemon) { d.answers(noAccountReply) },
 		"unreadable": func(d *fakeDaemon) {
-			d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey"},"workspaceRouting":null}}`)
+			d.answers(apiKeyReply)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -581,7 +581,7 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 	for _, opts := range []commonOpts{{}, {NoRestart: true}, {DryRun: true}} {
 		f := newResidentFixture(t)
 		d := f.withDaemon(t, residentSide)
-		d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail + `"},"workspaceRouting":null}}`)
+		d.answers(apiKeyReply)
 		opts.Format = formatJSON
 		stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
 		wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned), sessionEntry)
@@ -593,6 +593,30 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 		}
 		assertNoResidentPII(t, stdout, stderr)
 	}
+}
+
+// noAccountFixture is a resident fixture whose daemon answers that it holds no
+// account, live on side, for the tests of how kae words that case.
+func noAccountFixture(t *testing.T) *residentFixture {
+	t.Helper()
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide).answers(noAccountReply)
+	return f
+}
+
+// wantStderrLine runs a command, in Japanese when japanese is set, and requires
+// exit 0, line on its stderr and no personal data on either stream.
+func wantStderrLine(t *testing.T, japanese bool, line string, run func() (code int, stdout, stderr string)) {
+	t.Helper()
+	if japanese {
+		l10ntest.UseJapanese(t)
+	}
+	code, stdout, stderr := run()
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if !strings.Contains(stderr, line+"\n") {
+		t.Errorf("stderr lacks %q:\n%s", line, stderr)
+	}
+	assertNoResidentPII(t, stdout, stderr)
 }
 
 // The switch's lines that suppress the restart render in Japanese, on a daemon
@@ -631,17 +655,12 @@ func TestUseSuppressedRestartInJapanese(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newResidentFixture(t)
-			f.withDaemon(t, residentSide).answers(noAccountReply)
-			l10ntest.UseJapanese(t)
+			f := noAccountFixture(t)
 			opts := tc.opts
 			opts.Format = formatText
-			code, stdout, stderr := captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
-			mustExit(t, constants.ExitOK, code, stdout+stderr)
-			if !strings.Contains(stderr, tc.line+"\n") {
-				t.Errorf("stderr lacks %q:\n%s", tc.line, stderr)
-			}
-			assertNoResidentPII(t, stdout, stderr)
+			wantStderrLine(t, true, tc.line, func() (int, string, string) {
+				return captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
+			})
 		})
 	}
 }
@@ -668,21 +687,19 @@ func TestUseRestartWarningsInJapanese(t *testing.T) {
 		{
 			"unknown",
 			func(t *testing.T, f *residentFixture) {
-				f.daemon.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey"},"workspaceRouting":null}}`)
+				f.daemon.answers(apiKeyReply)
 			},
 			"kae: warning: codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。現在有効なアカウントを使っていない場合は、codex app-server daemon restart を実行してください。",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newResidentFixture(t)
-			f.withDaemon(t, residentSide).answers(noAccountReply)
+			f := noAccountFixture(t)
 			tc.setup(t, f)
-			l10ntest.UseJapanese(t)
-			stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatText}, constants.ToolCodex, "main")
-			if !strings.Contains(stderr, tc.line+"\n") {
-				t.Errorf("stderr lacks %q:\n%s", tc.line, stderr)
-			}
-			assertNoResidentPII(t, stdout, stderr)
+			wantStderrLine(t, true, tc.line, func() (int, string, string) {
+				return captureBoth(t, func() int {
+					return runSwitch(context.Background(), f.app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
+				})
+			})
 		})
 	}
 }

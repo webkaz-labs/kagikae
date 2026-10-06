@@ -52,6 +52,9 @@ func testApp(t *testing.T, envVars map[string]string) *App {
 			LookPath:  func(string) (string, error) { return "", errors.New("not found") },
 		},
 		Now: func() time.Time { return time.Date(2026, 6, 11, 1, 23, 45, 0, time.UTC) },
+		// No codex managed daemon runs: `daemon version` exits 1 as codex does then
+		// (docs/ACCEPTANCE.md). daemonVersionFixture replaces it.
+		daemonStatusQuery: func(context.Context, []string, string, ...string) (string, int) { return "", 1 },
 	}
 }
 

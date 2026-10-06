@@ -43,7 +43,6 @@ func driftApp(t *testing.T, gitData config.CompanionData) *App {
 	}
 	// git must look present, else the probe skips (companion_binary covers absence).
 	app.Env.LookPath = func(string) (string, error) { return "/usr/bin/git", nil }
-	noManagedDaemon(t) // the LookPath above puts codex on PATH too
 	chdirTemp(t)
 	writeFile(t, fragmentRelPath, "# kae:profile=main\n")
 	return app
@@ -130,8 +129,7 @@ func TestDoctorGitDriftSkippedWhenNotPinned(t *testing.T) {
 		Companions: map[string]config.CompanionData{constants.CompanionGit: {"email": "you@example.com"}},
 	}
 	app.Env.LookPath = func(string) (string, error) { return "/usr/bin/git", nil }
-	noManagedDaemon(t) // the LookPath above puts codex on PATH too
-	chdirTemp(t)       // no fragment written: the directory is not pinned
+	chdirTemp(t) // no fragment written: the directory is not pinned
 	fake := gitConfigFake{values: map[string]string{"user.email": "side@example.com"}}
 	var report *doctorReport
 	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })

@@ -140,11 +140,8 @@ func TestUpstreamVersionChecksSkipsFailingProbe(t *testing.T) {
 }
 
 // allBinariesOnPath makes every tool's binary resolvable, so the probe round
-// covers all of them concurrently, with no codex managed daemon running for
-// resident_drift's `daemon version` half in the same round.
-func allBinariesOnPath(t *testing.T, app *App) {
-	t.Helper()
-	noManagedDaemon(t)
+// covers all of them concurrently.
+func allBinariesOnPath(app *App) {
 	app.Env.LookPath = func(name string) (string, error) { return "/usr/local/bin/" + name, nil }
 }
 
@@ -185,7 +182,7 @@ func (f *slowFake) RunInput(ctx context.Context, _ string, name string, args ...
 // version (date-versioned), so it is skipped even though its binary resolves.
 func TestUpstreamVersionChecksStayInToolOrder(t *testing.T) {
 	app := testApp(t, nil)
-	allBinariesOnPath(t, app)
+	allBinariesOnPath(app)
 	fake := &slowFake{
 		stdout: "999.0.0\n", // past every adapter's verified version
 		delay: map[string]time.Duration{
@@ -238,7 +235,7 @@ func TestUpstreamVersionChecksHonorDeadline(t *testing.T) {
 	defer func() { upstreamVersionProbeDeadline = saved }()
 
 	app := testApp(t, nil)
-	allBinariesOnPath(t, app)
+	allBinariesOnPath(app)
 	delay := map[string]time.Duration{}
 	for _, tool := range constants.Tools {
 		ad, err := adapter.ForTool(tool)

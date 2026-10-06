@@ -245,24 +245,25 @@ func TestAddNoLoginOnlyWarns(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		daemon    string // "" for none
-		unread    bool   // the daemon answers with no account
+		answer    string // replaces the daemon's answer; "" keeps it holding daemon
 		dryRun    bool
 		warning   string // "" for none
 		residents []residentEntry
 	}{
-		{"differs", residentMain, false, false, warnCaptureDiffers, differs},
-		{"differs dry-run", residentMain, false, true, warnCaptureDiffers, differs},
-		{"unknown", residentMain, true, false, warnCaptureUnknown, unknown},
-		{"matches", residentSide, false, false, "", []residentEntry{}},
-		{"absent", "", false, false, "", []residentEntry{}},
+		{"differs", residentMain, "", false, warnCaptureDiffers, differs},
+		{"differs dry-run", residentMain, "", true, warnCaptureDiffers, differs},
+		{"differs, no account", residentMain, noAccountReply, false, warnCaptureDiffers, differs},
+		{"unknown", residentMain, apiKeyReply, false, warnCaptureUnknown, unknown},
+		{"matches", residentSide, "", false, "", []residentEntry{}},
+		{"absent", "", "", false, "", []residentEntry{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, format := range []string{formatText, formatJSON} {
 				f := newResidentFixture(t)
 				if tc.daemon != "" {
 					d := f.withDaemon(t, tc.daemon)
-					if tc.unread {
-						d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail + `"},"workspaceRouting":null}}`)
+					if tc.answer != "" {
+						d.answers(tc.answer)
 					}
 				}
 				opts := commonOpts{Format: format, DryRun: tc.dryRun}
@@ -700,15 +701,9 @@ func TestAddAndRollbackRestartFailureWarns(t *testing.T) {
 			for _, japanese := range []bool{false, true} {
 				want := tc.english
 				if japanese {
-					l10ntest.UseJapanese(t)
 					want = tc.japanese
 				}
-				code, stdout, stderr := tc.run(t)
-				mustExit(t, constants.ExitOK, code, stdout+stderr)
-				if !strings.Contains(stderr, want+"\n") {
-					t.Errorf("stderr lacks %q:\n%s", want, stderr)
-				}
-				assertNoResidentPII(t, stdout, stderr)
+				wantStderrLine(t, japanese, want, func() (int, string, string) { return tc.run(t) })
 			}
 		})
 	}

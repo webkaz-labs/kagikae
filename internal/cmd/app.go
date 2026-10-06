@@ -68,6 +68,10 @@ type App struct {
 	// net.Dialer.DialContext (unixDialer). Tests leave it nil and serve a fake
 	// daemon on a real socket, so the WebSocket framing is exercised.
 	dialUnix wsrpc.Dialer
+	// daemonStatusQuery runs resident_drift's `daemon version` command; nil means
+	// runner.QueryWithEnv. testApp sets it to answer as codex does with no daemon
+	// running, so a doctor test about another check never reaches a real codex.
+	daemonStatusQuery func(ctx context.Context, env []string, name string, args ...string) (string, int)
 	// residentProbeTimeout bounds one daemon probe; zero means the default
 	// (residentProbeLimit). Tests shorten it so a silent daemon costs little.
 	residentProbeTimeout time.Duration

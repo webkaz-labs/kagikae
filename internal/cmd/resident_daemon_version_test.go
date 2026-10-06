@@ -20,29 +20,30 @@ import (
 
 const daemonVersionMoved = "has changed where it puts the socket"
 
-// queryCall is one runner.QueryWithEnv invocation a test recorded.
+// queryCall is one `daemon version` run a test recorded.
 type queryCall struct {
 	env  []string
 	name string
 	args []string
 }
 
-// daemonVersionFixture is probeFixture with codex (only) on PATH and
-// runner.QueryWithEnv answering reply; it returns the recorded calls.
-// enabled sets residentDaemonVersionEnabled for the test.
+// daemonVersionFixture is probeFixture with codex (only) on PATH and the
+// `daemon version` command answering reply in place of testApp's no-daemon
+// default; it returns the recorded calls. enabled sets
+// residentDaemonVersionEnabled for the test.
 func daemonVersionFixture(t *testing.T, enabled bool,
 	reply func(ctx context.Context) (string, int),
 ) (*App, adapter.ResidentHolder, *[]queryCall) {
 	t.Helper()
-	savedEnabled, savedQuery := residentDaemonVersionEnabled, runner.QueryWithEnv
-	t.Cleanup(func() { residentDaemonVersionEnabled, runner.QueryWithEnv = savedEnabled, savedQuery })
+	saved := residentDaemonVersionEnabled
+	t.Cleanup(func() { residentDaemonVersionEnabled = saved })
 	residentDaemonVersionEnabled = enabled
 	calls := &[]queryCall{}
-	runner.QueryWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, int) {
+	app, _, h := probeFixture(t, probeAccount)
+	app.daemonStatusQuery = func(ctx context.Context, env []string, name string, args ...string) (string, int) {
 		*calls = append(*calls, queryCall{env: slices.Clone(env), name: name, args: slices.Clone(args)})
 		return reply(ctx)
 	}
-	app, _, h := probeFixture(t, probeAccount)
 	app.Env.LookPath = func(name string) (string, error) {
 		if name == "codex" {
 			return "/usr/bin/codex", nil
@@ -50,16 +51,6 @@ func daemonVersionFixture(t *testing.T, enabled bool,
 		return "", errors.New("not found")
 	}
 	return app, h, calls
-}
-
-// noManagedDaemon answers every `daemon version` as codex does when no daemon
-// runs, exit 1 (docs/ACCEPTANCE.md), for doctor tests about other checks whose
-// LookPath puts codex on PATH, now that the half runs by default.
-func noManagedDaemon(t *testing.T) {
-	t.Helper()
-	saved := runner.QueryWithEnv
-	t.Cleanup(func() { runner.QueryWithEnv = saved })
-	runner.QueryWithEnv = func(context.Context, []string, string, ...string) (string, int) { return "", 1 }
 }
 
 // statusReply answers `daemon version` with output and exit code 0.

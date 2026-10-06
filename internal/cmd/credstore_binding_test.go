@@ -116,7 +116,7 @@ func TestAStaleSharedCredentialIsReportedOncePerCredential(t *testing.T) {
 	second, _, _ := boundStoreForClaudeMain(t, app)
 	writeFile(t, credFile, deadClaudeCred)
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialStale)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialStale)
 	bound := []string{}
 	for _, m := range msgs {
 		if strings.Contains(m, "bound to ") {
@@ -139,7 +139,7 @@ func TestAStaleSharedCredentialIsReportedOncePerCredential(t *testing.T) {
 	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
 	writeFile(t, behind.CredFile, deadClaudeCred)
 	writeFile(t, ahead.CredFile, deadClaudeCred)
-	msgs = findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialStale)
+	msgs = findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialStale)
 	bound = bound[:0]
 	for _, m := range msgs {
 		if strings.Contains(m, "bound to ") {
@@ -160,13 +160,13 @@ func TestDoctorNamesADirectoryBoundBeforeTheCredentialSplit(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
 	dir, storeDir, _ := boundStoreForClaudeMain(t, app)
 
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialUnsplit); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialUnsplit); len(msgs) != 0 {
 		t.Fatalf("a directory bound by this kae has nothing to migrate: %v", msgs)
 	}
 
 	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialUnsplit)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialUnsplit)
 	if len(msgs) != 1 {
 		t.Fatalf("the unsplit directory must be named exactly once, got %d: %v", len(msgs), msgs)
 	}

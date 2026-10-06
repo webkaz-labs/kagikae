@@ -207,8 +207,11 @@ codex's managed daemon does not pick up a credential kae writes while it runs, s
 when `kae use`, `kae add` or `kae rollback` leaves it holding another account or
 none, kae restarts it
 afterwards and says so on stderr. `--no-restart` turns that into a warning, and so
-does the mise enter hook (`kae use --auto`), even with `--yes`. `kae add --no-login`
-leaves the live login as it is, so it only warns. When the command changes codex's
+does the mise enter hook (`kae use --auto`), even with `--yes`, and `--dry-run`
+notes the restart it would make instead. None of those three connects to the
+daemon: each gives its warning or note whenever the command changes codex's
+account while a daemon is there. `kae add --no-login` leaves the live login
+as it is, so it leaves the daemon alone. When the command changes codex's
 account, kae also warns that codex sessions started before it keep the previous
 account until you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics,
 § kae add Semantics). The ChatGPT desktop app keeps the account it started with
@@ -218,9 +221,10 @@ running in it are interrupted. `--yes` answers yes without asking, so a script t
 already passes `--yes` quits a running app. `--no-restart`, the enter hook and
 `--dry-run` leave the app running with a warning or a plan, even with `--yes`, and so
 does a run without a terminal or with `--json` unless it passes `--yes`. `kae doctor`
-warns when the daemon holds another account than the live credential or none,
-when kae cannot read which one it holds, and when codex has moved the daemon's
-socket where a switch cannot find it; doctor itself never restarts it.
+warns when codex has moved the daemon's socket where a switch cannot find it, and
+`kae doctor --yes` also when the daemon holds another account than the live
+credential or none, or when kae cannot read which one it holds; doctor itself
+never restarts it.
 
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
 restores a selected restorable global backup. `kae use --dry-run` previews its

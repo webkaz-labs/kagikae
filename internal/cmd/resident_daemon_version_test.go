@@ -68,7 +68,7 @@ func doctorDaemonVersionRows(t *testing.T, app *App, filter string) []adapter.Ch
 	t.Helper()
 	var rows []adapter.Check
 	runner.With(&runnertest.Fake{Code: 1}, func() {
-		rows = residentDriftRows(buildDoctor(context.Background(), app, filter, false))
+		rows = residentDriftRows(buildDoctor(context.Background(), app, filter, doctorOptIns{}))
 	})
 	return rows
 }

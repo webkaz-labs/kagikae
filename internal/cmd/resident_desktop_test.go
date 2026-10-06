@@ -646,7 +646,7 @@ func TestRollbackQuitsAndRelaunchesTheChatGPTApp(t *testing.T) {
 	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatJSON, DryRun: true, Yes: true})
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
 	want := []residentEntry{
-		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomePlanned),
+		daemonEntry(constants.ResidentObservedPresent, constants.ResidentOutcomePlanned),
 		appEntry(constants.ResidentObservedRunning, constants.ResidentOutcomePlanned), sessionEntry,
 	}
 	if got := rollbackResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, want) {
@@ -728,7 +728,7 @@ func TestResidentLinesFold(t *testing.T) {
 		jaDeclined      = "kae: warning: codex: ChatGPT アプリは起動したままにします。終了して起動し直すまで、起動時の codex アカウントを使い続けます。"
 		jaClosed        = "kae: note: codex: ChatGPT アプリはもう起動していないため、閉じたままにします。次に起動すると、現在有効な codex アカウントを使います。"
 		jaFailed        = "kae: warning: codex: codex app-server daemon restart に失敗しました（終了コード 3）。切替はそのまま有効ですが、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" + manual + " を実行してください。"
-		jaUnverified    = "kae: warning: codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、" + manual + " を実行してください。"
+		jaUnverified    = "kae: warning: codex: codex app-server daemon restart は成功しましたが、その報告を読み取れないか、報告が別のソケットを示していたため、管理デーモンが再起動したか判断できません。現在有効なアカウントを使っていない場合は、" + manual + " を実行してください。"
 		jaCannotAsk     = "kae: warning: codex: ここでは ChatGPT アプリの再起動を確認できません（端末がないか、--json が指定されています）。現在有効なアカウントに移すには、アプリを終了して起動し直すか、--yes を指定してください。"
 	)
 	explicit := func(ctx context.Context, app *App, o commonOpts) int {
@@ -777,7 +777,7 @@ func TestResidentLinesFold(t *testing.T) {
 			ja: []string{jaAheadYes, jaSession, jaFailed, jaSwitched, jaDoneApp},
 		},
 		{
-			name: "restart unverified and relaunched", opts: commonOpts{Yes: true}, run: explicit, restart: restartExits(0),
+			name: "restart unverified and relaunched", opts: commonOpts{Yes: true}, run: explicit, restart: restartWithoutReport,
 			en: []string{bothNoticeYes, warnSession, warnUnverfied, switched, doneApp},
 			ja: []string{jaAheadYes, jaSession, jaUnverified, jaSwitched, jaDoneApp},
 		},
@@ -905,6 +905,13 @@ func restartExits(code int) func(*testing.T, *residentFixture) func(*restartCall
 	return func(*testing.T, *residentFixture) func(*restartCall) int {
 		return func(*restartCall) int { return code }
 	}
+}
+
+// restartWithoutReport is a restart that exits 0 and prints nothing, which kae
+// cannot verify.
+func restartWithoutReport(_ *testing.T, f *residentFixture) func(*restartCall) int {
+	f.restartOutput = ""
+	return func(*restartCall) int { return 0 }
 }
 
 // kae add prints its result line after the reconcile, and kae rollback under its

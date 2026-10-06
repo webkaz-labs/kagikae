@@ -63,23 +63,15 @@ sessions keep the account they started with after a switch
 ([ADAPTERS.md](ADAPTERS.md) § Resident processes). The contract is
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
-[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-what slice 8 still has to land. Slice 3, the reconcile in
-`kae use`, is the first slice users can see; the contract and the work done on the
-integration branch `feat/resident-reconcile` land on main together, not one before
-the others. The feature then ships stage by stage, so a release cut between slices
-ships only part of what the contract describes: the release notes of each release
-name which slices it ships, and the user-facing paragraphs (README, README.ja,
-GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
-and `kae rollback` from slice 4, the ChatGPT app from slice 5, `resident_drift`
-from slice 6 and, in GUIDE.ja, the usage veto from slice 7. Slices 1 to 5 — the WebSocket client (`internal/wsrpc`), the codex
-adapter's `ResidentHolder` with the daemon probe, the reconcile in `kae use`, the
-same reconcile in `kae add` and `kae rollback`, and the ChatGPT app's confirmation,
-quit and relaunch in those three commands — are done on the integration branch,
-and slice 6, `doctor resident_drift` with both halves on by default, and slice 7,
-the codex usage veto ([CLI.md](CLI.md) § Subscription windows in listings), on
-main; git log records them. What remains is slice 8, the real-machine acceptance,
-recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names, after which
+[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. Slices 1 to 7 — the
+WebSocket client (`internal/wsrpc`), the codex adapter's `ResidentHolder` with the
+daemon probe, the reconcile in `kae use`, the same reconcile in `kae add` and
+`kae rollback`, the ChatGPT app's confirmation, quit and relaunch in those three
+commands, `doctor resident_drift`, and the codex
+usage veto ([CLI.md](CLI.md) § Subscription windows in listings) — are on main, and
+git log records them; no release ships them yet. What remains is slice 8, the
+real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
+placeholder names, after which
 codex's `VerifiedVersion()` is raised to the version it ran against; until then it
 stays where it is.
 
@@ -88,33 +80,22 @@ The operator's decisions, which the slices do not reopen, are the behaviour
 
 The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
 § codex resident processes — local acceptance (2026-10-06),
-[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
+[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips,
 [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit
-dialog, which answer the questions they settled. Before slice 8 can pass, the
-acceptance still has to settle:
+dialog and [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
+limit, the app's n and an isolated daemon, which answer the questions they settled.
+Before slice 8 can pass, the acceptance still has to settle what kae does about a
+resident process still on the old account that refreshes that account's token.
+Whether it writes the token back to `auth.json` is not measured; an old session
+not connected to the daemon is inferred to invalidate the token in kae's snapshot
+by rotating it, which a new login of that account repairs. In upstream's source a
+daemon's routing discovery that meets a 401 reloads and refreshes its own token
+only while its stored login (`auth.json` or the keyring item) names the account
+it holds
+([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+app's n and an isolated daemon).
 
-- what the restart does when the `codex` on `PATH` and the daemon's own copy
-  differ in version;
-- whether the daemon contacts the network to answer `account/read` with
-  `refreshToken: false` right after a restart, which decides whether the socket
-  half of `resident_drift` stays a default check or becomes opt-in. In its steady
-  state it did not; a lead, not an answer, for the moment after a restart: in
-  upstream's source, a daemon with no cached routing runs routing discovery
-  through its `BackendClient`, which can connect;
-- whether a restart kae left running at its 30 s limit (`restart_pending`) goes
-  on to start the new daemon; upstream's source says it does, which is not
-  measured;
-- what kae does about a resident process still on the old account that refreshes
-  that account's token. Whether it writes the token back to `auth.json` is not
-  measured; an old session not connected to the daemon is inferred to invalidate
-  the token in kae's snapshot by rotating it, which a new login of that account
-  repairs;
-- how kae's probe should name itself to the daemon, which is inferred to give later
-  threads the `clientInfo.name` of the first client that initialized. Undecided; a
-  name that passes kae off as another client is not an option;
-- how the ChatGPT app's n answer behaves on a real app.
-
-Done when slice 8's acceptance is recorded, each question above has a recorded
+Done when slice 8's acceptance is recorded, the question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.

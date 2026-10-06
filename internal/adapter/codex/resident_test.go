@@ -210,6 +210,33 @@ func TestParseDaemonStatus(t *testing.T) {
 	}
 }
 
+// The restart's report is read from its first JSON object: `status` restarted
+// with an absolute socket path, nothing else.
+func TestParseDaemonRestart(t *testing.T) {
+	const sock = "/home/you/.codex/app-server-control/app-server-control.sock"
+	for _, tc := range []struct {
+		name, output string
+		ok           bool
+		socket       string
+	}{
+		{"restarted", `{"status":"restarted","backend":"pid","pid":42,"socketPath":"` + sock + `","cliVersion":"0.160.1"}` + "\n", true, sock},
+		{"followed by a log line", `{"status":"restarted","socketPath":"` + sock + `"}` + "\ndaemon: listening\n{", true, sock},
+		{"running is not restarted", `{"status":"running","socketPath":"` + sock + `"}`, false, ""},
+		{"started is not restarted", `{"status":"started","socketPath":"` + sock + `"}`, false, ""},
+		{"no socket path", `{"status":"restarted"}`, false, ""},
+		{"relative socket path", `{"status":"restarted","socketPath":"app-server-control.sock"}`, false, ""},
+		{"socket path is a number", `{"status":"restarted","socketPath":1}`, false, ""},
+		{"status is a bool", `{"status":true,"socketPath":"` + sock + `"}`, false, ""},
+		{"not JSON", "restarted\n", false, ""},
+		{"empty", ``, false, ""},
+	} {
+		socket, ok := Codex{}.ParseDaemonRestart([]byte(tc.output))
+		if socket != tc.socket || ok != tc.ok {
+			t.Errorf("%s: got (%q, %v), want (%q, %v)", tc.name, socket, ok, tc.socket, tc.ok)
+		}
+	}
+}
+
 func TestDesktopAppsDarwinOnly(t *testing.T) {
 	got := Codex{}.DesktopApps()
 	if runtime.GOOS == "darwin" {

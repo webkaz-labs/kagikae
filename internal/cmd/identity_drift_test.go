@@ -38,7 +38,7 @@ func claudeJSON(t *testing.T, app *App, content string) {
 
 func TestDoctorIdentityDriftAbsentWhenLiveMatches(t *testing.T) {
 	app := identityDriftApp(t)
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
 		t.Fatalf("live identity matches the applied snapshot; unexpected drift: %q", msg)
 	}
@@ -52,7 +52,7 @@ func TestDoctorIdentityDriftDetected(t *testing.T) {
 	claudeJSON(t, app,
 		`{"oauthAccount":{"accountUuid":"side-uuid","emailAddress":"side@example.com"},"projects":{}}`)
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckIdentityDrift)
 	if !ok {
 		t.Fatalf("expected identity_drift when the live identity was rewritten: %+v", report.Checks)
@@ -85,7 +85,7 @@ func TestDoctorIdentityDriftLiveAbsent(t *testing.T) {
 	app := identityDriftApp(t)
 	claudeJSON(t, app, `{"projects":{}}`)
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckIdentityDrift)
 	if !ok {
 		t.Fatalf("expected identity_drift when the live identity disappeared: %+v", report.Checks)
@@ -107,7 +107,7 @@ func TestDoctorIdentityDriftReportsUntrackedSnapshot(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 
 	claudeJSON(t, app, `{"oauthAccount":{"emailAddress":"you@example.com"}}`)
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckIdentityDrift)
 	if !ok {
 		t.Fatal("an untracked identity must be reported, not silently skipped")
@@ -146,7 +146,7 @@ func TestDoctorIdentityDriftSkipsInsideKaeIsolation(t *testing.T) {
 	writeFile(t, filepath.Join(isolated, ".claude.json"),
 		`{"oauthAccount":{"emailAddress":"side@example.com"}}`)
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
 		t.Fatalf("a kae-owned isolated home must not be compared to the global snapshot: %q", msg)
 	}
@@ -164,7 +164,7 @@ func TestDoctorIdentityDriftSkipsWithoutActiveAccount(t *testing.T) {
 	}
 	claudeJSON(t, app, `{"oauthAccount":{"emailAddress":"side@example.com"}}`)
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
 		t.Fatalf("with no active account kae applied nothing to compare against: %q", msg)
 	}
@@ -199,7 +199,7 @@ func TestDoctorIdentityDriftIgnoresProfileRefetch(t *testing.T) {
 	// Same account; claude refetched the profile and rewrote its bookkeeping.
 	seedClaudeIdentity(t, app, "main-uuid", "you@example.com", 1750000000000, "member")
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
 		t.Fatalf("a profile refetch of the same account is not drift: %q", msg)
 	}
@@ -217,7 +217,7 @@ func TestDoctorIdentityDriftDetectsAccountUUIDOnly(t *testing.T) {
 
 	seedClaudeIdentity(t, app, "other-uuid", "you@example.com", 1749000000000, "admin")
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckIdentityDrift); !ok {
 		t.Fatalf("a changed accountUuid must still drift: %+v", report.Checks)
 	}
@@ -285,7 +285,7 @@ func TestIdentityDriftNeverPrintsTheIdentity(t *testing.T) {
 	claudeJSON(t, app,
 		`{"oauthAccount":{"accountUuid":"`+liveUUID+`","emailAddress":"`+liveEmail+`"},"projects":{}}`)
 
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckIdentityDrift)
 	if !ok {
 		t.Fatal("expected identity drift to be reported")
@@ -325,7 +325,7 @@ func TestDoctorIdentityRecordInvalidClassification(t *testing.T) {
 				if liveAbsent {
 					claudeJSON(t, app, `{"projects":{}}`)
 				}
-				report := buildDoctor(ctx, app, constants.ToolClaude, false)
+				report := buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{})
 				count := 0
 				for _, c := range report.Checks {
 					if c.Code == constants.CheckIdentityRecordInvalid {
@@ -382,7 +382,7 @@ func TestDoctorIdentityRecordChecksInactiveAccountsAndFilter(t *testing.T) {
 		t.Fatal("main must be inactive")
 	}
 	for _, filter := range []string{"", constants.ToolClaude, constants.ToolCodex} {
-		report := buildDoctor(ctx, app, filter, false)
+		report := buildDoctor(ctx, app, filter, doctorOptIns{})
 		count := 0
 		for _, c := range report.Checks {
 			if c.Code == constants.CheckIdentityRecordInvalid {
@@ -413,7 +413,7 @@ func TestDoctorIdentityRecordMissingIsNotInvalidOrDrift(t *testing.T) {
 			if liveAbsent {
 				claudeJSON(t, app, `{"projects":{}}`)
 			}
-			report := buildDoctor(ctx, app, constants.ToolClaude, false)
+			report := buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{})
 			if _, found := findCheck(report, constants.CheckSecretMissing); !found {
 				t.Fatal("missing payload must retain secret_missing")
 			}
@@ -451,7 +451,7 @@ func TestDoctorIdentityRecordUntrackedAndUnreadableAreNotInvalid(t *testing.T) {
 	if err := testBackend(t, app).Set(ctx, art.SecretRef, []byte(`null`)); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(ctx, app, constants.ToolClaude, false)
+	report := buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{})
 	if msg, found := findCheck(report, constants.CheckIdentityRecordInvalid); found {
 		t.Errorf("unrecorded identity is not invalid: %s", msg)
 	}
@@ -469,7 +469,7 @@ func TestDoctorIdentityRecordInvalidReportedOnceAcrossBindings(t *testing.T) {
 	if err := testBackend(t, app).Set(ctx, account.SecretRef(constants.ToolClaude, "main", "oauth_account"), []byte(`null`)); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	count := 0
 	for _, c := range report.Checks {
 		if c.Code == constants.CheckIdentityRecordInvalid {

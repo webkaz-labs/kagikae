@@ -118,6 +118,15 @@ func daemonUnknownMessage(manual string) message {
 	return msgf("codex: could not read the managed daemon's account; if it is not on the live account, run: %s", manual)
 }
 
+// probeOriginatorMessage is the warning of a run that connected to a daemon it
+// does not restart and found it had been the first client to initialize the
+// daemon under a name upstream does not reserve, so the threads the daemon
+// creates from now on carry kae's probe name. "identify itself" is the plain
+// word for that initialize.
+func probeOriginatorMessage(manual string) message {
+	return msgf("codex: kae's check was the first program to identify itself to the managed daemon, so the threads the daemon creates from now on name kae_probe as their client until it restarts; to clear it, run: %s", manual)
+}
+
 // session is the fixed warning about codex sessions kae does not look for; dryRun
 // says what the command would do (the login flow has no --dry-run).
 func (op residentOp) session(dryRun bool) message {
@@ -172,9 +181,10 @@ func (op residentOp) resultKept() message {
 	return msgf("the switch is kept")
 }
 
-// restartUnverifiedMessage is the warning of a restart kae could not confirm.
+// restartUnverifiedMessage is the warning of a restart command that exited 0
+// with a report kae could not read or that named another socket.
 func restartUnverifiedMessage(manual string) message {
-	return msgf("codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: %s", manual)
+	return msgf("codex: codex app-server daemon restart succeeded, but kae could not read its report or it named another socket, so kae cannot tell whether the managed daemon restarted; if it is not using the live account, run: %s", manual)
 }
 
 // residentDone is the success of a reconcile: a verified restart, a relaunched

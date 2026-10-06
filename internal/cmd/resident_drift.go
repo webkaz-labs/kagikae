@@ -7,9 +7,11 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// residentDriftChecks is resident_drift's socket half for the real tool home;
-// docs/CLI.md § `kae doctor --json` owns what it reports. It probes the daemon's
-// socket only, through probeResidentDaemon, which only reads.
+// residentDriftChecks is resident_drift's socket half for the real tool home,
+// which doctor runs only under --yes; docs/CLI.md § `kae doctor --json` owns what
+// it reports. It probes the daemon's socket only, through askResidentDaemon,
+// which only reads auth state but whose initialize has side effects on the
+// daemon (docs/ADAPTERS.md § Resident processes).
 //
 // It runs no subprocess of the tool: the `daemon version` half
 // (DaemonSpec.Status, resident_daemon_version.go) runs in doctorProbeRound's
@@ -36,7 +38,7 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 			continue // no resident processes: nothing to compare
 		}
 		spec := h.ResidentDaemon(env)
-		observed := app.probeResidentDaemon(ctx, h, spec, liveCredential(ad, env))
+		observed := app.askResidentDaemon(ctx, h, spec, liveCredential(ad, env)).observed
 		msg, ok := app.residentDriftMessage(tool, h, spec, observed)
 		if !ok {
 			continue
@@ -49,11 +51,10 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 }
 
 // residentDriftMessage is the finding for a daemon observed against the live
-// credential: ok is false for absent and matches, which say nothing. doctor's
-// resident_drift and `kae add --no-login` (residentsAtCapture) share it. The
-// restart is named for the shell kae runs in, which may export another home than
-// the real one the probe looked at (docs/CLI.md § kae use Semantics, The manual
-// step).
+// credential, for doctor's resident_drift: ok is false for absent and matches,
+// which say nothing. The restart is named for the shell kae runs in, which may
+// export another home than the real one the probe looked at (docs/CLI.md § kae
+// use Semantics, The manual step).
 func (app *App) residentDriftMessage(tool string, h adapter.ResidentHolder, spec adapter.DaemonSpec,
 	observed string,
 ) (message, bool) {

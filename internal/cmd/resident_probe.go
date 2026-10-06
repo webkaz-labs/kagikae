@@ -53,12 +53,22 @@ func (app *App) euid() int {
 	return os.Geteuid()
 }
 
-// probeResidentDaemon asks the managed daemon spec describes which account it
+// daemonProbe is what askResidentDaemon read: observed, one of the
+// constants.ResidentObserved* tokens, and originated, whether the daemon's
+// answer to initialize says the probe became its first client
+// (adapter.ProbeOriginated).
+type daemonProbe struct {
+	observed   string
+	originated bool
+}
+
+// askResidentDaemon asks the managed daemon spec describes which account it
 // holds and compares it with the account of the credential that credential
-// returns, read only once the socket is known to exist. The caller derives spec
+// returns, read only once the socket is known to exist. Only a run that may
+// restart the daemon, and doctor --yes, call it: connecting has side effects on
+// the daemon (docs/CLI.md § kae use Semantics, step 1). The caller derives spec
 // once (h.ResidentDaemon) and uses the same one for a restart, so the two
-// cannot resolve the home differently. It returns one of the
-// constants.ResidentObserved* tokens:
+// cannot resolve the home differently. Its observed token is one of:
 //
 //   - absent: the declared socket, or the target it links to, does not exist;
 //   - unknown: the socket exists but kae could not read the daemon's answer, or
@@ -70,52 +80,95 @@ func (app *App) euid() int {
 //   - matches / differs: the credential's account was read and the daemon
 //     answered; a daemon that answers it holds no account differs.
 //
-// It sends adapter.DaemonProbeRequests and nothing else, and no account, email
-// or plan leaves it: the result is the token only.
-func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolder, spec adapter.DaemonSpec,
+// originated is read from the answer to initialize whenever one arrived, also
+// when account/read then failed.
+//
+// It sends adapter.DaemonProbeRequests and nothing else, and no account, email,
+// plan or user agent leaves it: the result is the token and the flag only.
+func (app *App) askResidentDaemon(ctx context.Context, h adapter.ResidentHolder, spec adapter.DaemonSpec,
 	credential credentialReader,
-) string {
-	socket, absent, err := resolveDeclaredSocket(spec.Socket)
-	if absent {
-		return constants.ResidentObservedAbsent
-	}
-	if err != nil || !ownedSocket(socket, app.euid()) {
-		return constants.ResidentObservedUnknown
+) daemonProbe {
+	unknown := daemonProbe{observed: constants.ResidentObservedUnknown}
+	socket, observed := socketOf(spec, app.euid())
+	if observed != "" {
+		return daemonProbe{observed: observed}
 	}
 	payload, ok := credential(ctx)
 	if !ok {
-		return constants.ResidentObservedUnknown
+		return unknown
 	}
 	want, ok := h.CredentialAccount(payload)
 	if !ok {
-		return constants.ResidentObservedUnknown
+		return unknown
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, app.residentProbeLimit())
 	defer cancel()
 	// The connection goes to the resolved path the owner check examined, which
 	// also keeps a long declared path from reaching the sun_path limit.
-	msg, err := wsrpc.Call(ctx, app.unixDialer(), socket, adapter.DaemonProbeRequests(),
-		adapter.DaemonProbeResponseID, residentProbeMaxMsg)
-	if err != nil {
-		return constants.ResidentObservedUnknown
+	msgs, err := wsrpc.CallEach(ctx, app.unixDialer(), socket, adapter.DaemonProbeRequests(),
+		[]int{adapter.DaemonProbeInitializeID, adapter.DaemonProbeResponseID}, residentProbeMaxMsg)
+	// CallEach returns one entry per wanted id, whatever the error.
+	got := daemonProbe{observed: constants.ResidentObservedUnknown}
+	if result, ok := rpcResult(msgs[0]); ok {
+		got.originated = adapter.ProbeOriginated(result)
 	}
+	if err != nil {
+		return got
+	}
+	result, ok := rpcResult(msgs[1])
+	if !ok {
+		return got
+	}
+	held, ok := h.ParseDaemonAccount(result)
+	if !ok {
+		return got
+	}
+	if held.Held && held.Account.Same(want) {
+		got.observed = constants.ResidentObservedMatches
+	} else {
+		got.observed = constants.ResidentObservedDiffers
+	}
+	return got
+}
+
+// residentSocket is what a run that may not restart the daemon reads without
+// connecting to it (docs/CLI.md § kae use Semantics, step 1): absent, present
+// for a socket owned by the current user, or unknown for a declared path that
+// resolves to anything else or cannot be resolved.
+func (app *App) residentSocket(spec adapter.DaemonSpec) string {
+	if _, observed := socketOf(spec, app.euid()); observed != "" {
+		return observed
+	}
+	return constants.ResidentObservedPresent
+}
+
+// socketOf resolves spec's declared socket and checks that it is a socket uid
+// owns. It returns the resolved path and "" when it is, and otherwise the token
+// the daemon reads without a connection: absent, or unknown.
+func socketOf(spec adapter.DaemonSpec, uid int) (socket, observed string) {
+	socket, absent, err := resolveDeclaredSocket(spec.Socket)
+	if absent {
+		return "", constants.ResidentObservedAbsent
+	}
+	if err != nil || !ownedSocket(socket, uid) {
+		return "", constants.ResidentObservedUnknown
+	}
+	return socket, ""
+}
+
+// rpcResult returns the `result` member of a JSON-RPC response that carries no
+// error; ok is false for anything else.
+func rpcResult(msg []byte) (json.RawMessage, bool) {
 	var reply struct {
 		Result json.RawMessage `json:"result"`
 		Error  json.RawMessage `json:"error"`
 	}
 	// A member present as null is absent (encoding/json keeps the literal).
-	if json.Unmarshal(msg, &reply) != nil || jsonMember(reply.Error) || !jsonMember(reply.Result) {
-		return constants.ResidentObservedUnknown
+	if msg == nil || json.Unmarshal(msg, &reply) != nil || jsonMember(reply.Error) || !jsonMember(reply.Result) {
+		return nil, false
 	}
-	got, ok := h.ParseDaemonAccount(reply.Result)
-	if !ok {
-		return constants.ResidentObservedUnknown
-	}
-	if got.Held && got.Account.Same(want) {
-		return constants.ResidentObservedMatches
-	}
-	return constants.ResidentObservedDiffers
+	return reply.Result, true
 }
 
 // resolveDeclaredSocket resolves the symlinks of a daemon's declared socket
@@ -128,6 +181,21 @@ func resolveDeclaredSocket(declared string) (resolved string, absent bool, err e
 		return "", true, nil
 	}
 	return resolved, false, err
+}
+
+// sameSocket reports whether the socket a restart reported is the declared one:
+// the same path, or two existing paths that resolve to the same one, as the
+// probe resolves the declared socket (resolveDeclaredSocket).
+func sameSocket(reported, declared string) bool {
+	if filepath.Clean(reported) == filepath.Clean(declared) {
+		return true
+	}
+	got, err := filepath.EvalSymlinks(reported)
+	if err != nil {
+		return false
+	}
+	want, absent, err := resolveDeclaredSocket(declared)
+	return err == nil && !absent && got == want
 }
 
 // jsonMember reports whether a raw JSON-RPC member is present and not null.
@@ -147,7 +215,7 @@ func ownedSocket(path string, uid int) bool {
 
 // liveCredential returns a reader of ad's live credential in env, from
 // whichever store the adapter resolves (auth.json or the keyring item), for
-// probeResidentDaemon. It reads what is live when called, not what a switch
+// askResidentDaemon. It reads what is live when called, not what a switch
 // will leave: the probe before a switch is given the target's payload instead.
 // ok is false when the store cannot be resolved or read, or holds nothing.
 func liveCredential(ad adapter.Adapter, env adapter.Env) credentialReader {

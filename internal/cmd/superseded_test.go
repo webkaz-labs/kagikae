@@ -98,7 +98,7 @@ func TestDoctorReportsABoundCopyOvertakenByAnotherDirectory(t *testing.T) {
 	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
 	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 {
 		t.Fatalf("exactly the overtaken directory is reported, got %d: %v", len(msgs), msgs)
 	}
@@ -138,14 +138,14 @@ func TestDoctorIsSilentWhileTheBoundCopyIsTheNewest(t *testing.T) {
 	dir, _, credFile := boundStoreForClaudeMain(t, app)
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-FRESH-cccc", now.Add(8*time.Hour)))
 
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a bound copy newer than the snapshot is the healthy case: %v", msgs)
 	}
 	// Positive control: put the snapshot ahead of the store and the same fixture
 	// reports it. This also covers the snapshot as the *winner*, which needs no
 	// attribution of its own — it is the account's own record.
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-STALEISH-dddd", now.Add(30*time.Minute)))
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+dir) {
 		t.Fatalf("a bound copy the snapshot overtook must be reported: %v", msgs)
 	}
@@ -179,13 +179,13 @@ func TestDoctorSaysNothingAboutAStoreItCannotAttribute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a copy kae cannot attribute must not be reported: %v", msgs)
 	}
 	// Positive control, so the silence above is the attribution gate and not a
 	// fixture that never reaches the comparison.
 	writeFile(t, identity, claudeIdentityFile("main-uuid"))
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+dir) {
 		t.Fatalf("with the identity back the same copy is reported: %v", msgs)
 	}
@@ -214,7 +214,7 @@ func TestDoctorSaysNothingAboutAnUndatedBoundCopy(t *testing.T) {
 	)
 	writeFile(t, credFile, undated)
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	if msgs := findChecks(report, constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a copy kae cannot order must not be reported as overtaken: %v", msgs)
 	}
@@ -226,7 +226,7 @@ func TestDoctorSaysNothingAboutAnUndatedBoundCopy(t *testing.T) {
 	// Positive control: the same store with a real deadline behind the snapshot is
 	// reported, so the silence above is the orderable gate.
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-DATED-ffff", now.Add(time.Hour)))
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+dir) {
 		t.Fatalf("a dated copy behind the snapshot is reported: %v", msgs)
 	}
@@ -243,14 +243,14 @@ func TestDoctorDoesNotReportAnEqualDeadlineAsOvertaken(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(4*time.Hour))
 	dir, _, credFile := boundStoreForClaudeMain(t, app)
 
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a directory pinned moments ago must report nothing: %v", msgs)
 	}
 	// Positive control: one second behind is behind. The gap between the two halves
 	// of this test is the whole assertion — a comparison that treated equal as
 	// overtaken would fail the first half, and one that never ran would fail here.
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ASECOND-gggg", now.Add(4*time.Hour-time.Second)))
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+dir) {
 		t.Fatalf("a copy one second behind the snapshot is overtaken: %v", msgs)
 	}
@@ -290,7 +290,7 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
 	writeFile(t, sideCred, claudeOAuthPayload("sk-ant-oat01-SIDE-cccc", now.Add(24*time.Hour)))
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 {
 		t.Fatalf("only main's overtaken directory is reported, got %d: %v", len(msgs), msgs)
 	}
@@ -309,7 +309,7 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	if err := os.Remove(filepath.Join(ahead.StoreDir, ".claude.json")); err != nil {
 		t.Fatal(err)
 	}
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("an unattributable winner proves nothing about the loser: %v", msgs)
 	}
 }
@@ -377,7 +377,7 @@ func TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache(t *testing.T) {
 
 	reported := func(t *testing.T, when string) {
 		t.Helper()
-		msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+		msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 		if len(msgs) != 1 {
 			t.Fatalf("%s: the overtaken directory must still be reported, got %d: %v", when, len(msgs), msgs)
 		}
@@ -418,7 +418,7 @@ func TestSupersededNamesEveryHandleOnALosingSharedStore(t *testing.T) {
 	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-SHARED-ssss", now.Add(4*time.Hour)))
 	hideIdentity(t, alt.StoreDir)
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 3 {
 		t.Fatalf("every directory the snapshot overtook is named, got %d: %v", len(msgs), msgs)
 	}
@@ -454,13 +454,13 @@ func TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy(t *testing.T) {
 	hideIdentity(t, ahead.StoreDir)
 	restoreAlt := hideIdentity(t, alt.StoreDir)
 
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a copy no reader can attribute proves nothing about the loser: %v", msgs)
 	}
 	// Positive control, so the silence above is the attribution guard and not a fixture
 	// that never reaches the comparison: one reader speaking again is enough.
 	restoreAlt()
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+behind.Dir) {
 		t.Fatalf("with one handle labelled again the same copy is reported: %v", msgs)
 	}
@@ -483,7 +483,7 @@ func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
 	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-tttt", now.Add(4*time.Hour)))
 	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-uuuu", now.Add(8*time.Hour)))
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 1 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 1 {
 		t.Fatalf("the fixture must report before the index is broken, got %d: %v", len(msgs), msgs)
 	}
 
@@ -493,10 +493,10 @@ func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	if err := os.MkdirAll(stray, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("an unenumerable pin index is missing evidence, so the group is silent: %v", msgs)
 	}
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckPinIndexIncomplete); len(msgs) != 1 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckPinIndexIncomplete); len(msgs) != 1 {
 		t.Fatalf("the incomplete index must explain the attribution silence: %v", msgs)
 	}
 	if err := os.Remove(stray); err != nil {
@@ -505,10 +505,10 @@ func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	// Positive control: the same fixture speaks again once the index can be read, so the
 	// silence above is the enumeration and not something the stray directory did to the
 	// bindings.
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 1 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); len(msgs) != 1 {
 		t.Fatalf("with the index readable again the same copy is reported: %v", msgs)
 	}
-	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckPinIndexIncomplete); len(msgs) != 0 {
+	if msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckPinIndexIncomplete); len(msgs) != 0 {
 		t.Fatalf("the repaired index must no longer warn: %v", msgs)
 	}
 }
@@ -538,7 +538,7 @@ func TestDoctorComparesBoundCopiesWhenTheSnapshotPayloadIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	msgs := findChecks(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 {
 		t.Fatalf("the two stores are still comparable, got %d: %v", len(msgs), msgs)
 	}
@@ -571,7 +571,7 @@ func TestSupersededMessageNeverCarriesTheToken(t *testing.T) {
 
 	// The fixture must actually reach the state this test is named for, or the
 	// assertions below prove nothing about that path.
-	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); !ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialSuperseded); !ok {
 		t.Fatal("fixture no longer produces credential_superseded; this canary would pass vacuously")
 	}
 	for _, format := range []string{formatText, formatJSON} {

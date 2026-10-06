@@ -107,37 +107,56 @@ var ErrStillRunning = errors.New("still running")
 
 // LaunchWithEnv is Launch for a program kae starts with extra KEY=VALUE entries
 // appended to its environment (the last entry for a key wins, as os/exec
-// documents) and whose output nobody reads. stdin, stdout and stderr are the null
-// device, so a daemon the program leaves running holds no pipe of kae's and kae
-// waits for the program only. The program runs in a session of its own, so the
-// interrupt and hangup of kae's terminal do not reach it, and it is never killed:
-// when ctx ends first, LaunchWithEnv stops waiting and returns -1 and
-// ErrStillRunning, leaving the program running past kae's own exit. A program
-// that has exited by then is reported as exited, and a ctx already ended starts
-// nothing: 1 and ctx's error. Overridable in tests.
-var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
+// documents) and whose report on stdout kae reads once it has exited. stdin and
+// stderr are the null device and stdout an unlinked temporary file, as
+// QueryWithEnv's, so a daemon the program leaves running holds no pipe of kae's
+// and kae waits for the program only. The program runs in a session of its own,
+// so the interrupt and hangup of kae's terminal do not reach it, and it is never
+// killed: when ctx ends first, LaunchWithEnv stops waiting and returns -1 and
+// ErrStillRunning, leaving the program running past kae's own exit, and reads
+// none of its output. A program that has exited by then is reported as exited,
+// with at most QueryMaxOutput bytes of its stdout (empty when they cannot be
+// read). A ctx already ended starts nothing: 1 and ctx's error, as does a
+// temporary file that cannot be made. Overridable in tests.
+var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (stdout string, code int, err error) {
 	if err := ctx.Err(); err != nil {
-		return 1, err
+		return "", 1, err
 	}
-	cmd := exec.Command(name, args...) // Stdin, Stdout, Stderr nil: the null device
+	out, err := unlinkedTemp("kae-launch-*")
+	if err != nil {
+		return "", 1, err
+	}
+	// The program has its own descriptor of the file; kae's is closed on return,
+	// also when the program is left running.
+	defer func() { _ = out.Close() }()
+	cmd := exec.Command(name, args...) // Stdin, Stderr nil: the null device
+	cmd.Stdout = out
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	setExtraEnv(cmd, extraEnv)
 	if err := cmd.Start(); err != nil {
-		return 1, err
+		return "", 1, err
 	}
 	// The goroutine reaps the program whenever it exits, also after kae stopped
 	// waiting, so a kae that lives on leaves no zombie.
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	exited := func(err error) (string, int, error) {
+		code, err := launchResult(err)
+		if err != nil {
+			return "", code, err
+		}
+		data, _ := readQueryOutput(out)
+		return data, code, nil
+	}
 	select {
 	case err := <-done:
-		return launchResult(err)
+		return exited(err)
 	case <-ctx.Done():
 		select { // a program that exited as ctx ended counts as exited
 		case err := <-done:
-			return launchResult(err)
+			return exited(err)
 		default:
-			return -1, ErrStillRunning
+			return "", -1, ErrStillRunning
 		}
 	}
 }
@@ -151,7 +170,8 @@ func setExtraEnv(cmd *exec.Cmd, extraEnv []string) {
 	}
 }
 
-// QueryMaxOutput caps how much of a QueryWithEnv program's stdout is read.
+// QueryMaxOutput caps how much of a QueryWithEnv or LaunchWithEnv program's
+// stdout is read.
 const QueryMaxOutput = 1 << 20
 
 // QueryWithEnv runs a program kae reads the stdout of and that may leave a
@@ -163,19 +183,15 @@ const QueryMaxOutput = 1 << 20
 // leave that process writing into a broken pipe. At most QueryMaxOutput bytes
 // are read, from the start of the file without moving the offset the process
 // shares with kae (readQueryOutput); what the program and anything it leaves
-// running write is not capped, only kae's read of it. code is the exit status, -1 when ctx killed the program, and 1 when
-// it could not be started or its output could not be read. Overridable in tests.
+// running write is not capped, only kae's read of it. code is the exit status,
+// -1 when ctx killed the program, and 1 when it could not be started or its
+// output could not be read. Overridable in tests.
 var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (stdout string, code int) {
-	out, err := os.CreateTemp("", "kae-query-*")
+	out, err := unlinkedTemp("kae-query-*")
 	if err != nil {
 		return "", 1
 	}
 	defer func() { _ = out.Close() }()
-	// Unlinked at once: the open descriptors keep it readable, and nothing is left
-	// on disk whatever the program leaves running.
-	if err := os.Remove(out.Name()); err != nil {
-		return "", 1
-	}
 	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stderr nil: the null device
 	cmd.Stdout = out
 	setExtraEnv(cmd, extraEnv)
@@ -188,6 +204,21 @@ var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, arg
 		return "", 1
 	}
 	return data, code
+}
+
+// unlinkedTemp creates a temporary file for a program's stdout and unlinks it at
+// once: the open descriptors keep it readable, and nothing is left on disk
+// whatever the program leaves running. The caller closes it.
+func unlinkedTemp(pattern string) (*os.File, error) {
+	f, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Remove(f.Name()); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // readQueryOutput reads up to QueryMaxOutput bytes of f from its start with

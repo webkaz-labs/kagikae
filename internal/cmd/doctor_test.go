@@ -37,7 +37,7 @@ func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "stale") })
 
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	if report.SchemaVersion != constants.SchemaVersion {
 		t.Fatalf("schema_version changed: %d", report.SchemaVersion)
 	}
@@ -66,7 +66,7 @@ func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, `{"accessToken":"","refreshToken":"","expiresAt":0}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dead") })
 
-	msg, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialStale)
+	msg, ok := findCheck(buildDoctor(ctx, app, "claude", doctorOptIns{}), constants.CheckCredentialStale)
 	if !ok {
 		t.Fatal("a tombstoned snapshot must be reported stale")
 	}
@@ -84,7 +84,7 @@ func TestDoctorIgnoresRefreshableSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"r","expiresAt":1577836800000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "refreshable") })
 
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckCredentialStale); ok {
 		t.Fatal("refreshable snapshot must not be flagged stale")
 	}
@@ -103,7 +103,7 @@ func TestDoctorReportsSecretOrphan(t *testing.T) {
 	if err := be.Set(ctx, "claude/ghost/claude_ai_oauth", []byte("orphaned")); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckSecretOrphan)
 	if !ok {
 		t.Fatalf("expected a secret_orphan check, got %+v", report.Checks)
@@ -135,7 +135,7 @@ func TestDoctorReportsSecretMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckSecretMissing)
 	if !ok {
 		t.Fatalf("expected a secret_missing check, got %+v", report.Checks)
@@ -152,7 +152,7 @@ func TestDoctorSilentWhenSnapshotPayloadsPresent(t *testing.T) {
 	ctx := context.Background()
 	captureClaude(t, app, "main", mainToken)
 
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckSecretMissing); ok {
 		t.Fatalf("healthy snapshot reported as missing its payload: %q", msg)
 	}
@@ -180,7 +180,7 @@ func TestDoctorIgnoresNonAccountSecretNamespaces(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	if msg, ok := findCheck(report, constants.CheckSecretOrphan); ok {
 		t.Fatalf("no namespace but the account one can be orphaned: %q", msg)
 	}
@@ -201,7 +201,7 @@ func TestDoctorReportsExpiringSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 4*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 
-	report := buildDoctor(ctx, app, "claude", false)
+	report := buildDoctor(ctx, app, "claude", doctorOptIns{})
 	if report.SchemaVersion != constants.SchemaVersion {
 		t.Fatalf("schema_version changed: %d", report.SchemaVersion)
 	}
@@ -235,7 +235,7 @@ func TestDoctorIgnoresHealthySnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 30*24*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
 
-	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "claude", doctorOptIns{}), constants.CheckCredentialExpiring); ok {
 		t.Fatal("a credential with a month left must not be reported as expiring")
 	}
 }
@@ -277,7 +277,7 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 
 			// The fixture must actually reach the state this subtest is named for, or
 			// the redaction assertions below prove nothing about that path.
-			if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), tc.wantCode); !ok {
+			if _, ok := findCheck(buildDoctor(ctx, app, "claude", doctorOptIns{}), tc.wantCode); !ok {
 				t.Fatalf("fixture no longer produces %s; this canary would pass vacuously", tc.wantCode)
 			}
 
@@ -328,7 +328,7 @@ func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckActiveOrphan)
 	if !ok {
 		t.Fatalf("a dangling active account must be reported, got %+v", report.Checks)
@@ -348,14 +348,14 @@ func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckActiveOrphan); ok {
 		t.Fatal("a captured active account must not be reported")
 	}
 	delete(st.Active, constants.ToolClaude)
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckActiveOrphan); ok {
 		t.Fatal("no recorded active account is not a finding")
 	}
 }
@@ -386,7 +386,7 @@ func TestActiveOrphanIsReportedWithNoSecretBackend(t *testing.T) {
 		t.Fatal("this test needs an unavailable backend to be meaningful")
 	}
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckActiveOrphan); !ok {
 		t.Fatalf("active_orphan must survive an unavailable secret backend, got %+v", report.Checks)
 	}
@@ -408,7 +408,7 @@ func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
 		// Invalid JSON: state.Load surfaces a parse error, which nothing else in
 		// doctor looks at (config_valid reflects config.toml only).
 		writeFile(t, app.Paths.StateFile(), "{not json")
-		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		msg, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckActiveOrphan)
 		if !ok {
 			t.Fatal("an unreadable state.json must be reported by something")
 		}
@@ -425,7 +425,7 @@ func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
 		// "found" is false and the error is real, which must not read as "fine".
 		writeFile(t, filepath.Join(app.Paths.AccountDir(constants.ToolClaude, "main"), "account.toml"),
 			"this is not toml = = =")
-		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		msg, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckActiveOrphan)
 		if !ok {
 			t.Fatal("an unreadable active snapshot must be reported, not skipped")
 		}

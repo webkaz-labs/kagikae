@@ -541,3 +541,91 @@ func TestUTF8SplitAcrossFragments(t *testing.T) {
 	}
 	serverErr(t, done)
 }
+
+// CallEach returns each wanted response at its id's index, a missing earlier
+// one as nil, and stops at the last id's response.
+func TestCallEachCollectsTheWantedResponses(t *testing.T) {
+	const initResp = `{"jsonrpc":"2.0","id":1,"result":{"userAgent":"x/0"}}`
+	for _, tc := range []struct {
+		name     string
+		frames   []string
+		wantInit string
+	}{
+		{"both", []string{initResp, `{"jsonrpc":"2.0","method":"n"}`, wantResp}, initResp},
+		// An earlier response arriving after the last is not waited for.
+		{"last first", []string{wantResp, initResp}, ""},
+		{"no first", []string{wantResp}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			socket, done := startServer(t, func(s *srv) error {
+				if err := s.Upgrade(); err != nil {
+					return err
+				}
+				if err := readRequests(s); err != nil {
+					return err
+				}
+				frames := make([][]byte, 0, len(tc.frames))
+				for _, f := range tc.frames {
+					frames = append(frames, text(f))
+				}
+				return s.Send(frames...)
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			got, err := CallEach(ctx, (&net.Dialer{}).DialContext, socket, testReqs, []int{1, 2}, 1<<20)
+			if err != nil {
+				t.Fatalf("CallEach: %v", err)
+			}
+			if string(got[0]) != tc.wantInit || string(got[1]) != wantResp {
+				t.Fatalf("CallEach = %q, %q; want %q, %q", got[0], got[1], tc.wantInit, wantResp)
+			}
+			serverErr(t, done)
+		})
+	}
+}
+
+// A failure after an earlier wanted response still returns that response.
+func TestCallEachKeepsWhatCameBeforeAFailure(t *testing.T) {
+	const initResp = `{"jsonrpc":"2.0","id":1,"result":{}}`
+	socket, done := startServer(t, func(s *srv) error {
+		if err := s.Upgrade(); err != nil {
+			return err
+		}
+		if err := readRequests(s); err != nil {
+			return err
+		}
+		return s.Send(text(initResp))
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got, err := CallEach(ctx, (&net.Dialer{}).DialContext, socket, testReqs, []int{1, 2}, 1<<20)
+	if !errors.Is(err, ErrClosed) {
+		t.Fatalf("CallEach error = %v; want ErrClosed", err)
+	}
+	if len(got) != 2 || string(got[0]) != initResp || got[1] != nil {
+		t.Fatalf("CallEach = %q; want the initialize answer and nil", got)
+	}
+	serverErr(t, done)
+}
+
+// Every return, an argument error and a dial error included, has one entry per
+// wanted id.
+func TestCallEachAlwaysReturnsOneEntryPerID(t *testing.T) {
+	dial := func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("refused") }
+	for _, maxMsg := range []int{0, 1 << 20} {
+		got, err := CallEach(context.Background(), dial, "unused", nil, []int{1, 2}, maxMsg)
+		if err == nil || len(got) != 2 {
+			t.Errorf("maxMsg %d: CallEach = %d entries, %v; want 2 and an error", maxMsg, len(got), err)
+		}
+	}
+}
+
+func TestCallEachNeedsAnID(t *testing.T) {
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		t.Fatal("dialed with no id to wait for")
+		return nil, nil
+	}
+	if _, err := CallEach(context.Background(), dial, "unused", nil, nil, 1<<20); err == nil {
+		t.Fatal("CallEach with no ids succeeded")
+	}
+}

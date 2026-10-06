@@ -570,7 +570,7 @@ func TestRefreshBackedLoginDeadlineInTheBandWarns(t *testing.T) {
 	if !strings.Contains(stderr, "needs an interactive re-login in 9 hour(s)") {
 		t.Errorf("a login deadline hours away must be reported: %q", stderr)
 	}
-	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); !ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "claude", doctorOptIns{}), constants.CheckCredentialExpiring); !ok {
 		t.Error("doctor must report a login deadline inside the band")
 	}
 	_, out := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })

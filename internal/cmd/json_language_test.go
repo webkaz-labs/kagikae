@@ -49,7 +49,7 @@ func TestJSONBytesDoNotDependOnTheLanguage(t *testing.T) {
 	const marker = "日本語の訳: "
 	translate := map[string]string{}
 	var doctorMessage l10n.Msg
-	for _, check := range buildDoctor(ctx, app, "claude", false).Checks {
+	for _, check := range buildDoctor(ctx, app, "claude", doctorOptIns{}).Checks {
 		if check.Code == constants.CheckActiveOrphan {
 			doctorMessage = check.Message
 		}

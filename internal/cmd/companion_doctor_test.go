@@ -21,7 +21,7 @@ func TestDoctorCompanionChecks(t *testing.T) {
 			constants.CompanionGH:  {"GH_TOKEN": ""},
 		},
 	}
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); !ok {
 		t.Error("expected companion_missing for an unstored gh token")
 	}
@@ -45,7 +45,7 @@ func TestDoctorCompanionTokenStoredNoMissing(t *testing.T) {
 	if err := be.Set(context.Background(), companion.SecretRef("main", "gh", "GH_TOKEN"), []byte("ghp_x")); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(context.Background(), app, "", false)
+	report := buildDoctor(context.Background(), app, "", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); ok {
 		t.Error("a stored token plus expected_login metadata must not raise companion_missing")
 	}
@@ -58,7 +58,7 @@ func TestDoctorToolFilterSkipsCompanionChecks(t *testing.T) {
 		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": ""}},
 	}
 	// A tool-filtered report is about one tool; companions are not tools.
-	report := buildDoctor(context.Background(), app, constants.ToolClaude, false)
+	report := buildDoctor(context.Background(), app, constants.ToolClaude, doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); ok {
 		t.Error("tool-filtered doctor must not run companion checks")
 	}

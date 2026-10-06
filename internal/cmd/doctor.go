@@ -50,7 +50,13 @@ func CmdDoctor(ctx context.Context, args []string) int {
 // runDoctor exits 0/1 (health pass/fail) by design, not via the general
 // exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
-	report := buildDoctor(ctx, app, toolFilter, app.resolveTokenDriftOptIn(opts, toolFilter))
+	report := buildDoctor(ctx, app, toolFilter, doctorOptIns{
+		tokenDrift: app.resolveTokenDriftOptIn(opts, toolFilter),
+		// resident_drift's socket half connects to the daemon, which has side
+		// effects on it, so only --yes turns it on (docs/CLI.md § `kae doctor
+		// --json`); doctor does not ask for it.
+		residentSocket: opts.Yes,
+	})
 	if toolFilter != "" {
 		// Naming a tool skips companion bindings and individual bound directories.
 		// The machine-wide pin-index completeness check still runs. A filtered run that prints
@@ -121,7 +127,13 @@ func isYes(line string) bool {
 	return false
 }
 
-func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDrift bool) *doctorReport {
+// doctorOptIns are the doctor checks a run opts into: the networked token drift
+// check, and resident_drift's connection to the managed daemon.
+type doctorOptIns struct {
+	tokenDrift, residentSocket bool
+}
+
+func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctorOptIns) *doctorReport {
 	report := &doctorReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
@@ -199,10 +211,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
 	// A managed daemon holding another account than the live credential, or none: a
-	// local probe of its socket (no subprocess of the tool, no network), so like
-	// the version checks it honors the filter and needs no secret backend. The
-	// `daemon version` half's findings, from the round above, follow it.
-	report.Checks = append(report.Checks, app.residentDriftChecks(ctx, toolFilter)...)
+	// local probe of its socket (no subprocess of the tool, no network), opt-in
+	// because connecting has side effects on the daemon; like the version checks
+	// it honors the filter and needs no secret backend. The `daemon version`
+	// half's findings, from the round above, follow it.
+	if optIns.residentSocket {
+		report.Checks = append(report.Checks, app.residentDriftChecks(ctx, toolFilter)...)
+	}
 	report.Checks = append(report.Checks, daemonVersionChecks...)
 	// state.json naming an account that has no snapshot. Deliberately out here and
 	// not with the credential-health checks: it needs no secret backend, and an
@@ -264,7 +279,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// companionDriftChecks. Runs only when the caller opted in (--yes or the
 	// doctor prompt), since it makes a network call.
 	if toolFilter == "" {
-		report.Checks = append(report.Checks, app.companionTokenDriftChecks(ctx, checkTokenDrift)...)
+		report.Checks = append(report.Checks, app.companionTokenDriftChecks(ctx, optIns.tokenDrift)...)
 	}
 
 	for _, check := range report.Checks {

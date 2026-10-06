@@ -94,18 +94,38 @@ const (
 // impose one, so a ctx with neither deadline nor cancellation waits on a silent
 // peer forever.
 func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID int, maxMsg int) ([]byte, error) {
+	got, err := CallEach(ctx, dial, socket, reqs, []int{wantID}, maxMsg)
+	if err != nil {
+		return nil, err
+	}
+	return got[0], nil
+}
+
+// CallEach is Call for several responses: it returns, at the index of each id in
+// wantIDs, the response with that id, and stops reading once the response to the
+// last of wantIDs has arrived. A response to an earlier id that has not arrived
+// by then is nil. On an error it returns the responses read before it beside the
+// error, so a caller can still use an answer that came before the failure;
+// wantIDs must not be empty. The slice it returns always has one entry per id
+// in wantIDs, whatever the error, so a caller may index it without checking its
+// length.
+func CallEach(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantIDs []int, maxMsg int) ([][]byte, error) {
+	got := make([][]byte, len(wantIDs))
 	if maxMsg <= 0 {
-		return nil, fmt.Errorf("wsrpc: maxMsg must be positive, got %d", maxMsg)
+		return got, fmt.Errorf("wsrpc: maxMsg must be positive, got %d", maxMsg)
+	}
+	if len(wantIDs) == 0 {
+		return got, errors.New("wsrpc: no response id to wait for")
 	}
 	conn, err := dial(ctx, "unix", socket)
 	if err != nil {
-		return nil, fmt.Errorf("wsrpc: dial: %w", err)
+		return got, fmt.Errorf("wsrpc: dial: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
-			return nil, fmt.Errorf("wsrpc: set deadline: %w", err)
+			return got, fmt.Errorf("wsrpc: set deadline: %w", err)
 		}
 	}
 	// Cancellation without a deadline still has to unblock a pending read.
@@ -115,8 +135,7 @@ func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID
 	c := &client{conn: conn, lim: &limitReader{r: conn, n: handshakeLimit}}
 	c.br = bufio.NewReader(c.lim)
 
-	resp, err := c.exchange(reqs, wantID, maxMsg)
-	if err != nil {
+	if err := c.exchange(reqs, wantIDs, got, maxMsg); err != nil {
 		// The only conn deadlines are the ctx deadline and the cancel hook, so a
 		// conn timeout means ctx is done or about to be (its timer may fire a
 		// moment after the conn's).
@@ -129,13 +148,13 @@ func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID
 			}
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("wsrpc: %w", ctxErr)
+			return got, fmt.Errorf("wsrpc: %w", ctxErr)
 		}
-		return nil, err
+		return got, err
 	}
 	// Best-effort normal closure; the answer is already in hand.
 	_ = c.writeFrame(opClose, closePayload(1000))
-	return resp, nil
+	return got, nil
 }
 
 type client struct {
@@ -147,28 +166,40 @@ type client struct {
 	br *bufio.Reader
 }
 
-func (c *client) exchange(reqs [][]byte, wantID int, maxMsg int) ([]byte, error) {
+// exchange sends reqs and stores in got, at the index of its id in wantIDs, each
+// wanted response that arrives, until the one to the last id has.
+func (c *client) exchange(reqs [][]byte, wantIDs []int, got [][]byte, maxMsg int) error {
 	if err := c.handshake(); err != nil {
-		return nil, err
+		return err
 	}
 	// Frames are bounded by maxMsg, not by the handshake budget.
 	c.lim.n = math.MaxInt64
 	for _, req := range reqs {
 		if err := c.writeFrame(opText, req); err != nil {
-			return nil, fmt.Errorf("wsrpc: write request: %w", err)
+			return fmt.Errorf("wsrpc: write request: %w", err)
 		}
 	}
+	last := len(wantIDs) - 1
 	for {
 		msg, err := c.readMessage(maxMsg)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		matched, err := isResponseTo(msg, wantID)
+		id, ok, err := responseID(msg)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if matched {
-			return msg, nil
+		if !ok {
+			continue
+		}
+		for i, want := range wantIDs {
+			if id == int64(want) && got[i] == nil {
+				got[i] = msg
+				if i == last {
+					return nil
+				}
+				break
+			}
 		}
 	}
 }
@@ -399,24 +430,24 @@ func closePayload(code uint16) []byte {
 	return binary.BigEndian.AppendUint16(nil, code)
 }
 
-// isResponseTo reports whether msg is a JSON-RPC response (an id and no
-// method) whose id is the number wantID.
-func isResponseTo(msg []byte, wantID int) (bool, error) {
+// responseID returns the id of msg when it is a JSON-RPC response (an id and no
+// method) whose id is a number; ok is false for anything else.
+func responseID(msg []byte) (id int64, ok bool, err error) {
 	var env struct {
 		ID     json.RawMessage `json:"id"`
 		Method *string         `json:"method"`
 	}
 	if err := json.Unmarshal(msg, &env); err != nil {
-		return false, fmt.Errorf("%w: malformed JSON message (%d bytes)", ErrProtocol, len(msg))
+		return 0, false, fmt.Errorf("%w: malformed JSON message (%d bytes)", ErrProtocol, len(msg))
 	}
 	if env.Method != nil || len(env.ID) == 0 {
-		return false, nil // notification or server request
+		return 0, false, nil // notification or server request
 	}
-	id, err := strconv.ParseInt(string(bytes.TrimSpace(env.ID)), 10, 64)
+	id, err = strconv.ParseInt(string(bytes.TrimSpace(env.ID)), 10, 64)
 	if err != nil {
-		return false, nil // null or string id: not ours
+		return 0, false, nil // null or string id: not ours
 	}
-	return id == int64(wantID), nil
+	return id, true, nil
 }
 
 // limitReader caps how many bytes may still be read; the handshake sets a small

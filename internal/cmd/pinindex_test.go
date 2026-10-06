@@ -300,7 +300,7 @@ func TestDoctorPinIndexIncompleteOutput(t *testing.T) {
 		}
 	}
 	for _, filter := range []string{"", constants.ToolClaude} {
-		report := buildDoctor(context.Background(), app, filter, false)
+		report := buildDoctor(context.Background(), app, filter, doctorOptIns{})
 		if msgs := findChecks(report, constants.CheckPinIndexIncomplete); len(msgs) != 1 {
 			t.Fatalf("filter %q must retain exactly one index finding: %+v", filter, report.Checks)
 		}

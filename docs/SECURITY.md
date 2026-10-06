@@ -167,12 +167,14 @@ child could rotate the live credential unseen — a cached value would be stale.
   bound directory it is about. The check has two frames and both obey that rule:
   the active account's live state, and a bound directory's own store.
 - The `resident_drift` doctor check is a **local probe** of codex's managed daemon
-  under the rules of § Resident processes: it connects to the daemon's Unix socket
-  and runs `codex app-server daemon version`, which the local acceptance observed
+  under the rules of § Resident processes: under `--yes` only, it connects to the
+  daemon's Unix socket, and by default it
+  runs `codex app-server daemon version`, which the local acceptance observed
   to start no daemon when none runs and to answer with IP traffic denied
   ([CLI.md](CLI.md) § `kae doctor --json`). kae makes no network call for it;
-  the daemon was not seen to contact the network to answer in its steady state,
-  and right after a restart that is not measured (§ Resident processes). Neither
+  the daemon itself may connect to answer when its routing cache has no answer,
+  sending the request it also sends on its own when it starts (§ Resident
+  processes). Neither
   account it compares reaches the output.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
@@ -232,11 +234,14 @@ child could rotate the live credential unseen — a cached value would be stale.
   managed daemon's own lifecycle commands), `osascript` and `open -b` (the ChatGPT
   app on macOS) run through
   `internal/runner` with argv arrays and no shell, under the limits of
-  § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
-  stdout and stderr are the null device rather than pipes, because the daemon the
-  restart leaves running would inherit a pipe and hold kae past the restart's
-  30 s limit, and in a session of its own, so the interrupt and hangup of kae's
-  terminal do not reach it; kae never kills it (§ Resident processes);
+  § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin
+  and stderr are the null device and whose stdout is an unlinked temporary file
+  rather than pipes, because the daemon the restart leaves running would inherit a
+  pipe and hold kae past the restart's 30 s limit, and in a session of its own, so
+  the interrupt and hangup of kae's terminal do not reach it; kae never kills it
+  (§ Resident processes), reads at most 1 MiB of its output once it has exited, and
+  takes only `status` and `socketPath` from it; a temporary file kae cannot make
+  stops the restart from starting, which reads `restart_failed`;
   `daemon version` through `runner.QueryWithEnv`, whose stdout is an
   unlinked temporary file rather than a pipe and whose stdin and stderr are the null
   device, for the same reason — a daemon it started would otherwise hold doctor —
@@ -339,7 +344,7 @@ owns the limits on how.
 name, argv or pid.** It does not enumerate processes and does not read another
 process's argv. It observes a resident process only through the daemon probe
 below, `codex app-server daemon version` (doctor only, as `resident_drift`
-describes) and an `osascript` query
+describes), the report `codex app-server daemon restart` prints, and an `osascript` query
 of whether the app is running. It acts on one through exactly two paths:
 
 1. **The owner's lifecycle command.** `codex app-server daemon restart`, run with
@@ -354,12 +359,19 @@ of whether the app is running. It acts on one through exactly two paths:
    it once the quit has been observed. A quit that is not observed within the wait
    is reported, never escalated.
 
-**Observing the daemon** is a read-only local IPC probe, and every limit below is
-part of the contract:
+**Observing the daemon** is a local IPC probe that reads codex's auth state and
+changes none of it. Its `initialize` still has side effects on the daemon — the
+client name of the threads it creates, the user agent of its requests, its
+automatic login ([ADAPTERS.md](ADAPTERS.md) § Resident processes) — so kae connects
+only in a run that may restart the daemon (a `use`, the login flow of `add` or a
+`rollback` that none of `--dry-run`, `--no-restart` and the hook shape suppresses)
+and in `doctor --yes`; every other run only checks that the socket exists. Every
+limit below is part of the contract:
 
 - kae connects only to the socket of the real codex home — the one a switch
   writes and doctor inspects — and only after
-  checking that the socket's resolved path is owned by the current uid.
+  checking that the socket's resolved path is owned by the current uid. It does not
+  connect to the daemon its own restart has just started.
 - kae sends a fixed request sequence and nothing else: `initialize`, the
   `initialized` notification, and `account/read` with `refreshToken: false`. The
   sequence is a constant the command layer cannot change. Methods that change auth
@@ -369,12 +381,23 @@ part of the contract:
 - The answer's email, account id and plan are PII. kae compares the account id in
   memory and writes none of the three to stdout, stderr, logs, JSON reports, caches
   or error messages. A finding names the tool, the daemon or app, and the command
-  to run.
+  to run. The `userAgent` of the answer to `initialize` is read only to tell
+  whether kae became the daemon's first client, and is not written anywhere
+  either.
 - kae makes no network call for the probe. The daemon itself was not seen to
   contact the network to answer `account/read` with `refreshToken: false` in its
   steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running
-  tasks and the quit dialog); right after a restart that is not measured
-  ([ROADMAP.md](ROADMAP.md) § Current work order).
+  tasks and the quit dialog). When its workspace-routing cache has no answer — for
+  example when its own discovery at start-up has not succeeded, as offline, or its
+  auth has changed since — the probe's `initialize` alone makes the daemon send its
+  discovery request to the backend, the request it also sends on its own when it
+  starts. On a 401 the daemon reloads its own stored login and, if that still
+  meets a 401, refreshes it, only while the stored login names the account it
+  holds, as it does for any client. A failing discovery makes `account/read` answer with an error, which
+  kae reads as `unknown` and does not restart on
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+  app's n and an isolated daemon). The probe carries no credential; the daemon
+  sends its own.
 
 **The restart runs outside the per-tool locks.** The locks serialize kae's own
 read-modify-write of the credential store (§ Mutation Safety Rules); restarting the

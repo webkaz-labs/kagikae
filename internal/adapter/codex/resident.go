@@ -109,6 +109,28 @@ func (Codex) ParseDaemonStatus(output []byte) (running bool, socket string, ok b
 	return true, *doc.SocketPath, true
 }
 
+// daemonRestarted is the `status` `codex app-server daemon restart` reports when
+// it has restarted the daemon (docs/ADAPTERS.md § Resident processes).
+const daemonRestarted = "restarted"
+
+// ParseDaemonRestart reads the JSON object `codex app-server daemon restart`
+// prints first when it succeeds, its `status` and `socketPath` only, like
+// ParseDaemonStatus: the status must be the string `restarted` and the socket
+// path an absolute string.
+func (Codex) ParseDaemonRestart(output []byte) (socket string, ok bool) {
+	var doc struct {
+		Status     *string `json:"status"`
+		SocketPath *string `json:"socketPath"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(output)).Decode(&doc); err != nil {
+		return "", false
+	}
+	if doc.Status == nil || *doc.Status != daemonRestarted || doc.SocketPath == nil || !filepath.IsAbs(*doc.SocketPath) {
+		return "", false
+	}
+	return *doc.SocketPath, true
+}
+
 // DesktopApps is the ChatGPT app on macOS and nothing elsewhere.
 func (Codex) DesktopApps() []string {
 	if runtime.GOOS != "darwin" {

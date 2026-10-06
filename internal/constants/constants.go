@@ -286,12 +286,16 @@ const (
 // What the probe of a resident daemon observed, the `observed` field of a
 // switch report's `residents` entry for the `daemon` kind (docs/CLI.md
 // § kae use Semantics, **Resident processes (codex)**): no socket, the daemon
-// holds the compared account, it holds another one, or kae could not read it.
+// holds the compared account, it holds another one, kae could not read it, or,
+// without connecting, its socket exists.
 const (
 	ResidentObservedAbsent  = "absent"
 	ResidentObservedMatches = "matches"
 	ResidentObservedDiffers = "differs"
 	ResidentObservedUnknown = "unknown"
+	// ResidentObservedPresent is a daemon whose socket exists, read by a run that
+	// cannot restart it and so does not connect to it.
+	ResidentObservedPresent = "present"
 	// ResidentObservedRunning is the `observed` of a `desktop_app` entry: the
 	// app is running. A desktop app kae could not tell about reads
 	// ResidentObservedUnknown; one that is not running has no entry.

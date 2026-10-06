@@ -106,10 +106,10 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
   `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
   framing is exercised. The daemon restart goes through `runner.LaunchWithEnv`
-  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), which
-  starts the program in a session of its own and, when its context ends first,
-  stops waiting and leaves it running rather than killing it
-  (`runner.ErrStillRunning`), and
+  ([SECURITY.md](SECURITY.md) § Subprocesses says why its stdout is not a pipe),
+  which reads stdout from an unlinked temporary file, starts the program in a
+  session of its own and, when its context ends first, stops waiting and leaves it
+  running rather than killing it (`runner.ErrStillRunning`), and
   doctor's `daemon version` through `runner.QueryWithEnv`, which reads stdout from a
   file rather than a pipe for the same reason; the app's `osascript` goes through
   `runner.Run` and its relaunch through `runner.Launch`.
@@ -238,7 +238,8 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer,
   telling a daemon that holds no account apart from an answer it cannot read,
   `ParseDaemonStatus(output)` reads whether the status command reports the daemon
-  running and at which socket path, and
+  running and at which socket path, `ParseDaemonRestart(output)` reads whether the
+  restart command reports a restart and at which socket path, and
   `DesktopApps()` lists the bundle ids of desktop apps that embed the tool (non-empty
   on darwin only). The key is compared and never printed. `cmd` owns the probe, the
   restart and the app handling; [ADAPTERS.md](ADAPTERS.md) § Resident processes owns
@@ -293,14 +294,16 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
    backups
 9. release locks
 10. reconcile resident processes (no lock): restart a managed daemon that holds
-    an account other than the one now live, then handle a running desktop app
+    an account other than the one now live and read the restart's report, then
+    handle a running desktop app
 ```
 
-Before step 2, a tool that implements `ResidentHolder` is probed once, read-only
-and without a lock, so the advance notice reaches stderr before anything is
-written. `--dry-run` runs that probe too, since it only reads, gives the same
-notice and adds the `planned` outcomes to its plan; it writes nothing and runs no
-step 10. Step 10 runs once for the whole
+Before step 2, a tool that implements `ResidentHolder` is probed once without a
+lock, so the advance notice reaches stderr before anything is written. Only a run
+that may restart the daemon connects to it; `--dry-run`, `--no-restart` and the
+hook shape only check that its socket exists ([CLI.md](CLI.md) § kae use
+Semantics). `--dry-run` gives the same notice and adds the `planned` outcomes to
+its plan; it writes nothing and runs no step 10. Step 10 runs once for the whole
 transaction, only for tools that implement the capability, and not at all when
 step 7 rolled any tool back. It is outside the locks for the reason
 [SECURITY.md](SECURITY.md) § Resident processes gives; [CLI.md](CLI.md)
@@ -316,7 +319,7 @@ holding more than one legitimate item — agy's `gemini`/`antigravity`, codex's
 per-`CODEX_HOME` `Codex Auth` — is never conflated. No child runs
 during a switch, so the cache never serves a stale live credential.
 
-`--dry-run` runs steps 1–3 and the resident probe, and prints the plan from the
+`--dry-run` runs steps 1–3 and the resident socket check, and prints the plan from the
 artifact specs; it also
 annotates a stale switch target (snapshot past `expiresAt` with no refresh
 token) with a warning, the same `internal/freshness` predicate `doctor` uses.

@@ -2,8 +2,10 @@ package adapter
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // ResidentHolder is implemented by a tool whose resident processes keep the
@@ -27,6 +29,10 @@ type ResidentHolder interface {
 	// false for anything it cannot read, a running daemon without an absolute
 	// socket path included.
 	ParseDaemonStatus(output []byte) (running bool, socket string, ok bool)
+	// ParseDaemonRestart reads the stdout of DaemonSpec.Restart: the socket path
+	// it reports for the daemon it restarted. ok is false for anything that is not
+	// a report of a restart with an absolute socket path.
+	ParseDaemonRestart(output []byte) (socket string, ok bool)
 	// DesktopApps lists the bundle ids of desktop apps that embed the tool;
 	// empty except on darwin (the platform kae runs on, not Env.GOOS: the apps
 	// are reached through Apple Events, which exist only there).
@@ -98,15 +104,36 @@ func (ResidentAccount) String() string { return residentAccountPlaceholder }
 // with `refreshToken: false`. They are constants of this package so the command
 // layer cannot change them; DaemonProbeRequests hands out fresh copies.
 const (
-	daemonInitialize  = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"kae_probe","title":null,"version":"0"},"capabilities":{"experimentalApi":false,"requestAttestation":false}}}`
+	daemonInitialize  = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"` + daemonProbeClientName + `","title":null,"version":"0"},"capabilities":{"experimentalApi":false,"requestAttestation":false}}}`
 	daemonInitialized = `{"jsonrpc":"2.0","method":"initialized"}`
 	daemonAccountRead = `{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}`
 
-	// DaemonProbeResponseID is the JSON-RPC id of the account/read request,
-	// written into daemonAccountRead above; TestDaemonProbeRequestsAreTheFixedReadOnlySequence
-	// fails if the two part.
-	DaemonProbeResponseID = 2
+	// daemonProbeClientName is the probe's clientInfo.name (docs/ADAPTERS.md
+	// § Resident processes, client name).
+	daemonProbeClientName = "kae_probe"
+
+	// DaemonProbeInitializeID and DaemonProbeResponseID are the JSON-RPC ids of
+	// the initialize and account/read requests, written into daemonInitialize and
+	// daemonAccountRead above; TestDaemonProbeRequestsAreTheFixedReadOnlySequence
+	// fails if they part.
+	DaemonProbeInitializeID = 1
+	DaemonProbeResponseID   = 2
 )
+
+// ProbeOriginated reports whether the `result` of the daemon's answer to the
+// probe's initialize says the probe became the daemon's originator: upstream
+// builds its `userAgent` once the originator is settled, starting with
+// "<originator>/" (docs/ADAPTERS.md § Resident processes, client name). Anything
+// it cannot read is false. The user agent is read only for this and never kept.
+func ProbeOriginated(result []byte) bool {
+	var doc struct {
+		UserAgent *string `json:"userAgent"`
+	}
+	if json.Unmarshal(result, &doc) != nil || doc.UserAgent == nil {
+		return false
+	}
+	return strings.HasPrefix(*doc.UserAgent, daemonProbeClientName+"/")
+}
 
 // DaemonProbeRequests returns the fixed probe sequence, freshly allocated on
 // every call so that no caller can alter what another one sends.

@@ -19,8 +19,9 @@ type captureResult struct {
 	Captured bool      `json:"captured"`
 	Actions  []action  `json:"actions"`
 	Warnings []message `json:"warnings"`
-	// Residents is the switch report's `residents`: a daemon entry only when the
-	// daemon differs from the live login or cannot be read (residentsAtCapture).
+	// Residents is the switch report's `residents`, always empty: the capture
+	// changes no login and does not connect to the daemon (docs/CLI.md § kae add
+	// Semantics).
 	Residents []residentEntry `json:"residents"`
 }
 
@@ -40,9 +41,6 @@ func runCapture(ctx context.Context, app *App, opts commonOpts, tool, explicitNa
 	if err != nil {
 		return finish(opts, err)
 	}
-	// The capture leaves the live login as it is, so it restarts nothing; it only
-	// warns about a daemon on another account (docs/CLI.md § kae add Semantics).
-	report.Results[0].Residents = app.residentsAtCapture(ctx, tool)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}

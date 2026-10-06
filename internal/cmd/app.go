@@ -70,6 +70,10 @@ type App struct {
 	// test cannot otherwise fail without a file owned by another user. Nil in
 	// production.
 	euidForTest func() int
+	// sleepForTest replaces the wait between the re-probes that verify a daemon
+	// restart (App.sleep); a test advances its clock (Now) there instead of
+	// sleeping. Nil in production.
+	sleepForTest func(time.Duration)
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.
@@ -611,6 +615,13 @@ type commonOpts struct {
 	// tables keep their Identity and Driver columns (printAccountTable). False
 	// for every other command.
 	Full bool
+	// NoRestart carries `--no-restart` (kae use): a resident daemon that holds
+	// another account gets a warning instead of a restart. ResidentHook marks the
+	// hook shape (`kae use --auto`), which only warns too, even with --yes
+	// (docs/CLI.md § kae use Semantics, **Resident processes (codex)**). Both are
+	// false for every other command.
+	NoRestart    bool
+	ResidentHook bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are

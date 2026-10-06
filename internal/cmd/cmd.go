@@ -322,6 +322,7 @@ const helpFlags = `Flags (structured commands):
   --format text|json    output format
   --dry-run             preview without writing (add --no-login/use/rollback)
   --yes                 answer confirmations yes without asking
+  --no-restart          warn instead of restarting codex's managed daemon (use)
   --no-color            disable color
   --config <path>       explicit config file path
 `

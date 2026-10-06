@@ -255,12 +255,15 @@ them as follows; tools without resident processes are unaffected.
    `unknown` (the socket exists but kae could not read an account from it, or the
    credential it is compared with names none, as an API-key login does). It also
    asks whether the ChatGPT app is running (macOS only) and whether this command
-   changes codex's account at all. The probe only reads, so `--dry-run` runs it
-   too.
+   changes codex's account at all: it does when the live credential and the target's
+   name different accounts. When either names none or cannot be read, byte-identical
+   credentials count as no change and anything else as a change, so a switch kae
+   cannot judge still gets the warning of step 6. The probe only reads, so
+   `--dry-run` runs it too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
    transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
-   it writes nothing and reconciles nothing, and its plan carries the notice and the
-   `planned` outcome.
+   it writes nothing and reconciles nothing, its notice goes to stderr as a real
+   run's does, and its plan carries the `planned` outcome.
 3. **The transaction** runs unchanged ([ARCHITECTURE.md](ARCHITECTURE.md)
    § Switch Transaction), including the teardown of global isolation.
 4. **Restart, after the locks are released.** When the daemon `differs` and nothing
@@ -304,7 +307,11 @@ Nothing is restarted or quit, and a warning names the manual step instead, when:
 
 A daemon that reads `unknown` is never restarted on a guess; kae warns that it
 could not read the daemon's account and names
-`codex app-server daemon restart`. `absent` and `matches` print nothing. A socket
+`codex app-server daemon restart`. `absent` and `matches` print nothing.
+The daemon's `outcome` is `none` for `absent` and `matches` and `warned` for
+`unknown`; for `differs` it is `opted_out` under `--no-restart`, otherwise `warned`
+in the hook shape, otherwise `planned` under `--dry-run`, otherwise what the restart
+of step 4 settled. A socket
 upstream has moved also reads `absent`, so the switch is silent about it;
 `resident_drift`'s `daemon version` half reports that case once it is enabled, and
 until then kae does not report it.

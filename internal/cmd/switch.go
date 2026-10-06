@@ -19,6 +19,9 @@ type switchResult struct {
 	Applied  bool      `json:"applied"`
 	Actions  []action  `json:"actions"`
 	Warnings []message `json:"warnings"`
+	// Residents is what the switch observed and did about the tool's resident
+	// processes; [] for a tool without them.
+	Residents []residentEntry `json:"residents"`
 }
 
 type switchReport struct {
@@ -28,6 +31,9 @@ type switchReport struct {
 	Profile       *string        `json:"profile"`
 	BackupID      string         `json:"backup_id,omitempty"`
 	Results       []switchResult `json:"results"`
+	// pending holds the daemon restarts owed once the transaction has succeeded
+	// and its locks are released (reconcileResidents).
+	pending []pendingRestart
 }
 
 // CmdUse switches now, in global scope (alias: kae u):
@@ -46,16 +52,17 @@ type switchReport struct {
 // at a per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile", "P")
-	var shared, isolated, quiet, auto bool
+	var shared, isolated, quiet, auto, noRestart bool
 	var profileFlag string
 	var useFlags *flag.FlagSet
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
 		useFlags = fs
-		registerUseFlags(fs, &shared, &isolated, &quiet, &auto, &profileFlag)
+		registerUseFlags(fs, &shared, &isolated, &quiet, &auto, &noRestart, &profileFlag)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
+	opts.NoRestart, opts.ResidentHook = noRestart, auto
 	isolatedMode, ok := resolveScope(shared, isolated)
 	if !ok {
 		return constants.ExitUsage
@@ -106,6 +113,7 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 			return finish(opts, err)
 		}
 	}
+	app.reconcileResidents(ctx, report.Results, report.pending)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -166,7 +174,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
 			Applied: !opts.DryRun, Actions: app.actionsOf(plan.Specs),
-			Warnings: plan.Warnings,
+			Warnings: plan.Warnings, Residents: []residentEntry{},
 		}
 		if beErr == nil {
 			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && !w.Empty() {
@@ -193,12 +201,19 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 				}
 			}
 		}
+		// The probe only reads, so a dry-run runs it too and plans what it found;
+		// it owes no restart.
+		app.probeResidentsBeforeSwitch(ctx, be, plans, report.Results, residentModeOf(opts))
 		return report, nil
 	}
 	if beErr != nil {
 		return nil, beErr
 	}
 	warnBeforeApply(report.Results, staleTools)
+	// Steps 1 and 2 of the resident reconcile: probe and notice, before the locks
+	// and the first write. The restarts it owes run in the caller, once the
+	// transaction has succeeded and the deferred releaseLocks below has run.
+	report.pending = app.probeResidentsBeforeSwitch(ctx, be, plans, report.Results, residentModeOf(opts))
 
 	tools := make([]string, len(plans))
 	for i, plan := range plans {

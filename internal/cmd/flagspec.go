@@ -18,11 +18,18 @@ func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool, identity *string
 	fs.StringVar(identity, "identity", "", "record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)")
 }
 
-func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, profile *string) {
+func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto, noRestart *bool, profile *string) {
 	registerScopeFlags(fs, shared, isolated)
 	fs.BoolVar(auto, "auto", false, "apply a resolved profile while preserving global isolated selections")
 	fs.BoolVar(quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
+	registerNoRestartFlag(fs, noRestart)
 	registerProfileFlag(fs, profile)
+}
+
+// registerNoRestartFlag is --no-restart, for every command that reconciles
+// resident processes after a switch (docs/CLI.md § Global Flags).
+func registerNoRestartFlag(fs *flag.FlagSet, noRestart *bool) {
+	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon after the switch; warn instead")
 }
 
 // registerFullFlag is --full and its -f short form, which status, accounts and
@@ -141,15 +148,17 @@ type commandFlagSpec struct {
 var commandFlagSpecs = map[string]commandFlagSpec{
 	"uninstall": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUninstallFlags(fs, new([]string)) }},
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
-	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
-	"status":    {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
-	"accounts":  {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
-	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
-	"open":      {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
-	"cd":        {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
-	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool), new(bool)) }},
-	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
-	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
+	"use": {dryRun: true, extra: func(fs *flag.FlagSet) {
+		registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(bool), new(string))
+	}},
+	"status":   {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
+	"accounts": {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
+	"ls":       {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
+	"open":     {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
+	"cd":       {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
+	"pin":      {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool), new(bool)) }},
+	"unpin":    {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
+	"run":      {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},

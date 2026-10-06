@@ -289,8 +289,8 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
 
 Before step 2, a tool that implements `ResidentHolder` is probed once, read-only
 and without a lock, so the advance notice reaches stderr before anything is
-written. `--dry-run` runs that probe too, since it only reads, and adds the
-notice and the `planned` outcomes to its plan; it writes nothing and runs no
+written. `--dry-run` runs that probe too, since it only reads, gives the same
+notice and adds the `planned` outcomes to its plan; it writes nothing and runs no
 step 10. Step 10 runs once for the whole
 transaction, only for tools that implement the capability, and not at all when
 step 7 rolled any tool back. It is outside the locks for the reason

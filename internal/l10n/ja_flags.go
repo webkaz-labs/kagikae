@@ -26,6 +26,7 @@ var jaFlags = map[string]string{
 	// kae use.
 	"apply a resolved profile while preserving global isolated selections": "グローバルな独立環境の選択を保ったまま、解決したプロファイルを適用",
 	"suppress the success report (for hooks; bare use)":                    "成功の報告の抑止（フック用、引数なしの kae use のみ）",
+	"do not restart codex's managed daemon after the switch; warn instead": "切替の後に codex の管理デーモンを再起動せず、警告だけを表示",
 
 	// Account tables (status, accounts, ls).
 	"show every column of the account tables, Identity and Driver included": "アカウント表の全列を表示（識別子とドライバーを含む）",

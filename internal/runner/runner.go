@@ -6,10 +6,10 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 type Runner interface {
@@ -100,42 +100,30 @@ func Launch(ctx context.Context, name string, args ...string) (int, error) {
 func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = os.Stderr // Stdin and Stdout nil: the null device
-	err := cmd.Run()
-	if err == nil {
-		return 0, nil
-	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode(), nil
-	}
-	return 1, err
+	return launchResult(cmd.Run())
 }
-
-// launchWaitDelay bounds how long LaunchWithEnv waits, once ctx is done and the
-// program is killed, for it to be reaped.
-const launchWaitDelay = time.Second
 
 // LaunchWithEnv is Launch for a program kae starts with extra KEY=VALUE entries
 // appended to its environment (the last entry for a key wins, as os/exec
-// documents), and whose output nobody reads: stdin, stdout and stderr are all
-// the null device. Like Launch it uses files rather than pipes, because a pipe
-// is inherited by whatever the program leaves running — a daemon that a
-// lifecycle command (codex app-server daemon restart) starts — and Wait would
-// not return until that exits, past any deadline on ctx. WaitDelay is a
-// backstop on the wait after ctx is done; with no pipe there is nothing left for
-// it to bound, so no test can show it working (a mutation removing it survives),
-// and this comment stands in for one. It returns the exit code, or an error when the
-// program could not be started or reaped. Overridable in tests.
+// documents) and whose output nobody reads. stdin, stdout and stderr are the null
+// device, so a daemon the program leaves running holds no pipe of kae's and kae
+// waits for the program only. Overridable in tests.
 var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stdout, Stderr nil: the null device
-	cmd.WaitDelay = launchWaitDelay
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}
-	err := cmd.Run()
+	return launchResult(cmd.Run())
+}
+
+// launchResult is the (exit code, error) of a launched program from its Run
+// error: 0 on success, the exit code when it exited non-zero, or an error when
+// it could not be started.
+func launchResult(err error) (int, error) {
 	if err == nil {
 		return 0, nil
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
 		return exitErr.ExitCode(), nil
 	}
 	return 1, err

@@ -203,12 +203,14 @@ To add another tool, capture it separately (for example, `kae add --no-login
 codex main`) and add that tool to the profile with `kae profile set main codex
 main`.
 
-codex's managed daemon keeps the account it started with, so when `kae use`
-leaves it holding another account, kae restarts it after the switch and says so on
-stderr. `--no-restart` turns that into a warning, and so does the mise enter hook
-(`kae use --auto`), even with `--yes`. When the switch changes codex's account, kae
-also warns that codex sessions started before it keep the previous account until
-you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics). `kae doctor`
+codex's managed daemon keeps the account it started with, so when `kae use`,
+`kae add` or `kae rollback` leaves it holding another account, kae restarts it
+afterwards and says so on stderr. `--no-restart` turns that into a warning, and so
+does the mise enter hook (`kae use --auto`), even with `--yes`. `kae add --no-login`
+leaves the live login as it is, so it only warns. When the command changes codex's
+account, kae also warns that codex sessions started before it keep the previous
+account until you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics,
+§ kae add Semantics). `kae doctor`
 warns when the daemon holds another account than the live credential, or when
 kae cannot read which one it holds; doctor itself never restarts it.
 

@@ -85,6 +85,11 @@ func warnMessage(m error) {
 	fmt.Fprintln(os.Stderr, "kae: warning: "+l10n.Render(m))
 }
 
+// noteMessage is warnMessage for a `kae: note:` line.
+func noteMessage(m error) {
+	fmt.Fprintln(os.Stderr, "kae: note: "+l10n.Render(m))
+}
+
 // message is kae text carried as a value (l10n.Msg). It is an alias so the call
 // sites in this package keep their spelling.
 type message = l10n.Msg

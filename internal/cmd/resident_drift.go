@@ -37,20 +37,9 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 			continue // no resident processes: nothing to compare
 		}
 		spec := h.ResidentDaemon(env)
-		// The restart is named for the shell doctor runs in, which may export
-		// another home than the real one the probe looked at (docs/CLI.md § kae use
-		// Semantics, The manual step).
-		var msg message
-		switch app.probeResidentDaemon(ctx, h, spec, liveCredential(ad, env)) {
-		case constants.ResidentObservedDiffers:
-			msg = msgf("%s's managed daemon holds a different account from the live credential, "+
-				"so sessions connected to it keep using that account; to make it use the live account, run: %s",
-				tool, app.residentRestartCommand(h, spec))
-		case constants.ResidentObservedUnknown:
-			msg = msgf("kae cannot read which account %s's managed daemon holds, "+
-				"so it cannot tell whether the daemon uses the live account; if it does not, run: %s",
-				tool, app.residentRestartCommand(h, spec))
-		default:
+		observed := app.probeResidentDaemon(ctx, h, spec, liveCredential(ad, env))
+		msg, ok := app.residentDriftMessage(tool, h, spec, observed)
+		if !ok {
 			continue
 		}
 		checks = append(checks, adapter.Check{
@@ -58,4 +47,26 @@ func (app *App) residentDriftChecks(ctx context.Context, toolFilter string) []ad
 		})
 	}
 	return checks
+}
+
+// residentDriftMessage is the finding for a daemon observed against the live
+// credential: ok is false for absent and matches, which say nothing. doctor's
+// resident_drift and `kae add --no-login` (residentsAtCapture) share it. The
+// restart is named for the shell kae runs in, which may export another home than
+// the real one the probe looked at (docs/CLI.md § kae use Semantics, The manual
+// step).
+func (app *App) residentDriftMessage(tool string, h adapter.ResidentHolder, spec adapter.DaemonSpec,
+	observed string,
+) (message, bool) {
+	switch observed {
+	case constants.ResidentObservedDiffers:
+		return msgf("%s's managed daemon holds a different account from the live credential, "+
+			"so sessions connected to it keep using that account; to make it use the live account, run: %s",
+			tool, app.residentRestartCommand(h, spec)), true
+	case constants.ResidentObservedUnknown:
+		return msgf("kae cannot read which account %s's managed daemon holds, "+
+			"so it cannot tell whether the daemon uses the live account; if it does not, run: %s",
+			tool, app.residentRestartCommand(h, spec)), true
+	}
+	return message{}, false
 }

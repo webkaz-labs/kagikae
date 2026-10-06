@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -85,6 +86,7 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 type restoredItem struct {
 	Tool      string `json:"tool"`
 	Artifacts int    `json:"artifacts"`
+	residentSlot
 }
 
 type rollbackReport struct {
@@ -97,10 +99,7 @@ type rollbackReport struct {
 
 func CmdRollback(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--to")
-	var toID string
-	opts, ok := parseCommon("rollback", flags, true, func(fs *flag.FlagSet) {
-		registerRollbackFlags(fs, &toID)
-	})
+	opts, toID, ok := parseRollbackFlags(flags)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -111,10 +110,25 @@ func CmdRollback(ctx context.Context, args []string) int {
 	return runRollback(ctx, app, opts, toID)
 }
 
+// parseRollbackFlags parses `kae rollback`'s flags, carrying --no-restart in opts.
+func parseRollbackFlags(flags []string) (opts commonOpts, toID string, ok bool) {
+	var noRestart bool
+	opts, ok = parseCommon("rollback", flags, true, func(fs *flag.FlagSet) {
+		registerRollbackFlags(fs, &toID, &noRestart)
+	})
+	opts.NoRestart = noRestart
+	return opts, toID, ok
+}
+
 func runRollback(ctx context.Context, app *App, opts commonOpts, toID string) int {
 	report, err := buildRollback(ctx, app, opts, toID)
 	if err != nil {
 		return finish(opts, err)
+	}
+	// After buildRollback has returned, so its deferred releaseLocks has run, and
+	// never after a failed restore, which returns above.
+	for i := range report.Restored {
+		app.reconcileSlot(ctx, &report.Restored[i].residentSlot)
 	}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
@@ -184,26 +198,50 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 			report.Restored = append(report.Restored, restoredItem{Tool: tool, Artifacts: n})
 		}
 	}
+
+	// The resident probe, the superseded-credential warning and the restore each read
+	// the backup's payloads from kae's own secret store. A backup's payloads do not
+	// change, so one read serves all three, and the pre-rollback backup's writes
+	// invalidate what they touch — the same idiom as the switch.
+	ctx = secret.WithReadCache(ctx)
+
+	// A backend error is fatal only on the real path; a dry-run still prints its plan,
+	// and its probe then reads the backup's credential as unreadable.
+	be, beErr := app.secretBackend()
+	if beErr != nil {
+		if !opts.DryRun {
+			return nil, beErr
+		}
+	} else {
+		be = secret.Cached(be)
+	}
+	// Steps 1 and 2 of the resident reconcile (docs/CLI.md § kae use Semantics): probe
+	// and notice before the locks and the first write, against the credential this
+	// backup puts back. The restart a real run owes rides in the report and runs in
+	// runRollback, once the deferred releaseLocks below has run.
+	mode := residentModeOf(opts)
+	mode.op = residentOpRollback
+	for i := range report.Restored {
+		app.residentsBeforeSwitch(ctx, report.Restored[i].Tool, backupCredential(be, meta, report.Restored[i].Tool),
+			&report.Restored[i].residentSlot, mode)
+	}
 	if opts.DryRun {
 		return report, nil
 	}
 
-	// The pre-rollback backup and the superseded-credential warning read the same live
-	// credential and identity, which on darwin is a `security` subprocess each. No child
-	// process runs during a rollback, so the cache cannot observe a store something else
-	// moved, and the restore's own writes invalidate the entries they touch — the same
-	// idiom as the switch (docs/ARCHITECTURE.md § Caching).
-	ctx = keychain.WithReadCache(ctx)
-
-	be, err := app.secretBackend()
-	if err != nil {
-		return nil, err
-	}
 	locks, err := app.acquireLocks(meta.Tools)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseLocks(locks)
+
+	// The pre-rollback backup and the superseded-credential warning read the same live
+	// credential and identity, which on darwin is a `security` subprocess each. The cache
+	// opens only under the locks, so the probe's lock-free read above is not reused for
+	// the backup. No child process runs during a rollback, so the cache cannot observe a
+	// store something else moved, and the restore's own writes invalidate the entries
+	// they touch — the same idiom as the switch (docs/ARCHITECTURE.md § Caching).
+	ctx = keychain.WithReadCache(ctx)
 
 	st, err := app.loadState()
 	if err != nil {

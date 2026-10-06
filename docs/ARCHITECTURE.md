@@ -559,7 +559,9 @@ Commands are short-lived. Credential read caches opt in through the context:
 - `secret.WithReadCache(ctx)` + `secret.Cached(be)` coalesce reads of **kae's
   own** secret store. The switch path uses it so each target snapshot payload is
   read once — the switch-time stale warning and `applySnapshot` share it instead
-  of reading twice; `Set`/`Delete` invalidate the key. (The `Cached` wrapper
+  of reading twice; `Set`/`Delete` invalidate the key. `kae rollback` uses it
+  from its lock-free resident probe through the restore: a backup's payload does
+  not change, so the probe's read stays valid under the locks. (The `Cached` wrapper
   does not forward `Enumerator`, so `doctor` orphan detection uses the raw
   backend.)
 
@@ -590,8 +592,9 @@ flow), where the child can rotate the live credential behind kae's back and a ca
 value would be stale. `run -s` opens the keychain cache once the child has **exited**
 and while it still holds the per-tool locks, so its re-resolution, recapture, restore
 decision and attribution read one credential and one identity once rather than four
-times; `kae rollback` opens one for the whole mutation, where no child runs at all. The
-distinction is the child, not the command.
+times. `kae rollback` runs no child at all; it opens the keychain cache only once it
+holds its locks, so the backup does not reuse what its lock-free resident probe read. The distinction is the child, not
+the command.
 
 `status` runs each enabled tool's `Detect` concurrently (one goroutine per
 tool, reassembled in canonical `constants.Tools` order, output unchanged), so

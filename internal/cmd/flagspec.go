@@ -12,10 +12,11 @@ import (
 // `kae __complete flags <cmd>`. Defining each flag name exactly once here keeps
 // the completion list from drifting from what the parser actually accepts.
 
-func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool, identity *string) {
+func registerAddFlags(fs *flag.FlagSet, restore, noLogin, noRestart *bool, identity *string) {
 	fs.BoolVar(restore, "restore", false, "restore the previous login after capturing (login flow only)")
 	fs.BoolVar(noLogin, "no-login", false, "snapshot the current live auth state without launching a login flow")
 	fs.StringVar(identity, "identity", "", "record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)")
+	registerNoRestartFlag(fs, noRestart)
 }
 
 // useFlagValues is what `kae use` parses beyond commonOpts; fs is the parsed
@@ -37,7 +38,7 @@ func registerUseFlags(fs *flag.FlagSet, v *useFlagValues) {
 // registerNoRestartFlag is --no-restart, for every command that reconciles
 // resident processes after a switch (docs/CLI.md § Global Flags).
 func registerNoRestartFlag(fs *flag.FlagSet, noRestart *bool) {
-	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon after the switch; warn instead")
+	fs.BoolVar(noRestart, "no-restart", false, "do not restart codex's managed daemon when the daemon holds another account; warn instead")
 }
 
 // registerFullFlag is --full and its -f short form, which status, accounts and
@@ -126,8 +127,9 @@ func registerProfileDefaultFlags(fs *flag.FlagSet, clear *bool) {
 	fs.BoolVar(clear, "clear", false, "clear default_profile")
 }
 
-func registerRollbackFlags(fs *flag.FlagSet, to *string) {
+func registerRollbackFlags(fs *flag.FlagSet, to *string, noRestart *bool) {
 	fs.StringVar(to, "to", "", "backup id to restore (default: most recent restorable)")
+	registerNoRestartFlag(fs, noRestart)
 }
 
 // registerUnpinFlags is the `kae unpin` extra-flag registrar, shared with the
@@ -155,7 +157,7 @@ type commandFlagSpec struct {
 // `kae account --<TAB>` / `kae profile --<TAB>` still offer them.
 var commandFlagSpecs = map[string]commandFlagSpec{
 	"uninstall": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUninstallFlags(fs, new([]string)) }},
-	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
+	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(useFlagValues)) }},
 	"status":    {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
 	"accounts":  {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
@@ -170,7 +172,7 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	}},
 	"completion":   {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool), new(bool)) }},
 	"preservation": {dryRun: true},
-	"rollback":     {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string)) }},
+	"rollback":     {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string), new(bool)) }},
 	"account": {dryRun: true, extra: func(fs *flag.FlagSet) {
 		registerAccountRmFlags(fs, new(bool)) // account rm --force
 	}},

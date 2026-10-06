@@ -56,21 +56,40 @@ type recordedCredential struct {
 // one would leave the account it applied for a single child in the real home for good.
 func (r recordedCredential) Orderable() bool { return r.Present && orderable(r.Info) }
 
-// readRecordedCredential reads what meta recorded for tool's credential. Known ways to
-// come back not-Present or not-Orderable are on those two, and are **not a closed
-// set** — each is a property of the payload rather than a list of causes.
+// backupCredential reads tool's credential payload as meta recorded it: what a
+// rollback to meta puts back, and for `kae add` what was live before the login
+// flow. ok is false when be is nil, the backup has no credential record for tool
+// or records it as absent, or its payload cannot be read. snapshotCredential is its
+// counterpart for what a switch writes.
 //
 // The `err != nil` arm converges with `!found` and cannot be killed on its own: every
 // backend that fails a read reports the payload as absent, so no fixture can reach the
 // arm alone (measured 2026-08-05). It stays as the statement that an unreadable payload
 // is not a credential, and the behaviour it guards is pinned through the pair.
-func readRecordedCredential(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) recordedCredential {
-	rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
-	if !ok || !rec.Present {
-		return recordedCredential{}
+func backupCredential(be secret.Backend, meta backup.Meta, tool string) credentialReader {
+	return func(ctx context.Context) ([]byte, bool) {
+		if be == nil {
+			return nil, false
+		}
+		rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
+		if !ok || !rec.Present {
+			return nil, false
+		}
+		data, found, err := be.Get(ctx, rec.SecretRef)
+		if err != nil || !found {
+			return nil, false
+		}
+		return data, true
 	}
-	data, found, err := be.Get(ctx, rec.SecretRef)
-	if err != nil || !found {
+}
+
+// readRecordedCredential reads what meta recorded for tool's credential. Known ways to
+// come back not-Present or not-Orderable are on those two, and are **not a closed
+// set** — each is a property of the payload rather than a list of causes. The read
+// itself is backupCredential's.
+func readRecordedCredential(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) recordedCredential {
+	data, ok := backupCredential(be, meta, tool)(ctx)
+	if !ok {
 		return recordedCredential{}
 	}
 	return recordedCredential{Info: freshnessOf(tool, data), Present: true}

@@ -30,10 +30,6 @@ run = """
 set -eu
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 . tools/devtools/shell/cache-root.sh
-mkdir -p "$cache_root"
-export GOPATH="$cache_root/gopath"
-export GOCACHE="$cache_root/gocache"
-export GOMODCACHE="$cache_root/gomodcache"
 export STATICCHECK_CACHE="$cache_root/staticcheck"
 go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 '-checks=SA*' ./...
 """
@@ -45,10 +41,6 @@ run = """
 set -eu
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 . tools/devtools/shell/cache-root.sh
-mkdir -p "$cache_root"
-export GOPATH="$cache_root/gopath"
-export GOCACHE="$cache_root/gocache"
-export GOMODCACHE="$cache_root/gomodcache"
 export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
 """
@@ -169,10 +161,6 @@ run = """
 set -eu
 cache_name=kae-audit cache_override=${GOCLI_AUDIT_CACHE_DIR:-}
 . tools/devtools/shell/cache-root.sh
-mkdir -p "$cache_root"
-export GOPATH="$cache_root/gopath"
-export GOCACHE="$cache_root/gocache"
-export GOMODCACHE="$cache_root/gomodcache"
 go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 """
 

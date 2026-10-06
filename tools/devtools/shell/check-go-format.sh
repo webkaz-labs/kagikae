@@ -19,10 +19,6 @@ fi
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 # shellcheck source=cache-root.sh
 . "$script_dir/cache-root.sh"
-mkdir -p "$cache_root"
-export GOPATH="$cache_root/gopath"
-export GOCACHE="$cache_root/gocache"
-export GOMODCACHE="$cache_root/gomodcache"
 module_path="$(go list -m)"
 gofumpt_files="$(go run mvdan.cc/gofumpt@v0.10.0 -l .)"
 goimports_files="$(go run golang.org/x/tools/cmd/goimports@v0.46.0 -local "$module_path" -l .)"

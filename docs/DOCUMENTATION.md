@@ -131,9 +131,8 @@ modules, formatter errors and formatting findings fail the command. Without
 arguments, the existing current-directory behavior is retained for mise and CI.
 Analyzer versions are pinned in the script. Go may download those analyzers and
 populate caches. `GOCLI_LINT_CACHE_DIR` selects their cache root; the default is
-`${XDG_CACHE_HOME:-$HOME/.cache}/kae-lint` (`${TMPDIR:-/tmp}/kae-lint` when neither is
-set), outside `TMPDIR` because macOS prunes it and strips extracted modules.
-The `vuln` task follows the same rule with `GOCLI_AUDIT_CACHE_DIR` and `kae-audit`.
+`${XDG_CACHE_HOME:-$HOME/.cache}/kae-lint`. The `vuln` task uses `GOCLI_AUDIT_CACHE_DIR`
+and `kae-audit`. The full resolution order is in `tools/devtools/shell/cache-root.sh`.
 
 ## Reuse distribution and completion verification
 

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -375,6 +376,18 @@ func (app *App) pinnedGlobalScope() {
 			"which this directory will not see — to re-bind, run: kae pin", kind)
 	}
 	app.applyGlobalScope()
+}
+
+// realHomeEnv is app.Env with the isolation values kae itself set hidden, the
+// view a global switch acts on, without changing app.Env: doctor's
+// bound-directory checks read the binding, and residentRestartCommand compares
+// against the shell's view. It applies applyGlobalScope to a temporary
+// App{Paths, Env}; if applyGlobalScope comes to read or write fields other than
+// those, revisit what the copy carries.
+func (app *App) realHomeEnv() adapter.Env {
+	scoped := App{Paths: app.Paths, Env: app.Env}
+	scoped.applyGlobalScope()
+	return scoped.Env
 }
 
 // applyGlobalScope hides kae-managed isolation env values from everything

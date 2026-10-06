@@ -208,7 +208,9 @@ leaves it holding another account, kae restarts it after the switch and says so 
 stderr. `--no-restart` turns that into a warning, and so does the mise enter hook
 (`kae use --auto`), even with `--yes`. When the switch changes codex's account, kae
 also warns that codex sessions started before it keep the previous account until
-you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics).
+you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics). `kae doctor`
+warns when the daemon holds another account than the live credential, or when
+kae cannot read which one it holds; doctor itself never restarts it.
 
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
 restores a selected restorable global backup. `kae use --dry-run` previews its

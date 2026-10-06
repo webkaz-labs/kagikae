@@ -557,10 +557,12 @@ the ChatGPT app by the rules of § kae use Semantics, with two differences. The 
 flow decides the account, so the probe runs after the flow and after the lock is
 released, and compares the daemon with the account finally left live — the
 restored one under `--restore`, so a restore back to the daemon's own account does
-nothing. An `auth_unchanged` exit reconciles nothing. `kae add --no-login` leaves
-the live login as it is, so it restarts and quits nothing, and only warns when the
-daemon holds another account. `--no-restart` and `--yes` mean what they mean for
-`kae use`.
+nothing. An `auth_unchanged` exit, and a flow whose capture or restore fails,
+reconcile nothing. `kae add --no-login` leaves the live login as it is, so it
+restarts and quits nothing and gives no session warning; it only warns, with
+`doctor`'s `resident_drift` finding, when the daemon holds another account than the
+live login or kae cannot read which one it holds, and `--dry-run` probes and warns
+the same way. `--no-restart` and `--yes` mean what they mean for `kae use`.
 
 **Account name auto-detection.** The account name is optional. With it omitted
 (`kae add <tool>`), kae derives a default from the live login identity: the

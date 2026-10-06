@@ -266,8 +266,8 @@ The others are what `kae` will not do:
   says so when it can prove it ([CLI.md](CLI.md) § `kae rollback --json`) — reversible
   is a property of kae's records, not of an upstream token.
 - One action after a switch is outside that backup-and-rollback promise, because
-  it acts on a process rather than files: `kae use` may restart codex's managed
-  daemon. kae never signals a process, and `--no-restart` turns the restart off
+  it acts on a process rather than files: `kae use`, `kae add` and `kae rollback`
+  may restart codex's managed daemon. kae never signals a process, and `--no-restart` turns the restart off
   ([SECURITY.md](SECURITY.md) § Resident processes, [CLI.md](CLI.md) § kae use
   Semantics).
 - Companion-auth lockstep is **opt-in and auth-only**: kae drives the env/config

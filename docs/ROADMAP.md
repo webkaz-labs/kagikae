@@ -64,7 +64,7 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code that slices 4 to 8 below still have to write. Slice 3, the reconcile in
+the code that slices 5 to 8 below still have to write. Slice 3, the reconcile in
 `kae use`, is the first slice users can see; the contract and the work done on the
 integration branch `feat/resident-reconcile` land on main together, not one before
 the others. The feature then ships stage by stage, so a release cut between slices
@@ -72,12 +72,11 @@ ships only part of what the contract describes: the release notes of each releas
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
 GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
 and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
-from slice 6. Slices 1 to 3 — the WebSocket client (`internal/wsrpc`), the codex
-adapter's `ResidentHolder` with the daemon probe, and the reconcile in `kae use` —
-are done on the integration branch; git log records them. The rest, each its own
-commit and review:
+from slice 6. Slices 1 to 4 — the WebSocket client (`internal/wsrpc`), the codex
+adapter's `ResidentHolder` with the daemon probe, the reconcile in `kae use`, and the
+same reconcile in `kae add` and `kae rollback` — are done on the integration branch;
+git log records them. The rest, each its own commit and review:
 
-4. The same reconcile in `kae add` and `kae rollback`.
 5. The ChatGPT app's confirmation, quit and relaunch. The package
    `internal/desktopapp` (detecting the app, quitting it, waiting and relaunching)
    is done; what remains is wiring it into `kae use`, `kae add` and `kae rollback`

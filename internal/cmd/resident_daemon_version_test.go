@@ -194,6 +194,27 @@ func TestDoctorDaemonVersionRunsByDefault(t *testing.T) {
 	}
 }
 
+// With no daemonStatusQuery, as production builds the App, `daemon version` goes
+// through runner.QueryWithEnv.
+func TestDoctorDaemonVersionWithoutTheSeamUsesTheRunner(t *testing.T) {
+	app, _, _ := daemonVersionFixture(t, true, statusReply(""))
+	app.daemonStatusQuery = nil
+	saved := runner.QueryWithEnv
+	t.Cleanup(func() { runner.QueryWithEnv = saved })
+	var calls []queryCall
+	runner.QueryWithEnv = func(_ context.Context, env []string, name string, args ...string) (string, int) {
+		calls = append(calls, queryCall{env: slices.Clone(env), name: name, args: slices.Clone(args)})
+		return runningAt(movedSocket(t)), 0
+	}
+	rows := doctorDaemonVersionRows(t, app, "")
+	if len(calls) != 1 || calls[0].name != "codex" || !slices.Equal(calls[0].args, []string{"app-server", "daemon", "version"}) {
+		t.Fatalf("runner.QueryWithEnv calls = %+v, want one `codex app-server daemon version`", calls)
+	}
+	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), daemonVersionMoved) {
+		t.Errorf("rows = %+v, want the moved-socket warning", rows)
+	}
+}
+
 // Turned off, doctor never runs `daemon version`, whatever the filter.
 func TestDoctorDaemonVersionDisabledRunsNothing(t *testing.T) {
 	app, _, calls := daemonVersionFixture(t, false, statusReply(runningAt(movedSocket(t))))

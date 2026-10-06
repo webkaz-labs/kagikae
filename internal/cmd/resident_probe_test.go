@@ -317,7 +317,7 @@ func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 		"routing null":            apiKeyReply,
 		"no OpenAI auth required": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"requiresOpenaiAuth":false,"workspaceRouting":null}}`,
 		"id is a number":          `{"jsonrpc":"2.0","id":2,"result":{"workspaceRouting":{"chatgptAccountId":7}}}`,
-		"no account, but routing": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":{"chatgptAccountId":"` +
+		"no account, but routing": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":{"chatgptAccountId":"` +
 			probeAccount + `"}}}`,
 		"empty result": `{"jsonrpc":"2.0","id":2,"result":{}}`,
 	} {

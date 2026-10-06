@@ -1,4 +1,4 @@
-# shellcheck shell=sh disable=SC2034,SC2154
+# shellcheck shell=sh disable=SC2154
 # Sourced by check-go-format.sh and the staticcheck, golangci-lint and vuln mise tasks.
 # Input: cache_name (directory name) and cache_override (the caller's override value,
 # possibly empty). Sets cache_root and prepares it as the Go cache root: creates it

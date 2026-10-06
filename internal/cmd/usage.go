@@ -91,7 +91,9 @@ type usageEntry struct {
 // account — the shared home, which the next switch keeps until the tool
 // rewrites it — stays attributed to the account that owned it at that mtime.
 // A path that is the account's own home (global isolated, or an isolated pin)
-// is attributed to that account directly.
+// is attributed to that account directly. A shared home's reading whose record
+// names another captured account as its creator is vetoed: not shown, not
+// cached, and its remembered copy is dropped (credentialKeys.vetoes).
 //
 // Cache second. An account with no current local file keeps the last reading,
 // until every window in it has reset. A file the tool rewrote so that every
@@ -112,6 +114,7 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 	// particular order, and an older file must not replace a newer one — or a
 	// remote reading taken after the newest file was written.
 	newest := map[toolAccount]usagelimit.Reading{}
+	keys := &credentialKeys{app: app, captured: captured}
 	for tool, candidates := range homes {
 		ad, err := adapter.ForTool(tool)
 		if err != nil {
@@ -136,6 +139,10 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 				continue
 			}
 			key := toolAccount{tool, accountName}
+			if !home.pathOwned && keys.vetoes(ctx, ad, key, reading) {
+				cache.forget(key, reading)
+				continue
+			}
 			if prev, exists := newest[key]; exists && !reading.ModTime.After(prev.ModTime) {
 				continue
 			}
@@ -336,6 +343,97 @@ func (app *App) usageHomes(captured []account.Account, st *state.State) map[stri
 	return out
 }
 
+// credentialKeys reads, at most once per listing and account, the account key
+// a captured credential names. Nothing is read until a veto needs it.
+type credentialKeys struct {
+	app      *App
+	captured []account.Account
+	be       secret.Backend
+	beTried  bool
+	memo     map[toolAccount]credentialKey
+}
+
+type credentialKey struct {
+	key adapter.ResidentAccount
+	ok  bool
+}
+
+// vetoes reports whether a shared home's reading, about to be attributed to
+// owner, was written under another captured account: the record's creator is
+// not owner's account but is another captured account's of the same tool. Any
+// key it cannot read leaves the reading attributed (docs/CLI.md § Subscription
+// windows in listings, Codex veto).
+func (k *credentialKeys) vetoes(ctx context.Context, ad adapter.Adapter, owner toolAccount, reading usagelimit.Reading) bool {
+	creatorOf, ok := ad.(adapter.UsageCreator)
+	if !ok {
+		return false
+	}
+	holder, ok := ad.(adapter.ResidentHolder)
+	if !ok {
+		return false
+	}
+	creator, ok := creatorOf.UsageCreator(reading.Path)
+	if !ok {
+		return false
+	}
+	ownerKey, ok := k.of(ctx, holder, owner)
+	if !ok || ownerKey.Same(creator) {
+		return false
+	}
+	for _, acc := range k.captured {
+		if acc.Tool != owner.tool || acc.Name == owner.account {
+			continue
+		}
+		if other, ok := k.of(ctx, holder, toolAccount{acc.Tool, acc.Name}); ok && other.Same(creator) {
+			return true
+		}
+	}
+	return false
+}
+
+func (k *credentialKeys) of(ctx context.Context, holder adapter.ResidentHolder, who toolAccount) (adapter.ResidentAccount, bool) {
+	if got, ok := k.memo[who]; ok {
+		return got.key, got.ok
+	}
+	if k.memo == nil {
+		k.memo = map[toolAccount]credentialKey{}
+	}
+	key, ok := k.read(ctx, holder, who)
+	k.memo[who] = credentialKey{key: key, ok: ok}
+	return key, ok
+}
+
+func (k *credentialKeys) read(ctx context.Context, holder adapter.ResidentHolder, who toolAccount) (adapter.ResidentAccount, bool) {
+	if !k.beTried {
+		k.beTried = true
+		if be, err := k.app.secretBackend(); err == nil {
+			k.be = be
+		}
+	}
+	if k.be == nil {
+		return adapter.ResidentAccount{}, false
+	}
+	for _, acc := range k.captured {
+		if acc.Tool != who.tool || acc.Name != who.account {
+			continue
+		}
+		for _, name := range acc.ArtifactNames() {
+			art := acc.Artifacts[name]
+			if !art.Present {
+				continue
+			}
+			data, found, err := k.be.Get(ctx, art.SecretRef)
+			if err != nil || !found {
+				continue
+			}
+			if key, ok := holder.CredentialAccount(data); ok {
+				return key, true
+			}
+		}
+	}
+	return adapter.ResidentAccount{}, false
+}
+
 func (app *App) probeUsages(ctx context.Context, captured []account.Account, now time.Time) map[toolAccount]usageView {
 	be, err := app.secretBackend()
 	if err != nil {
@@ -463,7 +561,10 @@ func saveUsageCache(path string, cache usageCache) {
 	cache.SchemaVersion = constants.SchemaVersion
 	cache.normalize()
 	if len(cache.Entries) == 0 {
-		return
+		// Nothing to remember: create no file, but empty one a veto emptied.
+		if _, err := os.Stat(path); err != nil {
+			return
+		}
 	}
 	next, err := patch.EncodeJSON(cache)
 	if err != nil {
@@ -498,6 +599,18 @@ func (c *usageCache) bySource(path string, mod time.Time) (usageEntry, bool) {
 		}
 	}
 	return usageEntry{}, false
+}
+
+// forget drops key's entry when it remembers reading's file at the same mtime,
+// so a vetoed reading cached before the veto does not stay on the account.
+func (c *usageCache) forget(key toolAccount, reading usagelimit.Reading) {
+	for i, entry := range c.Entries {
+		if entry.Tool == key.tool && entry.Account == key.account &&
+			entry.SourcePath == reading.Path && entry.ModTimeUnix == reading.ModTime.UnixNano() {
+			c.Entries = append(c.Entries[:i], c.Entries[i+1:]...)
+			return
+		}
+	}
 }
 
 func (c *usageCache) upsert(entry usageEntry) {

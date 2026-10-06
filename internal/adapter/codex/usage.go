@@ -20,6 +20,10 @@ import (
 // preferred, and this is only the fill-in when that record is absent.
 const usageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
 
+// sessionHead is how much of a rollout file is read from the start for its
+// session_meta line, which comes first and can carry long instructions.
+const sessionHead = 1 << 20
+
 // sessionTail is how much of a rollout file is read from the end. Rate-limit
 // events are written as the session goes, so the latest one is at the tail;
 // reading the whole file would drag a large session into every listing.
@@ -45,6 +49,32 @@ func (Codex) LocalUsage(home string) (usagelimit.Reading, bool) {
 		return usagelimit.Reading{Path: path, ModTime: info.ModTime(), Windows: windows}, true
 	}
 	return usagelimit.Reading{}, false
+}
+
+// UsageCreator reads the first session_meta line's payload.creator_account_id
+// in the rollout's head: the account of the login that created the session, not
+// of each reading in it. Rollouts of 0.154 and earlier have none.
+func (Codex) UsageCreator(path string) (adapter.ResidentAccount, bool) {
+	data, err := readHead(path, sessionHead)
+	if err != nil {
+		return adapter.ResidentAccount{}, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.Contains(line, `"session_meta"`) {
+			continue
+		}
+		var doc struct {
+			Type    string `json:"type"`
+			Payload struct {
+				CreatorAccountID string `json:"creator_account_id"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal([]byte(line), &doc) != nil || doc.Type != "session_meta" {
+			continue
+		}
+		return adapter.NewResidentAccount(doc.Payload.CreatorAccountID)
+	}
+	return adapter.ResidentAccount{}, false
 }
 
 func (Codex) ProbeUsage(payload []byte, now time.Time) (*http.Request, bool) {
@@ -203,6 +233,15 @@ func newestJSONL(dir string, n int) []string {
 	return out
 }
 
+func readHead(path string, n int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, n))
+}
+
 func readTail(path string, n int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -220,3 +259,5 @@ func readTail(path string, n int64) ([]byte, error) {
 	}
 	return io.ReadAll(f)
 }
+
+var _ adapter.UsageCreator = Codex{}

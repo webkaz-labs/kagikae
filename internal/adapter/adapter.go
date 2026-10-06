@@ -152,6 +152,16 @@ type LocalUsage interface {
 	LocalUsage(home string) (usagelimit.Reading, bool)
 }
 
+// UsageCreator is implemented by a tool whose local usage record names the
+// account that created it (codex). UsageCreator reads that account's key from
+// the record at path, a Reading.Path, as the opaque key
+// ResidentHolder.CredentialAccount returns, so the two compare with Same. ok is
+// false when the record names no account. cmd uses it only to veto a shared
+// home's reading (docs/CLI.md § Subscription windows in listings).
+type UsageCreator interface {
+	UsageCreator(path string) (ResidentAccount, bool)
+}
+
 // UsageProber builds a read of the subscription windows from a captured
 // credential payload, for an account whose tool home has no local record.
 // ProbeUsage returns ok=false when the payload has no unexpired access token.

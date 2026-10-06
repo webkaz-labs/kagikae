@@ -55,3 +55,42 @@ func TestUsageHomeIsCodexHome(t *testing.T) {
 		t.Fatalf("UsageHome = %s, want %s", got, want)
 	}
 }
+
+func TestUsageCreatorReadsTheFirstSessionMeta(t *testing.T) {
+	const creator = "acct-creator-0000"
+	dir := t.TempDir()
+	event := `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":1,"window_minutes":300,"resets_at":1800000000}}}}`
+	for _, tc := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"creator", `{"type":"session_meta","payload":{"id":"t","creator_account_id":"` + creator + `"}}` + "\n" + event, true},
+		{"first session_meta wins", `{"type":"session_meta","payload":{"id":"t"}}` + "\n" + `{"type":"session_meta","payload":{"creator_account_id":"` + creator + `"}}`, false},
+		{"no creator (0.154 and earlier)", `{"type":"session_meta","payload":{"id":"t"}}` + "\n" + event, false},
+		{"no session_meta", event + "\n" + `{"type":"response_item","payload":{"text":"session_meta","creator_account_id":"` + creator + `"}}`, false},
+		{"empty creator", `{"type":"session_meta","payload":{"creator_account_id":""}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, tc.name+".jsonl")
+			if err := os.WriteFile(path, []byte(tc.body+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, ok := (Codex{}).UsageCreator(path)
+			if ok != tc.want {
+				t.Fatalf("ok = %v, want %v", ok, tc.want)
+			}
+			if !ok {
+				return
+			}
+			// The key is the one CredentialAccount reads for the same id.
+			same, _ := (Codex{}).CredentialAccount([]byte(`{"tokens":{"account_id":"` + creator + `"}}`))
+			other, _ := (Codex{}).CredentialAccount([]byte(`{"tokens":{"account_id":"acct-other-1111"}}`))
+			if !got.Same(same) || got.Same(other) {
+				t.Fatalf("creator key does not compare with the credential's")
+			}
+		})
+	}
+	if _, ok := (Codex{}).UsageCreator(filepath.Join(dir, "missing.jsonl")); ok {
+		t.Fatal("a missing file names no creator")
+	}
+}

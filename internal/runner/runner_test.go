@@ -349,3 +349,22 @@ func TestQueryWithEnvKeepsTheStartWhileAChildWrites(t *testing.T) {
 		}
 	}
 }
+
+// The stdout file is unlinked before any program runs, so nothing is left on disk
+// whatever the program leaves running, and it stays writable and readable.
+func TestUnlinkedTempLeavesNothingOnDisk(t *testing.T) {
+	f, err := unlinkedTemp("kae-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := os.Stat(f.Name()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("%s is still on disk (%v)", f.Name(), err)
+	}
+	if _, err := f.WriteString("report"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readQueryOutput(f); err != nil || got != "report" {
+		t.Errorf("read back %q, %v", got, err)
+	}
+}

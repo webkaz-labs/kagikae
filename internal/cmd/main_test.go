@@ -67,6 +67,7 @@ func TestMain(m *testing.M) {
 	savedInteractive := runner.RunInteractive
 	savedWithEnv := runner.RunWithEnv
 	savedLaunchWithEnv := runner.LaunchWithEnv
+	savedQueryWithEnv := runner.QueryWithEnv
 	runner.Default = cmdTestRunnerGuard{next: savedDefault}
 	runner.RunInteractive = func(_ context.Context, _ []string, name string, args ...string) (int, error) {
 		panicUnstubbedRunner("runner.RunInteractive", name, args)
@@ -82,11 +83,17 @@ func TestMain(m *testing.M) {
 		return 1, nil
 	}
 
+	runner.QueryWithEnv = func(_ context.Context, _ []string, name string, args ...string) (string, int) {
+		panicUnstubbedRunner("runner.QueryWithEnv", name, args)
+		return "", 1
+	}
+
 	code := m.Run()
 	runner.Default = savedDefault
 	runner.RunInteractive = savedInteractive
 	runner.RunWithEnv = savedWithEnv
 	runner.LaunchWithEnv = savedLaunchWithEnv
+	runner.QueryWithEnv = savedQueryWithEnv
 	patch.SyncFile, patch.SyncDir = savedSyncFile, savedSyncDir
 	os.Exit(code)
 }
@@ -312,6 +319,14 @@ func TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads(t *testing.T
 			},
 			wantSeam: "runner.RunWithEnv",
 			wantArg:  "user",
+		},
+		{
+			name: "query with env",
+			run: func() {
+				runner.QueryWithEnv(context.Background(), []string{"TOKEN=" + secretValue}, "codex", "app-server", "daemon", "version")
+			},
+			wantSeam: "runner.QueryWithEnv",
+			wantArg:  "version",
 		},
 	}
 	for _, tc := range cases {

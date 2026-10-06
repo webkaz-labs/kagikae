@@ -27,9 +27,8 @@ const (
 	daemonMention = "managed daemon"
 )
 
-// loginAs replaces the interactive login flow with one that leaves accountID's
-// ChatGPT login in the live auth.json; an empty accountID leaves auth untouched,
-// and a non-JSON-account payload is written as given.
+// loginAs replaces the interactive login flow with one that writes payload to the
+// live auth.json; an empty payload leaves auth untouched.
 func (f *residentFixture) loginAs(t *testing.T, payload string) {
 	t.Helper()
 	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
@@ -255,7 +254,7 @@ func TestAddNoLoginWarningInJapanese(t *testing.T) {
 	}
 }
 
-// rollbackFixture is a residentFixture after `kae use main` over the profile (both
+// newRollbackFixture is a residentFixture after `kae use main` over the profile (both
 // tools), so the newest backup holds side's codex login and live is main's. The
 // switch ran with no daemon; the caller starts one.
 func newRollbackFixture(t *testing.T) *residentFixture {

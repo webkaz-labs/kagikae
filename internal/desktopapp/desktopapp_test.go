@@ -3,7 +3,10 @@ package desktopapp
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os/exec"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +39,10 @@ type fakeApp struct {
 	pollReply *reply
 	launch    reply
 	launchErr error
+	// onQuit は quit を受けたときに呼ばれる（Apple Event にかかった時間を時計に足す等）。
+	onQuit func()
+	// onStop は quit 後の `is running` が false を返すときに呼ばれる。
+	onStop func()
 
 	quitSeen bool
 }
@@ -50,7 +57,7 @@ func (f *fakeApp) Run(_ context.Context, name string, args ...string) (string, s
 	if name != "osascript" {
 		return "", "unexpected program", 99
 	}
-	if len(args) == 2 && strings.HasSuffix(args[1], " is running") {
+	if reflect.DeepEqual(args, runningArgv) {
 		if !f.quitSeen {
 			if f.runningReply != nil {
 				return f.runningReply.stdout, f.runningReply.stderr, f.runningReply.code
@@ -66,10 +73,17 @@ func (f *fakeApp) Run(_ context.Context, name string, args ...string) (string, s
 			}
 			return "true\n", "", 0
 		}
+		if f.onStop != nil {
+			f.onStop()
+		}
 		return "false\n", "", 0
 	}
-	if strings.Contains(strings.Join(args, "\n"), " to quit") {
-		f.quitSeen = f.quit.code == 0
+	if reflect.DeepEqual(args, quitArgv) {
+		if f.onQuit != nil {
+			f.onQuit()
+		}
+		// -1712 は Apple Event のタイムアウトで、アプリは quit を受けて終了中でありうる。
+		f.quitSeen = f.quit.code == 0 || strings.Contains(f.quit.stderr, "(-1712)")
 		return f.quit.stdout, f.quit.stderr, f.quit.code
 	}
 	return "", "unexpected script", 99
@@ -100,12 +114,23 @@ func (c *fakeClock) controller() Controller {
 
 func newClock() *fakeClock { return &fakeClock{t: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)} }
 
-var runningArgv = []string{"-e", `application id "com.example.app" is running`}
+// id はリテラルの specifier でなく変数で渡す（リテラルはコンパイル時に解決され、
+// アプリが無い Mac では is running すら -1728 で失敗する）。
+var runningArgv = []string{
+	"-e", `set i to "com.example.app"`,
+	"-e", "try",
+	"-e", "set r to application id i is running",
+	"-e", "on error number -1728",
+	"-e", `return "absent"`,
+	"-e", "end try",
+	"-e", "return r",
+}
 
 var quitArgv = []string{
-	"-e", `if application id "com.example.app" is running then`,
+	"-e", `set i to "com.example.app"`,
+	"-e", "if application id i is running then",
 	"-e", "with timeout of 10 seconds",
-	"-e", `tell application id "com.example.app" to quit`,
+	"-e", "tell application id i to quit",
 	"-e", "end timeout",
 	"-e", "end if",
 }
@@ -118,6 +143,8 @@ func TestRunningReadsOnlyTrueAndFalseWithExitZero(t *testing.T) {
 	}{
 		{"running", reply{stdout: "true\n"}, StateRunning},
 		{"not running", reply{stdout: "false\n"}, StateNotRunning},
+		{"not installed", reply{stdout: "absent\n"}, StateNotRunning},
+		{"absent with a failing exit", reply{stdout: "absent\n", code: 1}, StateUnknown},
 		{"true with a failing exit", reply{stdout: "true\n", code: 1}, StateUnknown},
 		{"false with a failing exit", reply{stdout: "false\n", code: 1}, StateUnknown},
 		{"error text", reply{stderr: "execution error: (-1728)", code: 1}, StateUnknown},
@@ -179,7 +206,7 @@ func TestQuitScriptIsWrappedInIsRunning(t *testing.T) {
 		}
 		script = append(script, args[i+1])
 	}
-	if first, last := script[0], script[len(script)-1]; first != `if application id "com.example.app" is running then` || last != "end if" {
+	if script[0] != `set i to "com.example.app"` || script[1] != "if application id i is running then" || script[len(script)-1] != "end if" {
 		t.Fatalf("quit script is not wrapped in an is running test:\n%s", strings.Join(script, "\n"))
 	}
 }
@@ -231,9 +258,105 @@ func TestCancelledContextStopsWaiting(t *testing.T) {
 	c := clock.controller()
 	c.Sleep = func(_ context.Context, d time.Duration) { cancel(); clock.t = clock.t.Add(d) }
 	var got Outcome
-	runner.With(fake, func() { got, _ = c.QuitAndRelaunch(ctx, testBundleID) })
-	if got != OutcomeQuitTimeout || len(fake.calls) != 3 {
-		t.Fatalf("outcome = %v after %d calls", got, len(fake.calls))
+	var err error
+	runner.With(fake, func() { got, err = c.QuitAndRelaunch(ctx, testBundleID) })
+	if !errors.Is(err, context.Canceled) || got != 0 || len(fake.calls) != 2 {
+		t.Fatalf("outcome = %v, err = %v after %d calls", got, err, len(fake.calls))
+	}
+}
+
+// 既に終わった ctx では何も実行しない。
+func TestDoneContextRunsNothing(t *testing.T) {
+	fake := &fakeApp{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var err error
+	runner.With(fake, func() { _, err = newClock().controller().QuitAndRelaunch(ctx, testBundleID) })
+	if !errors.Is(err, context.Canceled) || len(fake.calls) != 0 {
+		t.Fatalf("err = %v, calls %#v", err, fake.calls)
+	}
+}
+
+// 終了を観測した直後に ctx が終わったら open しない。
+func TestContextDoneBeforeRelaunch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fake := &fakeApp{onStop: cancel}
+	var err error
+	runner.With(fake, func() { _, err = newClock().controller().QuitAndRelaunch(ctx, testBundleID) })
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range fake.calls {
+		if c.launch {
+			t.Fatal("relaunched after ctx was done")
+		}
+	}
+}
+
+// quit の実行中に ctx が終わったら（osascript は kill されて失敗する）、失敗の
+// outcome でなく ctx のエラーを返す。
+func TestContextDoneDuringQuit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fake := &fakeApp{quit: reply{code: 1}, onQuit: cancel}
+	var got Outcome
+	var err error
+	runner.With(fake, func() { got, err = newClock().controller().QuitAndRelaunch(ctx, testBundleID) })
+	if !errors.Is(err, context.Canceled) || got != 0 || len(fake.calls) != 1 {
+		t.Fatalf("outcome = %v, err = %v, calls %d", got, err, len(fake.calls))
+	}
+}
+
+// 締切は quit 要求の前から数える。Apple Event に 10 秒かかったら、待機は残り 10 秒。
+func TestDeadlineCountsFromBeforeTheQuit(t *testing.T) {
+	clock := newClock()
+	start := clock.t
+	fake := &fakeApp{stillRunning: -1, onQuit: func() { clock.t = clock.t.Add(10 * time.Second) }}
+	var got Outcome
+	runner.With(fake, func() { got, _ = clock.controller().QuitAndRelaunch(context.Background(), testBundleID) })
+	if got != OutcomeQuitTimeout {
+		t.Fatalf("outcome = %v", got)
+	}
+	if elapsed := clock.t.Sub(start); elapsed != 20*time.Second {
+		t.Fatalf("waited %v in all, want 20s", elapsed)
+	}
+}
+
+// -1712（quit の Apple Event がタイムアウト）は失敗でなく、待機を続ける。
+func TestQuitEventTimeoutKeepsWaiting(t *testing.T) {
+	fake := &fakeApp{quit: reply{stderr: "execution error: timed out. (-1712)\n", code: 1}, stillRunning: 2}
+	var got Outcome
+	var err error
+	runner.With(fake, func() { got, err = newClock().controller().QuitAndRelaunch(context.Background(), testBundleID) })
+	if err != nil || got != OutcomeRelaunched {
+		t.Fatalf("outcome = %v, %v; want relaunched", got, err)
+	}
+}
+
+// 時計か sleep の片方しか注入されていなくても、poll 回数の上限で止まる。
+// ここでは Sleep だけを no-op で注入し、実時計がほぼ進まない状態にする。
+func TestPollCountStopsWithoutAMovingClock(t *testing.T) {
+	fake := &fakeApp{stillRunning: -1}
+	c := Controller{GOOS: "darwin", Sleep: func(context.Context, time.Duration) {}}
+	var got Outcome
+	runner.With(fake, func() { got, _ = c.QuitAndRelaunch(context.Background(), testBundleID) })
+	if got != OutcomeQuitTimeout {
+		t.Fatalf("outcome = %v", got)
+	}
+	if polls := len(fake.calls) - 1; polls != 81 {
+		t.Fatalf("polled %d times, want 81", polls)
+	}
+}
+
+func TestStringNamesConstants(t *testing.T) {
+	for v, want := range map[fmt.Stringer]string{
+		StateUnknown: "StateUnknown", StateRunning: "StateRunning", StateNotRunning: "StateNotRunning", State(9): "State(9)",
+		OutcomeRelaunched: "OutcomeRelaunched", OutcomeRelaunchFailed: "OutcomeRelaunchFailed",
+		OutcomeQuitTimeout: "OutcomeQuitTimeout", OutcomeQuitDenied: "OutcomeQuitDenied",
+		OutcomeQuitFailed: "OutcomeQuitFailed", Outcome(0): "Outcome(0)",
+	} {
+		if got := v.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
+		}
 	}
 }
 
@@ -244,7 +367,7 @@ func TestQuitFailures(t *testing.T) {
 		want Outcome
 	}{
 		{"automation not permitted", reply{stderr: "35:70: execution error: Nicht berechtigt. (-1743)\n", code: 1}, OutcomeQuitDenied},
-		{"other error number", reply{stderr: "execution error: timed out. (-1712)\n", code: 1}, OutcomeQuitFailed},
+		{"other error number", reply{stderr: "execution error: Connection is invalid. (-609)\n", code: 1}, OutcomeQuitFailed},
 		{"-1743 without the parentheses is not read", reply{stderr: "error -17430\n", code: 1}, OutcomeQuitFailed},
 		{"no output", reply{code: 1}, OutcomeQuitFailed},
 	}
@@ -332,4 +455,29 @@ func TestInvalidBundleIDRunsNothing(t *testing.T) {
 	if !validBundleID("com.openai.codex") {
 		t.Fatal("com.openai.codex rejected")
 	}
+}
+
+// 実 osascript で、存在しない id のスクリプトが実行時まで進むことを確かめる
+// （リテラル specifier だとコンパイル時に -1728 で落ち、StateUnknown になった）。
+// 存在しない id なのでアプリを起動も終了もしない。
+func TestRealOsascriptResolvesTheIDAtRunTime(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin only")
+	}
+	if _, err := exec.LookPath("osascript"); err != nil {
+		t.Skip("no osascript")
+	}
+	const missing = "com.example.kae-not-installed"
+	runner.With(runner.OSRunner{}, func() {
+		state, err := Controller{}.Running(context.Background(), missing)
+		if err != nil || state != StateNotRunning {
+			t.Fatalf("Running(%s) = %v, %v; want StateNotRunning", missing, state, err)
+		}
+		// quit スクリプトもコンパイルを通り、is running の評価で -1728 になる
+		// （構文エラーなら -2740 / -2741）。
+		_, stderr, code := runner.Run(context.Background(), "osascript", quitArgs(missing)...)
+		if code == 0 || !strings.Contains(stderr, "(-1728)") {
+			t.Fatalf("quit script on a missing id: code %d, stderr %q", code, stderr)
+		}
+	})
 }

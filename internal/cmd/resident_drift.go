@@ -63,8 +63,8 @@ func (app *App) residentDriftMessage(tool string, h adapter.ResidentHolder, spec
 ) (message, bool) {
 	switch observed {
 	case constants.ResidentObservedDiffers:
-		return msgf("%s's managed daemon holds a different account from the live credential, "+
-			"so sessions connected to it keep using that account; to make it use the live account, run: %s",
+		return msgf("%s's managed daemon is not using the live credential's account, "+
+			"and neither are the sessions connected to it; to make it use the live account, run: %s",
 			tool, app.residentRestartCommand(h, spec)), true
 	case constants.ResidentObservedUnknown:
 		return msgf("kae cannot read which account %s's managed daemon holds, "+

@@ -23,30 +23,30 @@ const (
 func (op residentOp) restartAhead() message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live; kae restarts it now")
+		return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live; kae restarts it now")
 	case residentOpRollback:
-		return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back; kae restarts it after the rollback")
+		return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back; kae restarts it after the rollback")
 	}
-	return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch")
+	return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live; kae restarts it after the switch")
 }
 
 // restartPlanned is restartAhead under --dry-run. The login flow has no --dry-run.
 func (op residentOp) restartPlanned() message {
 	if op == residentOpRollback {
-		return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback would put back; the rollback would restart it")
+		return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback would put back; the rollback would restart it")
 	}
-	return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it")
+	return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this switch would leave live; the switch would restart it")
 }
 
 // optedOut is the warning under --no-restart, naming the manual step.
 func (op residentOp) optedOut(manual string) message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live, and --no-restart leaves it running; to move it to that account, run: %s", manual)
+		return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live, and --no-restart leaves it running; to move it to that account, run: %s", manual)
 	case residentOpRollback:
-		return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: %s", manual)
+		return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: %s", manual)
 	}
-	return msgf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", manual)
+	return msgf("codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", manual)
 }
 
 // session is the fixed warning about codex sessions kae does not look for; dryRun

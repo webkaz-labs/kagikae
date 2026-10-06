@@ -219,7 +219,7 @@ func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manu
 		warnMessage(op.optedOut(manual()))
 	case outcome == constants.ResidentOutcomeWarned:
 		// Only a switch has the hook shape.
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
+		warnf("codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
 	}
 }
 

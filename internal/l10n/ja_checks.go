@@ -59,8 +59,8 @@ var jaChecks = map[string]string{
 	"installed %s %s is past %s, the version kae's behaviour assumptions were last verified against; the layout guards still pass when only the behaviour changed (a field the tool stops maintaining, a cache it stops refreshing), so re-verify the assumptions in docs/VALIDATION.md \"Upstream Behaviour Assumptions\"": "インストール済みの %s %s は、kae が動作の前提を最後に検証したバージョン %s を超えています。動作だけが変わった場合（ツールが保守しなくなった項目や、更新しなくなったキャッシュなど）は、構造の検査は通り続けるため、docs/VALIDATION.md の Upstream Behaviour Assumptions の前提を再検証してください。",
 
 	// resident_drift.go.
-	"%s's managed daemon holds a different account from the live credential, so sessions connected to it keep using that account; to make it use the live account, run: %s": "%s の管理デーモンは現在の認証情報とは別のアカウントを使っているため、デーモンに接続したセッションはそのアカウントを使い続けます。現在のアカウントを使わせるには %s を実行してください。",
-	"kae cannot read which account %s's managed daemon holds, so it cannot tell whether the daemon uses the live account; if it does not, run: %s":                          "kae は %s の管理デーモンが使っているアカウントを読み取れないため、デーモンが現在のアカウントを使っているか判断できません。使っていない場合は %s を実行してください。",
+	"%s's managed daemon is not using the live credential's account, and neither are the sessions connected to it; to make it use the live account, run: %s": "%s の管理デーモンは現在の認証情報のアカウントを使っておらず、デーモンに接続したセッションも同じです。現在のアカウントを使わせるには %s を実行してください。",
+	"kae cannot read which account %s's managed daemon holds, so it cannot tell whether the daemon uses the live account; if it does not, run: %s":           "kae は %s の管理デーモンが使っているアカウントを読み取れないため、デーモンが現在のアカウントを使っているか判断できません。使っていない場合は %s を実行してください。",
 
 	// resident_daemon_version.go.
 	"%s's managed daemon reports that it is running, but not at the socket kae looks for, so %s has changed where it puts the socket and a switch can no longer find the daemon to restart it; after each %s switch, run: %s": "%s の管理デーモンは起動中と報告していますが、kae が探すソケットにはありません。%s がソケットの置き場所を変えたため、切替でデーモンを見つけて再起動できなくなっています。%s を切り替えるたびに %s を実行してください。",

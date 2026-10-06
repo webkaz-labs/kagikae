@@ -242,13 +242,13 @@ var jaWarnings = map[string]string{
 	// resident_reconcile.go.
 	"codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）がどのアカウントを使っているか読み取れませんでした。前のアカウントのままの場合は、%s を実行してください。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live; kae restarts it after the switch": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替の後に kae が再起動します。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替を実行すると、kae が再起動します。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this switch would leave live; the switch would restart it": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替を実行すると、kae が再起動します。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っていますが、enter フック（--auto）では再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、enter フック（--auto）では再起動しません。新しいアカウントに切り替えるには、%s を実行してください。",
 
 	"codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted": "この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 
@@ -265,15 +265,15 @@ var jaWarnings = map[string]string{
 	"codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s": "codex: 管理デーモン（codex app-server daemon）を再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。前のアカウントのままの場合は、%s を実行してください。",
 
 	// resident_wording.go: kae add and kae rollback.
-	"codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live; kae restarts it now": "codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントとは別のアカウントを使っています。kae が再起動します。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live; kae restarts it now": "codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントを使っていません。kae が再起動します。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back; kae restarts it after the rollback": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントとは別のアカウントを使っています。kae rollback の後に kae が再起動します。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back; kae restarts it after the rollback": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントを使っていません。kae rollback の後に kae が再起動します。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback would put back; the rollback would restart it": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントとは別のアカウントを使っています。kae rollback を実行すると、kae が再起動します。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback would put back; the rollback would restart it": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントを使っていません。kae rollback を実行すると、kae が再起動します。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than the one this kae add left live, and --no-restart leaves it running; to move it to that account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。そのアカウントに切り替えるには、%s を実行してください。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live, and --no-restart leaves it running; to move it to that account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この kae add の後に有効なアカウントを使っていませんが、--no-restart が指定されているため再起動しません。そのアカウントに切り替えるには、%s を実行してください。",
 
-	"codex: the managed daemon (codex app-server daemon) holds another account than this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントとは別のアカウントを使っていますが、--no-restart が指定されているため再起動しません。そのアカウントに切り替えるには、%s を実行してください。",
+	"codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: %s": "codex: 管理デーモン（codex app-server daemon）は、この kae rollback で戻すアカウントを使っていませんが、--no-restart が指定されているため再起動しません。そのアカウントに切り替えるには、%s を実行してください。",
 
 	"codex sessions started before this kae add that are not connected to the managed daemon keep the previous account until they are restarted": "この kae add より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 

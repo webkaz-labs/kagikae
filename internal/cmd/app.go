@@ -640,7 +640,7 @@ type commonOpts struct {
 	// for every other command.
 	Full bool
 	// NoRestart carries `--no-restart` (kae use, add and rollback): a resident
-	// daemon that holds another account gets a warning instead of a restart.
+	// daemon not using the account the command leaves live gets a warning instead of a restart.
 	// ResidentHook marks the hook shape (`kae use --auto`), which only warns too,
 	// even with --yes (docs/CLI.md § kae use Semantics, **Resident processes
 	// (codex)**). Both are false for every other command.

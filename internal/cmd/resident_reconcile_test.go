@@ -231,10 +231,10 @@ func assertNoResidentPII(t *testing.T, outputs ...string) {
 }
 
 const (
-	noticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch"
-	noticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it"
-	warnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
-	warnHook       = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
+	noticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live; kae restarts it after the switch"
+	noticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this switch would leave live; the switch would restart it"
+	warnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
+	warnHook       = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
 	warnUnknown    = "kae: warning: codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: codex app-server daemon restart"
 	warnSession    = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted"
 	warnSessionDry = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted"
@@ -595,6 +595,57 @@ func TestUnknownDaemonOnlyWarns(t *testing.T) {
 	}
 }
 
+// The switch's lines that suppress the restart render in Japanese, on a daemon
+// that holds no account: the wording says only that it is not using the account
+// the switch leaves live, which is true of that daemon too.
+func TestUseSuppressedRestartInJapanese(t *testing.T) {
+	explicit := func(ctx context.Context, app *App, o commonOpts) int {
+		return runSwitch(ctx, app, o, constants.ToolCodex, "main")
+	}
+	hook := func(ctx context.Context, app *App, o commonOpts) int {
+		return runUseAuto(ctx, app, o, "main", true)
+	}
+	for _, tc := range []struct {
+		name string
+		opts commonOpts
+		run  func(ctx context.Context, app *App, opts commonOpts) int
+		line string
+	}{
+		{
+			"dry-run",
+			commonOpts{DryRun: true},
+			explicit,
+			"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替を実行すると、kae が再起動します。",
+		},
+		{
+			"no-restart",
+			commonOpts{NoRestart: true},
+			explicit,
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、--no-restart が指定されているため再起動しません。新しいアカウントに切り替えるには、codex app-server daemon restart を実行してください。",
+		},
+		{
+			"auto",
+			commonOpts{ResidentHook: true},
+			hook,
+			"kae: warning: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていませんが、enter フック（--auto）では再起動しません。新しいアカウントに切り替えるには、codex app-server daemon restart を実行してください。",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newResidentFixture(t)
+			f.withDaemon(t, residentSide).answers(noAccountReply)
+			l10ntest.UseJapanese(t)
+			opts := tc.opts
+			opts.Format = formatText
+			code, stdout, stderr := captureBoth(t, func() int { return tc.run(context.Background(), f.app, opts) })
+			mustExit(t, constants.ExitOK, code, stdout+stderr)
+			if !strings.Contains(stderr, tc.line+"\n") {
+				t.Errorf("stderr lacks %q:\n%s", tc.line, stderr)
+			}
+			assertNoResidentPII(t, stdout, stderr)
+		})
+	}
+}
+
 // The notices and the outcome render in Japanese.
 func TestUseResidentsInJapanese(t *testing.T) {
 	f := newResidentFixture(t)
@@ -603,7 +654,7 @@ func TestUseResidentsInJapanese(t *testing.T) {
 	l10ntest.UseJapanese(t)
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatText}, constants.ToolCodex, "main")
 	for _, line := range []string{
-		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントとは別のアカウントを使っています。切替の後に kae が再起動します。",
+		"kae: note: codex: 管理デーモン（codex app-server daemon）は、この切替で有効になるアカウントを使っていません。切替の後に kae が再起動します。",
 		"kae: warning: この切替より前に起動し、管理デーモンに接続していない codex セッションは、再起動するまで前のアカウントを使います。",
 		"kae: note: codex: 管理デーモン（codex app-server daemon）を再起動しました。この切替で有効になったアカウントを使っています。",
 	} {

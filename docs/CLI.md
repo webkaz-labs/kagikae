@@ -124,7 +124,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app — unless `--no-restart`, `--dry-run` or the hook shape (`--auto`) is also given, each of which wins over `--yes` |
-| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon when it holds another account, or quit the ChatGPT app when the command changed codex's account; warn instead (§ kae use Semantics) |
+| `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon when it is not using the account the command leaves live, or quit the ChatGPT app when the command changed codex's account; warn instead (§ kae use Semantics) |
 | `--no-color` | all | disable color in human text output |
 | `--full` / `-f` | `status` (and bare `kae`), `accounts`, `ls` | add the `Identity` and `Driver` columns to the account tables (§ Output Rules) and each `Limit` reading's age (§ Subscription windows in listings); `--json` is unchanged |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
@@ -567,8 +567,8 @@ restored one under `--restore`, so a restore back to the daemon's own account do
 nothing. An `auth_unchanged` exit, and a flow whose capture or restore fails,
 reconcile nothing. `kae add --no-login` leaves the live login as it is, so it
 restarts and quits nothing and gives no session warning; it only warns, with
-`doctor`'s `resident_drift` finding, when the daemon holds another account than the
-live login or kae cannot read which one it holds, and `--dry-run` probes and warns
+`doctor`'s `resident_drift` finding, when the daemon is not using the live login's
+account or kae cannot read which one it holds, and `--dry-run` probes and warns
 the same way. Its JSON result then carries that daemon's entry with outcome
 `warned` (§ `kae use ... --json` (the switch report)). `--no-restart` and `--yes`
 mean what they mean for `kae use`. The notices of `kae add` and `kae rollback` name
@@ -617,7 +617,7 @@ verify both in the tool and its environment before login or capture.
 codex's resident processes — the ChatGPT app, the managed daemon
 (`codex app-server daemon`) and long-running codex sessions — keep running after a
 login and keep the account they started with. `kae use`, `kae add` and
-`kae rollback` restart the daemon themselves when it holds another account, and
+`kae rollback` restart the daemon themselves when it is not using the account they leave live, and
 offer to quit and relaunch the ChatGPT app (§ kae use Semantics); long-running
 sessions still have to be restarted by hand. The manual steps are for a login made
 without kae, a run with `--no-restart` or a hook, and a restart kae reported as

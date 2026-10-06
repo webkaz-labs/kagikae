@@ -43,18 +43,34 @@ func (Codex) CredentialAccount(payload []byte) (adapter.ResidentAccount, bool) {
 }
 
 // ParseDaemonAccount reads workspaceRouting.chatgptAccountId from an
-// account/read result. workspaceRouting is null for a login that is not a
-// ChatGPT one, which reads as no account.
-func (Codex) ParseDaemonAccount(result []byte) (adapter.ResidentAccount, bool) {
+// account/read result. `account` null, with workspaceRouting null or absent, is
+// a daemon that holds no account (held false, ok true): a daemon on 0.160.1
+// answered so after the live credential changed under it (docs/ADAPTERS.md
+// § Resident processes). workspaceRouting is also null for an API-key login,
+// whose account is not null; that, like every other shape, is unreadable.
+func (Codex) ParseDaemonAccount(result []byte) (account adapter.ResidentAccount, held, ok bool) {
 	var doc struct {
-		WorkspaceRouting *struct {
-			ChatGPTAccountID string `json:"chatgptAccountId"`
-		} `json:"workspaceRouting"`
+		Account          json.RawMessage `json:"account"`
+		WorkspaceRouting json.RawMessage `json:"workspaceRouting"`
 	}
-	if err := json.Unmarshal(result, &doc); err != nil || doc.WorkspaceRouting == nil {
-		return adapter.ResidentAccount{}, false
+	if err := json.Unmarshal(result, &doc); err != nil {
+		return adapter.ResidentAccount{}, false, false
 	}
-	return adapter.NewResidentAccount(doc.WorkspaceRouting.ChatGPTAccountID)
+	// encoding/json keeps a null member as the literal, and leaves an absent one empty.
+	if string(doc.Account) == "null" {
+		if len(doc.WorkspaceRouting) == 0 || string(doc.WorkspaceRouting) == "null" {
+			return adapter.ResidentAccount{}, false, true
+		}
+		return adapter.ResidentAccount{}, false, false
+	}
+	var routing *struct {
+		ChatGPTAccountID string `json:"chatgptAccountId"`
+	}
+	if len(doc.WorkspaceRouting) == 0 || json.Unmarshal(doc.WorkspaceRouting, &routing) != nil || routing == nil {
+		return adapter.ResidentAccount{}, false, false
+	}
+	account, ok = adapter.NewResidentAccount(routing.ChatGPTAccountID)
+	return account, ok, ok
 }
 
 // daemonRunning is the `status` `codex app-server daemon version` reports for a

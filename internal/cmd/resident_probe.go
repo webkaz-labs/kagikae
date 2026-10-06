@@ -61,12 +61,14 @@ func (app *App) euid() int {
 // constants.ResidentObserved* tokens:
 //
 //   - absent: the declared socket, or the target it links to, does not exist;
-//   - unknown: the socket exists but kae could not read an account from it or
-//     from the credential — the resolved socket is not a socket or not owned
-//     by the current user (no connection is made then), the connection is
-//     refused (a socket left behind by a daemon that exited), the exchange
-//     failed or timed out, or an answer or the credential names no account;
-//   - matches / differs: both accounts were read.
+//   - unknown: the socket exists but kae could not read the daemon's answer, or
+//     the credential names no account — the resolved socket is not a socket or
+//     not owned by the current user (no connection is made then), the
+//     connection is refused (a socket left behind by a daemon that exited), the
+//     exchange failed or timed out, the answer is unreadable, or the credential
+//     is an API-key login;
+//   - matches / differs: the credential's account was read and the daemon
+//     answered; a daemon that answers it holds no account differs.
 //
 // It sends adapter.DaemonProbeRequests and nothing else, and no account, email
 // or plan leaves it: the result is the token only.
@@ -106,11 +108,11 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 	if json.Unmarshal(msg, &reply) != nil || jsonMember(reply.Error) || !jsonMember(reply.Result) {
 		return constants.ResidentObservedUnknown
 	}
-	got, ok := h.ParseDaemonAccount(reply.Result)
+	got, held, ok := h.ParseDaemonAccount(reply.Result)
 	if !ok {
 		return constants.ResidentObservedUnknown
 	}
-	if got.Same(want) {
+	if held && got.Same(want) {
 		return constants.ResidentObservedMatches
 	}
 	return constants.ResidentObservedDiffers

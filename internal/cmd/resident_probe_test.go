@@ -31,6 +31,11 @@ func accountReadReply(accountID string) string {
 		accountID + `","backendOrigin":"https://chatgpt.com","accountRoutingOverride":"NO_CONSTRAINT"}}}`
 }
 
+// noAccountReply is the answer a daemon on 0.160.1 gave once the live
+// credential changed under it: it holds no account (docs/ADAPTERS.md § Resident
+// processes).
+const noAccountReply = `{"jsonrpc":"2.0","id":2,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}}`
+
 // fakeDaemon is a codex managed daemon on a real Unix socket (wsrpctest): it
 // completes the WebSocket upgrade, records every client message, and answers
 // the third one with its current answer, after a notification as the real
@@ -124,17 +129,31 @@ func probe(t *testing.T, app *App, ad adapter.Adapter, h adapter.ResidentHolder)
 func TestProbeResidentDaemonMatchesAndDiffers(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		daemonAccount, want string
+		name, answer, want string
 	}{
-		{probeAccount, constants.ResidentObservedMatches},
-		{probeOtherAcct, constants.ResidentObservedDiffers},
+		{"same account", accountReadReply(probeAccount), constants.ResidentObservedMatches},
+		{"other account", accountReadReply(probeOtherAcct), constants.ResidentObservedDiffers},
+		// No account is not the live one: it differs, rather than reading unknown.
+		{"no account", noAccountReply, constants.ResidentObservedDiffers},
 	} {
 		app, ad, h := probeFixture(t, probeAccount)
-		d := startFakeDaemon(t, accountReadReply(tc.daemonAccount))
+		d := startFakeDaemon(t, tc.answer)
 		linkSocket(t, app, h, d.socket)
 		if got := probe(t, app, ad, h); got != tc.want {
-			t.Errorf("daemon on %s: probe = %q, want %q", tc.daemonAccount, got, tc.want)
+			t.Errorf("daemon with %s: probe = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// An API-key login names no account to compare with, so a daemon that holds
+// none is unknown, not differs or matches.
+func TestProbeResidentDaemonNoAccountAgainstAnAPIKeyIsUnknown(t *testing.T) {
+	t.Parallel()
+	app, ad, h := probeFixture(t, "")
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "auth.json"), `{"OPENAI_API_KEY":"sk-fixture"}`)
+	linkSocket(t, app, h, startFakeDaemon(t, noAccountReply).socket)
+	if got := probe(t, app, ad, h); got != constants.ResidentObservedUnknown {
+		t.Errorf("probe = %q, want unknown", got)
 	}
 }
 
@@ -292,6 +311,9 @@ func TestProbeResidentDaemonUnreadableAnswersAreUnknown(t *testing.T) {
 		"no workspaceRouting": `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"` + probeEmail + `"}}}`,
 		"routing null":        `{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey"},"workspaceRouting":null}}`,
 		"id is a number":      `{"jsonrpc":"2.0","id":2,"result":{"workspaceRouting":{"chatgptAccountId":7}}}`,
+		"no account, but routing": `{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":{"chatgptAccountId":"` +
+			probeAccount + `"}}}`,
+		"empty result": `{"jsonrpc":"2.0","id":2,"result":{}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

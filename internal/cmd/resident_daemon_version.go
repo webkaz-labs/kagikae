@@ -10,11 +10,11 @@ import (
 )
 
 // residentDaemonVersionEnabled turns on resident_drift's `daemon version` half
-// (docs/CLI.md § `kae doctor --json`, resident_drift). It stays false until the
-// acceptance records that `codex app-server daemon version` starts no daemon when
-// none runs and makes no network call (docs/ROADMAP.md § Current work order); the
-// switch is this one line. A var so tests can turn it on.
-var residentDaemonVersionEnabled = false
+// (docs/CLI.md § `kae doctor --json`, resident_drift), on by default since the
+// local acceptance observed that `codex app-server daemon version` starts no
+// daemon when none runs and answers with IP traffic denied (docs/ACCEPTANCE.md).
+// A var so a test can turn it off and prove the half then runs nothing.
+var residentDaemonVersionEnabled = true
 
 // daemonVersionProbe is one `daemon version` run planned for the probe round.
 type daemonVersionProbe struct {

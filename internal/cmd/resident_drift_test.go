@@ -30,8 +30,9 @@ func residentDriftRows(report *doctorReport) []adapter.Check {
 	return rows
 }
 
-// The four probe answers through the registered check: differs and unknown warn
-// on codex and name the restart; absent and matches are silent.
+// The four observations through the registered check: differs (another account,
+// or none) and unknown warn on codex and name the restart; absent and matches
+// are silent.
 func TestDoctorResidentDriftByObservation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -41,6 +42,7 @@ func TestDoctorResidentDriftByObservation(t *testing.T) {
 		{"absent", "", ""},
 		{"matches", accountReadReply(probeAccount), ""},
 		{"differs", accountReadReply(probeOtherAcct), "holds a different account from the live credential"},
+		{"differs, no account", noAccountReply, "holds a different account from the live credential"},
 		{"unknown", residentDaemonError, "kae cannot read which account codex's managed daemon holds"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

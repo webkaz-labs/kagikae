@@ -8,7 +8,8 @@ import (
 )
 
 // residentDriftChecks reports a managed daemon of the real tool home that holds
-// another account than the live credential, or whose account kae cannot read
+// another account than the live credential, or none while the credential names
+// one, or whose account kae cannot read
 // (docs/CLI.md § `kae doctor --json`, resident_drift, which owns the contract).
 // This is the socket half: it probes the daemon's socket only, through
 // probeResidentDaemon, which only reads. `absent` (no daemon) and `matches` are

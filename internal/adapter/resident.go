@@ -19,9 +19,11 @@ type ResidentHolder interface {
 	// either store. ok is false when the payload names no account.
 	CredentialAccount(payload []byte) (ResidentAccount, bool)
 	// ParseDaemonAccount reads the account key from the `result` member of the
-	// daemon's answer to the last request in DaemonProbeRequests. ok is false for
+	// daemon's answer to the last request in DaemonProbeRequests. held is false,
+	// with ok true, when the daemon answers that it holds no account, which the
+	// caller compares as another account than any credential's; ok is false for
 	// anything it cannot read: missing fields, wrong types, malformed JSON.
-	ParseDaemonAccount(result []byte) (ResidentAccount, bool)
+	ParseDaemonAccount(result []byte) (account ResidentAccount, held, ok bool)
 	// ParseDaemonStatus reads the stdout of DaemonSpec.Status: whether the daemon
 	// reports itself running and, when it does, the socket path it reports. ok is
 	// false for anything it cannot read, a running daemon without an absolute

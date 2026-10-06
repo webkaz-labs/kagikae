@@ -31,6 +31,7 @@ func tokenDriftApp(t *testing.T, data config.CompanionData, ghToken string) *App
 		Companions: map[string]config.CompanionData{constants.CompanionGH: data},
 	}
 	app.Env.LookPath = func(string) (string, error) { return "/usr/bin/gh", nil }
+	noManagedDaemon(t) // the LookPath above puts codex on PATH too
 	app.Env.Getenv = func(k string) string {
 		if k == "GH_TOKEN" {
 			return ghToken

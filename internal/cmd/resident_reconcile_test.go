@@ -286,6 +286,41 @@ func TestUseRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	assertNoResidentPII(t, stdout, stderr)
 }
 
+// A daemon that answers it holds no account, as one on 0.160.1 did after a
+// switch, differs from a target that names one: kae restarts it, and
+// --no-restart leaves it running with the opted_out warning.
+func TestUseRestartsADaemonHoldingNoAccount(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		opts     commonOpts
+		outcome  string
+		restarts int
+		line     string
+	}{
+		{"restart", commonOpts{}, constants.ResidentOutcomeRestarted, 1, noteRestarted},
+		{"no-restart", commonOpts{NoRestart: true}, constants.ResidentOutcomeOptedOut, 0, warnOptedOut},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newResidentFixture(t)
+			f.withDaemon(t, residentSide).answers(noAccountReply)
+			if tc.restarts != 0 {
+				f.stubRestart(t, f.restartTo(t))
+			}
+			opts := tc.opts
+			opts.Format = formatJSON
+			stdout, stderr := f.use(t, context.Background(), opts, constants.ToolCodex, "main")
+			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, tc.outcome), sessionEntry)
+			if f.restartCount() != tc.restarts {
+				t.Errorf("restarted %d times, want %d", f.restartCount(), tc.restarts)
+			}
+			if !strings.Contains(stderr, tc.line+"\n") {
+				t.Errorf("stderr lacks %q:\n%s", tc.line, stderr)
+			}
+			assertNoResidentPII(t, stdout, stderr)
+		})
+	}
+}
+
 // The probe compares the daemon with the account the switch leaves live, not
 // the one live before it: a daemon already on the target matches and is left
 // alone, though it differs from the live login at probe time.
@@ -499,9 +534,10 @@ func TestRestartFailureKeepsTheSwitch(t *testing.T) {
 // restart_unverified; the waits are 250 ms apart and stop at 5 s.
 func TestRestartUnverifiedAfterTheWait(t *testing.T) {
 	for name, after := range map[string]func(d *fakeDaemon){
-		"still differs": func(*fakeDaemon) {},
+		"still differs":    func(*fakeDaemon) {},
+		"holds no account": func(d *fakeDaemon) { d.answers(noAccountReply) },
 		"unreadable": func(d *fakeDaemon) {
-			d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":null,"workspaceRouting":null}}`)
+			d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey"},"workspaceRouting":null}}`)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

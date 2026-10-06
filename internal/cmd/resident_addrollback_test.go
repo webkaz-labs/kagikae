@@ -104,6 +104,26 @@ func TestAddRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	assertNoResidentPII(t, stdout, stderr)
 }
 
+// A daemon that holds no account differs from the login the add leaves live,
+// and is restarted.
+func TestAddRestartsADaemonHoldingNoAccount(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide).answers(noAccountReply)
+	f.stubRestart(t, f.restartTo(t))
+	f.loginAs(t, codexChatGPTAuth(residentMain, "codex-login-token"))
+	code, stdout, stderr := f.add(t, commonOpts{Format: formatText}, false)
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if f.restartCount() != 1 {
+		t.Fatalf("restarted %d times, want once", f.restartCount())
+	}
+	for _, line := range []string{addNoticeRestart, addNoteRestarted} {
+		if !strings.Contains(stderr, line+"\n") {
+			t.Errorf("stderr lacks %q:\n%s", line, stderr)
+		}
+	}
+	assertNoResidentPII(t, stdout, stderr)
+}
+
 // --restore compares the daemon with the login it restores, not the one the flow
 // made: back on the daemon's own account it does nothing, and on another one it
 // restarts. Either way the account is unchanged, so there is no session warning.
@@ -375,6 +395,24 @@ func TestRollbackRestartsADaemonHoldingAnotherAccount(t *testing.T) {
 	}
 	if strings.Index(stderr, rbNoticeRestart) > strings.Index(stderr, rbNoteRestarted) {
 		t.Errorf("the outcome precedes the notice:\n%s", stderr)
+	}
+	assertNoResidentPII(t, stdout, stderr)
+}
+
+// A daemon that holds no account differs from the credential the backup puts
+// back, and is restarted after the rollback.
+func TestRollbackRestartsADaemonHoldingNoAccount(t *testing.T) {
+	f := newRollbackFixture(t)
+	f.withDaemon(t, residentMain).answers(noAccountReply)
+	f.stubRestart(t, f.restartTo(t))
+	code, stdout, stderr := f.rollback(t, commonOpts{Format: formatJSON})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	want := []residentEntry{daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestarted), sessionEntry}
+	if got := rollbackResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, want) {
+		t.Errorf("codex residents = %+v, want %+v", got, want)
+	}
+	if f.restartCount() != 1 {
+		t.Fatalf("restarted %d times, want once", f.restartCount())
 	}
 	assertNoResidentPII(t, stdout, stderr)
 }

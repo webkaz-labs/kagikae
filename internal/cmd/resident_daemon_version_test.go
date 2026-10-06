@@ -52,6 +52,16 @@ func daemonVersionFixture(t *testing.T, enabled bool,
 	return app, h, calls
 }
 
+// noManagedDaemon answers every `daemon version` as codex does when no daemon
+// runs, exit 1 (docs/ACCEPTANCE.md), for doctor tests about other checks whose
+// LookPath puts codex on PATH, now that the half runs by default.
+func noManagedDaemon(t *testing.T) {
+	t.Helper()
+	saved := runner.QueryWithEnv
+	t.Cleanup(func() { runner.QueryWithEnv = saved })
+	runner.QueryWithEnv = func(context.Context, []string, string, ...string) (string, int) { return "", 1 }
+}
+
 // statusReply answers `daemon version` with output and exit code 0.
 func statusReply(output string) func(context.Context) (string, int) {
 	return func(context.Context) (string, int) { return output, 0 }
@@ -180,11 +190,21 @@ func TestDoctorDaemonVersionRunsAgainstTheRealHome(t *testing.T) {
 	}
 }
 
-// Off by default: doctor never runs `daemon version`, whatever the filter.
-func TestDoctorDaemonVersionDisabledByDefault(t *testing.T) {
-	if residentDaemonVersionEnabled {
-		t.Fatal("the daemon version half is enabled before the acceptance records that it is safe")
+// On by default since the local acceptance (docs/ACCEPTANCE.md): doctor runs
+// `daemon version` without a test turning the half on, and reports a moved socket.
+func TestDoctorDaemonVersionRunsByDefault(t *testing.T) {
+	app, _, calls := daemonVersionFixture(t, residentDaemonVersionEnabled, statusReply(runningAt(movedSocket(t))))
+	rows := doctorDaemonVersionRows(t, app, "")
+	if len(*calls) != 1 {
+		t.Fatalf("daemon version ran %d time(s) by default, want 1", len(*calls))
 	}
+	if len(rows) != 1 || !strings.Contains(rows[0].Message.Error(), daemonVersionMoved) {
+		t.Errorf("rows = %+v, want the moved-socket warning", rows)
+	}
+}
+
+// Turned off, doctor never runs `daemon version`, whatever the filter.
+func TestDoctorDaemonVersionDisabledRunsNothing(t *testing.T) {
 	app, _, calls := daemonVersionFixture(t, false, statusReply(runningAt(movedSocket(t))))
 	for _, filter := range []string{"", constants.ToolCodex} {
 		if rows := doctorDaemonVersionRows(t, app, filter); len(rows) != 0 {

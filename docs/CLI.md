@@ -281,13 +281,18 @@ them as follows; tools without resident processes are unaffected.
    process does not make this one's restart look unverified. The outcome is
    `restarted` when the daemon then holds the live account, `restart_unverified`
    when it does not or cannot be read, and `restart_failed` when the command fails
-   or has not finished within 30 s.
+   or has not finished within 30 s. Upstream's restart waits for a task running in a
+   client connected to the daemon to finish instead of interrupting it, so a task
+   that runs past 30 s makes it `restart_failed`; that warning says the restart may
+   be waiting for running tasks to finish and that the daemon may restart after
+   they do.
    A failed or unverified restart is a warning: the switch stays applied and is not
    rolled back, and the exit code stays `0`. When the transaction failed or rolled
    any tool back, there is no restart. A profile switch reconciles once, after the
    whole transaction. What a restart was seen to do to clients connected to the
-   daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
-   what is still open is in [ROADMAP.md](ROADMAP.md) § Current work order.
+   daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips
+   and [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and
+   the quit dialog; what is still open is in [ROADMAP.md](ROADMAP.md) § Current work order.
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
    `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `.
@@ -300,7 +305,9 @@ them as follows; tools without resident processes are unaffected.
    250 ms, at most 20 s counted from the quit request, so an app slow to answer it
    shortens the wait rather than extending it), and relaunches it only once it has
    stopped. It never forces the quit: an app still running at the deadline is left
-   running with a warning. When macOS refuses kae permission to control the app,
+   running with a warning that the app may be asking to confirm the quit (an app
+   with a running task does) and that kae does not relaunch it, so an app that
+   quits after the deadline has to be opened again by hand. When macOS refuses kae permission to control the app,
    kae says how to quit and reopen it by hand. An app that is not installed counts
    as not running. When kae cannot tell whether the app is running at all, it
    warns and does nothing to it. Without `--yes`, a run that cannot ask — no

@@ -284,8 +284,11 @@ them as follows; tools without resident processes are unaffected.
    A failed or unverified restart is a warning: the switch stays applied and is not
    rolled back, and the exit code stays `0`. When the transaction failed or rolled
    any tool back, there is no restart. A profile switch reconciles once, after the
-   whole transaction. What a restart interrupts in clients connected to the daemon
-   has not been measured ([ROADMAP.md](ROADMAP.md) § Current work order).
+   whole transaction. A codex TUI connected to the daemon kept working across a
+   restart and moved to the new account; what a restart does to a task running in a
+   connected client has not been measured ([ACCEPTANCE.md](ACCEPTANCE.md) § Second
+   part: switch round trips (2026-10-06), [ROADMAP.md](ROADMAP.md) § Current work
+   order).
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
    `ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: `.

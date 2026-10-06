@@ -7,10 +7,10 @@ import "time"
 // sentences that speak of the command differ; the daemon's unreadable account and
 // an unverified restart read the same for all three.
 //
-// Each method spells out every sentence in full rather than splicing the command's
-// name into one: a catalog key is the literal format string at its sink, so each
-// op needs a whole sentence of its own for the Japanese lookup to find. The switch
-// sentences are S4's, unchanged.
+// No method splices the command's name into a sentence: a catalog key is the
+// literal format string at its sink, so each op gets a whole sentence of its own
+// for the Japanese lookup to find, or, as in restartFailed, a whole message of its
+// own spliced into a shared sentence.
 type residentOp int
 
 const (
@@ -66,35 +66,36 @@ func (op residentOp) session(dryRun bool) message {
 }
 
 // restartTimedOut, restartNotRun and restartExited are the warnings of a restart
-// command that did not succeed; the command's own result is kept.
+// command that did not succeed (restartFailed).
 func (op residentOp) restartTimedOut(limit time.Duration, manual string) message {
-	switch op {
-	case residentOpLogin:
-		return msgf("codex: codex app-server daemon restart did not finish within %s; kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
-	case residentOpRollback:
-		return msgf("codex: codex app-server daemon restart did not finish within %s; kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
-	}
-	return msgf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", limit, manual)
+	return op.restartFailed(msgf("codex app-server daemon restart did not finish within %s", limit), manual)
 }
 
 func (op residentOp) restartNotRun(err error, manual string) message {
-	switch op {
-	case residentOpLogin:
-		return msgf("codex: could not run codex app-server daemon restart (%v); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
-	case residentOpRollback:
-		return msgf("codex: could not run codex app-server daemon restart (%v); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
-	}
-	return msgf("codex: could not run codex app-server daemon restart (%v); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", err, manual)
+	return op.restartFailed(msgf("could not run codex app-server daemon restart (%v)", err), manual)
 }
 
 func (op residentOp) restartExited(code int, manual string) message {
+	return op.restartFailed(msgf("codex app-server daemon restart failed (exit %d)", code), manual)
+}
+
+// restartFailed says what went wrong with the restart, that the command's own
+// result is kept, and how to retry. It splices messages, not names, so each part
+// renders in the selected language from its own literal catalog key.
+func (op residentOp) restartFailed(cause message, manual string) message {
+	return msgf("codex: %s; %s, and the managed daemon may not be using the live account yet; to retry, run: %s",
+		cause, op.resultKept(), manual)
+}
+
+// resultKept says that the command's result stands although the restart failed.
+func (op residentOp) resultKept() message {
 	switch op {
 	case residentOpLogin:
-		return msgf("codex: codex app-server daemon restart failed (exit %d); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
+		return msgf("kae add's result is kept")
 	case residentOpRollback:
-		return msgf("codex: codex app-server daemon restart failed (exit %d); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
+		return msgf("kae rollback's result is kept")
 	}
-	return msgf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: %s", code, manual)
+	return msgf("the switch is kept")
 }
 
 // restarted is the note of a verified restart.

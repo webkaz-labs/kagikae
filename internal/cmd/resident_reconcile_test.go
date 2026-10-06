@@ -240,7 +240,7 @@ const (
 	warnSessionDry = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted"
 	noteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live"
 	warnUnverfied  = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: codex app-server daemon restart"
-	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart"
+	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
 
 // The everyday case: the daemon holds the live account (side), the switch leaves
@@ -843,7 +843,7 @@ func TestRestartTimesOut(t *testing.T) {
 	}
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
-	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
+	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
 	if deadline <= 0 || deadline > 50*time.Millisecond {
@@ -978,7 +978,7 @@ func TestRestartThatCannotStart(t *testing.T) {
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
 	if !strings.Contains(stderr, "kae: warning: codex: could not run codex app-server daemon restart (") ||
-		!strings.Contains(stderr, "); the switch is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart\n") {
+		!strings.Contains(stderr, "); the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n") {
 		t.Errorf("stderr lacks the could-not-run warning:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "failed (exit") {

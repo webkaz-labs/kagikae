@@ -36,14 +36,14 @@ const (
 	addWarnOptedOut  = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this kae add left live, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
 	addWarnSession   = "kae: warning: codex sessions started before this kae add that are not connected to the managed daemon keep the previous account until they are restarted"
 	addNoteRestarted = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae add left live"
-	addWarnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae add's result is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart"
+	addWarnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae add's result is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 	rbNoticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back; kae restarts it after the rollback"
 	rbNoticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback would put back; the rollback would restart it"
 	rbWarnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) is not using the account this kae rollback puts back, and --no-restart leaves it running; to move it to that account, run: codex app-server daemon restart"
 	rbWarnSession    = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon keep the previous account until they are restarted"
 	rbWarnSessionDry = "kae: warning: codex sessions started before this kae rollback that are not connected to the managed daemon would keep the previous account until they are restarted"
 	rbNoteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae rollback put back"
-	rbWarnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae rollback's result is kept, and the managed daemon may still not be using the live account; to retry, run: codex app-server daemon restart"
+	rbWarnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); kae rollback's result is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart"
 )
 
 // loginAs replaces the interactive login flow with one that writes payload to the

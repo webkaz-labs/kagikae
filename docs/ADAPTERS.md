@@ -419,6 +419,20 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   kae then restarts it and reports `restart_unverified` when the restarted daemon
   answers the same. [SECURITY.md](SECURITY.md) § Resident
   processes owns the limits.
+- **client name** `kae_probe`, the `clientInfo.name` of kae's `initialize`. A
+  daemon takes the originator of the threads it creates from the first client
+  that initializes it, once per process, and kae probes the daemon as soon as its
+  restart returns, so kae's probe can be that first client: threads created
+  afterwards through the restarted daemon then carry `kae_probe` as their
+  originator, in the rollout and in codex's state, until the daemon next
+  restarts. That is a known limit, and was observed
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
+  [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+  app's n and an isolated daemon). kae does not name itself after another client
+  to avoid it: a client's name would pass kae off as that client and attribute
+  threads to it that it did not start, and upstream's reserved names that leave
+  the originator unchanged (`codex_app_server_daemon`, `codex-backend`) are the
+  daemon's and the backend's own, not an interface offered to other clients.
 - **account key** the credential's account id, `tokens.account_id` in either
   store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
   printed.

@@ -290,6 +290,10 @@ them as follows; tools without resident processes are unaffected.
    forces the daemon down, and then starts the new daemon itself
    ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
    quit dialog), so a command killed midway could leave no daemon running. A
+   command kae left running was seen to go on and start the new daemon after kae
+   returned, interrupting a task that ran past the grace
+   ([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+   app's n and an isolated daemon). A
    `restart_pending` restart is not probed again. A failed, pending or unverified
    restart is a warning: the switch stays applied and is not rolled back, and the
    exit code stays `0`. When the transaction failed or rolled any tool back, there
@@ -298,7 +302,9 @@ them as follows; tools without resident processes are unaffected.
    [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
    [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
    quit dialog; what is still open is in [ROADMAP.md](ROADMAP.md) § Current work
-   order.
+   order. Threads created through a daemon kae restarted can carry kae's probe
+   name as their originator, a known limit [ADAPTERS.md](ADAPTERS.md) § Resident
+   processes describes.
 5. **The ChatGPT app**, when it is running and this command changed codex's account:
    kae asks on the terminal, default No:
    `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `. The
@@ -2629,12 +2635,16 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 
   No socket with no running daemon, and a matching account, are silent. Neither
   account is printed. Doctor never restarts anything. The socket half, which only
-  reads, runs by default. The daemon was not seen to contact the network to answer
-  `account/read` in its steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part:
-  idle reads, running tasks and the quit dialog); right after a restart it is not
-  measured, and the acceptance result for that decides whether the half stays
-  default or becomes opt-in like `companion_token_drift`
-  ([ROADMAP.md](ROADMAP.md) § Current work order).
+  reads, runs by default. kae itself connects to nothing but the socket. The daemon
+  answers `account/read` from a workspace-routing cache held in its memory, and
+  was not seen to contact the network for it in its steady state. While that cache
+  is empty — right after the daemon starts, after its discovery failed, offline — a
+  client's `initialize` alone makes the daemon send its discovery request to the
+  backend, the request it also sends on its own when it starts, and offline
+  `account/read` answers with an error, which reads `unknown`
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
+  quit dialog; [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
+  limit, the app's n and an isolated daemon).
 - `upstream_version`: the installed tool's `--version` is a newer **major or
   minor** than the version its adapter's behaviour assumptions were verified
   against (`VerifiedVersion()`). A patch bump is silent by design, an older

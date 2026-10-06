@@ -171,8 +171,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   and runs `codex app-server daemon version`, which the local acceptance observed
   to start no daemon when none runs and to answer with IP traffic denied
   ([CLI.md](CLI.md) § `kae doctor --json`). kae makes no network call for it;
-  the daemon was not seen to contact the network to answer in its steady state,
-  and right after a restart that is not measured (§ Resident processes). Neither
+  the daemon itself connects to answer only while its routing cache is empty, as
+  it does on its own when it starts (§ Resident processes). Neither
   account it compares reaches the output.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
@@ -373,8 +373,14 @@ part of the contract:
 - kae makes no network call for the probe. The daemon itself was not seen to
   contact the network to answer `account/read` with `refreshToken: false` in its
   steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running
-  tasks and the quit dialog); right after a restart that is not measured
-  ([ROADMAP.md](ROADMAP.md) § Current work order).
+  tasks and the quit dialog). While its workspace-routing cache is empty — right
+  after it starts, after its discovery failed, offline — the probe's `initialize`
+  alone makes the daemon send its discovery request to the backend, the request
+  it also sends on its own when it starts, and offline `account/read` answers with
+  an error, which kae reads as `unknown` and does not restart on
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
+  app's n and an isolated daemon). The probe carries no credential; the daemon
+  sends its own.
 
 **The restart runs outside the per-tool locks.** The locks serialize kae's own
 read-modify-write of the credential store (§ Mutation Safety Rules); restarting the

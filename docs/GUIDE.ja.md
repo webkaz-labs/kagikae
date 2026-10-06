@@ -353,8 +353,11 @@ codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`�
 数値と出典は [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit dialog）。
 kae は再起動を 30 秒まで待ち、終わらなければ待つのをやめて警告します。再起動のコマンドは
 止めず、kae とは別のセッションで実行するので、Ctrl-C で kae を止めても、端末を閉じても止まりません。
-その後に再起動が続くかは確かめられていないので、続かない場合は、警告に表示されるコマンドを
-実行してください。
+kae が待つのをやめた後も再起動は続き、新しいデーモンを起動することを観測しました。上限の時間を
+過ぎても終わらないタスクは中断されます（[ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the app's n and an isolated daemon）。
+新しいデーモンが起動していない場合は、警告に表示されるコマンドを実行してください。
+kae が再起動したデーモンでその後に作られるスレッドには、作成元（originator）として kae の確認用の名前
+`kae_probe` が記録されることがあります。既知の制限です（[ADAPTERS.md](ADAPTERS.md) § Resident processes）。
 コマンドで codex のアカウントが変わった場合は、管理デーモンに接続していない古い codex の
 セッションが、再起動するまで前のアカウントのままであることを警告します。以前から開いたままの
 `codex resume` などは、切り替える前に終了してください。開いたままにすると、そのセッションが

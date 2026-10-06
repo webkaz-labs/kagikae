@@ -133,6 +133,7 @@ Analyzer versions are pinned in the script. Go may download those analyzers and
 populate caches. `GOCLI_LINT_CACHE_DIR` selects their cache root; the default is
 `${XDG_CACHE_HOME:-$HOME/.cache}/kae-lint` (`${TMPDIR:-/tmp}/kae-lint` when neither is
 set), outside `TMPDIR` because macOS prunes it and strips extracted modules.
+The `vuln` task follows the same rule with `GOCLI_AUDIT_CACHE_DIR` and `kae-audit`.
 
 ## Reuse distribution and completion verification
 

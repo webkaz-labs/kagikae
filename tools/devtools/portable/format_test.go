@@ -73,6 +73,16 @@ esac
 			}
 		})
 	}
+	t.Run("relative-script-path", func(t *testing.T) {
+		t.Setenv("FORMAT_CASE", "clean")
+		result, err := (commandrun.Command{Name: "bash", Args: []string{"shell/check-go-format.sh", "--portable", target}, Dir: filepath.Join(source, "tools/devtools"), Timeout: time.Minute}).Run(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ExitCode != 0 || !strings.Contains(result.Stdout, "go format check: ok") {
+			t.Fatalf("exit %d: %s%s", result.ExitCode, result.Stdout, result.Stderr)
+		}
+	})
 	if err := os.Remove(filepath.Join(target, "go.mod")); err != nil {
 		t.Fatal(err)
 	}

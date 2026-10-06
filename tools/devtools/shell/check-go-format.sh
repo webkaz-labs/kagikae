@@ -3,6 +3,7 @@
 # Usage: check-go-format.sh [--portable ROOT]. Explicit targets are single modules;
 # ignore inherited workspace/Go flags and require their own go.mod.
 set -eu
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 if [ "${1:-}" = --portable ] && [ "$#" -eq 2 ]; then
   cd -- "$2"
   if [ ! -f go.mod ]; then
@@ -17,7 +18,7 @@ elif [ "$#" -ne 0 ]; then
 fi
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 # shellcheck source=cache-root.sh
-. "$(dirname -- "$0")/cache-root.sh"
+. "$script_dir/cache-root.sh"
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"

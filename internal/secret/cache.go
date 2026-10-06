@@ -21,8 +21,8 @@ import (
 // it opens both of its caches after the child exits, never around it — so read this
 // as a rule about the window, not as naming a command that may not use the cache.
 //
-// The mutex guards against a future concurrent caller sharing one cached
-// context (today's only caller, the switch path, is single-goroutine).
+// The mutex is load-bearing: a listing (`accountReadings`) shares one cached
+// context across the goroutines that read snapshot payloads concurrently.
 type readCache struct {
 	mu    sync.Mutex
 	items map[string]cacheEntry

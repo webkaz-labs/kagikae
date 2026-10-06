@@ -561,7 +561,9 @@ Commands are short-lived. Credential read caches opt in through the context:
   read once — the switch-time stale warning and `applySnapshot` share it instead
   of reading twice; `Set`/`Delete` invalidate the key. `kae rollback` uses it
   from its lock-free resident probe through the restore: a backup's payload does
-  not change, so the probe's read stays valid under the locks. (The `Cached` wrapper
+  not change, so the probe's read stays valid under the locks. `kae status`, `kae ls`
+  and `kae accounts` (`accountReadings`) use it so the freshness column and the
+  usage veto and probe share each snapshot read. (The `Cached` wrapper
   does not forward `Enumerator`, so `doctor` orphan detection uses the raw
   backend.)
 

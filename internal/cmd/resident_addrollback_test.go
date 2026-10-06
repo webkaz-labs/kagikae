@@ -500,6 +500,41 @@ func TestAddAndRollbackParseNoRestart(t *testing.T) {
 	}
 }
 
+// --restore whose restore fails reconciles nothing, though the flow left another
+// account live than the daemon holds.
+func TestAddRestoreFailureDoesNotReconcile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only directory")
+	}
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	codexHome := filepath.Join(f.app.Env.Home, ".codex")
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		writeFile(t, filepath.Join(codexHome, "auth.json"), codexChatGPTAuth(residentMain, "codex-login-token"))
+		// The capture only reads; the restore has to write auth.json here.
+		if err := os.Chmod(codexHome, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		return 0, nil
+	})
+	t.Cleanup(func() { _ = os.Chmod(codexHome, 0o700) })
+	code, stdout, stderr := f.add(t, commonOpts{Format: formatText}, true)
+	if code == constants.ExitOK {
+		t.Fatalf("the restore succeeded through a read-only home:\n%s%s", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "restoring the previous login failed") {
+		t.Fatalf("the failure was not the restore's:\n%s", stderr)
+	}
+	if f.restartCount() != 0 {
+		t.Error("restarted after a failed restore")
+	}
+	for _, banned := range []string{daemonMention, "codex sessions started before"} {
+		if strings.Contains(stderr, banned) {
+			t.Errorf("stderr carries %q:\n%s", banned, stderr)
+		}
+	}
+}
+
 // The rollback's probe runs before its locks: every connection to the daemon,
 // the first probe's and the restart's re-probes, finds the codex lock free.
 func TestRollbackProbesWithoutTheLock(t *testing.T) {

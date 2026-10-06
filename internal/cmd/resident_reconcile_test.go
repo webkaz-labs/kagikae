@@ -857,7 +857,7 @@ func TestRestartTimesOut(t *testing.T) {
 	}
 	stdout, stderr := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
 	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry)
-	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
+	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; it may be waiting for running tasks to finish, and the managed daemon may restart after they do; the switch is kept, and the managed daemon may not be using the live account yet; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
 	if deadline <= 0 || deadline > 50*time.Millisecond {

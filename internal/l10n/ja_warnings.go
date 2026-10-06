@@ -300,7 +300,7 @@ var jaWarnings = map[string]string{
 
 	"codex: restarted the managed daemon but could not confirm that it holds the live account; if it is still not using it, run: %s": "codex: 管理デーモンを再起動しましたが、現在有効なアカウントを使っていることを確認できませんでした。まだ使っていない場合は、%s を実行してください。",
 
-	"codex app-server daemon restart did not finish within %s": "codex app-server daemon restart が %s 以内に終わりませんでした",
+	"codex app-server daemon restart did not finish within %s; it may be waiting for running tasks to finish, and the managed daemon may restart after they do": "codex app-server daemon restart が %s 以内に終わりませんでした。実行中のタスクの終了を待っている可能性があり、その後に管理デーモンが再起動されることがあります",
 
 	"could not run codex app-server daemon restart (%v)": "codex app-server daemon restart を実行できませんでした（%v）",
 
@@ -319,7 +319,7 @@ var jaWarnings = map[string]string{
 
 	"codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself": "codex: ChatGPT アプリは終了しましたが、kae は起動し直せませんでした（open -b %s）。アプリを手動で起動してください。",
 
-	"codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it": "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。終了して起動し直すまで、起動時の codex アカウントを使い続けます。",
+	"codex: the ChatGPT app did not quit in time and kae left it running; it may be asking you to confirm the quit; kae does not relaunch it, so after it quits, open it again yourself; until then it keeps the codex account it started with": "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。アプリが終了の確認を求めている可能性があります。kae は起動し直さないので、終了した後にアプリを手動で起動してください。それまでは起動時の codex アカウントを使い続けます。",
 
 	"codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again": "codex: macOS が kae による ChatGPT アプリの操作を許可しませんでした。現在有効な codex アカウントを使うには、アプリで Command-Q を押して終了し、もう一度起動してください。",
 

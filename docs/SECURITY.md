@@ -231,8 +231,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
   stdout and stderr are the null device rather than pipes, because the daemon the
   restart leaves running would inherit a pipe and hold kae past the restart's
-  30 s limit; `daemon version` through `runner.RunWithEnv`, `osascript` through
-  `runner.Run`, and `open -b` through `runner.Launch`.
+  30 s limit; `daemon version` through `runner.QueryWithEnv`, whose stdout is an
+  unlinked temporary file rather than a pipe and whose stdin and stderr are the null
+  device, for the same reason — a daemon it started would otherwise hold doctor —
+  and of whose output kae reads at most 1 MiB; `osascript` through `runner.Run`, and
+  `open -b` through `runner.Launch`.
 
 ## File Permissions
 
@@ -504,6 +507,6 @@ credential it holds, and a mislabelled token is undetectable afterwards
 | `secret-tool` (Linux) | libsecret read/write | stdin used for store; output of lookup is secret |
 | upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |
 | `codex app-server daemon restart` | restart codex's managed daemon after a switch changed the account it holds | argv and environment from the adapter; `CODEX_HOME` set to the switched home, never inherited; no credential in argv or environment (§ Resident processes) |
-| `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path; disabled until the acceptance records that it starts no daemon and makes no network call, then enabled by default | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output (§ Resident processes) |
+| `codex app-server daemon version` | `doctor resident_drift`: read the managed daemon's reported status and socket path; disabled until the acceptance records that it starts no daemon and makes no network call, then enabled by default | `CODEX_HOME` set to the real home, never inherited; 5 s deadline; only `status` and `socketPath` are read from its output, and neither is printed (§ Resident processes) |
 | `osascript` (macOS) | ask whether the ChatGPT app is running; quit it with consent | fixed script per allowlisted bundle id; with exit 0, stdout `true` means running, and `false` or `absent` (the app is not installed) not running; anything else means kae cannot tell, and it then acts on nothing; stderr is localized, so the only things read from it are the Apple Events error numbers `-1743` (automation not permitted) and `-1712` (the quit request timed out; kae keeps waiting) (§ Resident processes) |
 | `open -b` (macOS) | relaunch the ChatGPT app after its quit was observed | allowlisted bundle id only, through `runner.Launch` |

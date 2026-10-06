@@ -62,6 +62,9 @@ var jaChecks = map[string]string{
 	"%s's managed daemon holds a different account from the live credential, so sessions connected to it keep using that account; to make it use the live account, run: %s": "%s の管理デーモンは現在の認証情報とは別のアカウントを使っているため、デーモンに接続したセッションはそのアカウントを使い続けます。現在のアカウントを使わせるには %s を実行してください。",
 	"kae cannot read which account %s's managed daemon holds, so it cannot tell whether the daemon uses the live account; if it does not, run: %s":                          "kae は %s の管理デーモンが使っているアカウントを読み取れないため、デーモンが現在のアカウントを使っているか判断できません。使っていない場合は %s を実行してください。",
 
+	// resident_daemon_version.go.
+	"%s's managed daemon reports that it is running, but not at the socket kae looks for, so %s has changed where it puts the socket and a switch can no longer find the daemon to restart it; after each %s switch, run: %s": "%s の管理デーモンは起動中と報告していますが、kae が探すソケットにはありません。%s がソケットの置き場所を変えたため、切替でデーモンを見つけて再起動できなくなっています。%s を切り替えるたびに %s を実行してください。",
+
 	// companion_drift.go and companion_token_drift.go.
 	"profile %s: git %s is unset here but the binding sets %q; the binding is not active in this shell, so a commit would use the wrong identity; run: mise env, mise trust if untrusted, or kae pin if the binding itself no longer exists": "プロファイル %s: git の %s がここでは未設定ですが、固定の内容では %q が設定されています。このシェルでは固定の内容が有効になっていないため、コミットが別の作者情報で行われます。mise env を実行してください。信頼していない場合は mise trust を、固定自体がもう存在しない場合は kae pin を実行してください。",
 	"profile %s: git %s is %q here but the binding sets %q; a repo-local override or an inactive binding makes commits use the wrong identity (check: git config --show-origin %s)":                                                          "プロファイル %s: git の %s はここでは %q ですが、固定の内容では %q が設定されています。リポジトリ固有の上書きか、有効になっていない固定の内容のため、コミットが別の作者情報で行われます（確認: git config --show-origin %s）。",

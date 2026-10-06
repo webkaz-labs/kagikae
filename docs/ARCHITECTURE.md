@@ -106,8 +106,10 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
   `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
   framing is exercised. The daemon restart goes through `runner.LaunchWithEnv`
-  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), the
-  app's `osascript` through `runner.Run` and its relaunch through `runner.Launch`.
+  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), and
+  doctor's `daemon version` through `runner.QueryWithEnv`, which reads stdout from a
+  file rather than a pipe for the same reason; the app's `osascript` goes through
+  `runner.Run` and its relaunch through `runner.Launch`.
   Waits use `App.Now` and an injected sleeper. [SECURITY.md](SECURITY.md)
   § Resident processes owns the limits on all of them.
 - **Completion backend seam** (`cmd/complete.go`): the hidden
@@ -230,7 +232,9 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   `ResidentDaemon(env)` returns the daemon's socket path and its restart and
   status argv and environment, `CredentialAccount(payload)`
   reads an opaque account key from a credential payload (file or keyring alike),
-  `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer, and
+  `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer,
+  `ParseDaemonStatus(output)` reads whether the status command reports the daemon
+  running and at which socket path, and
   `DesktopApps()` lists the bundle ids of desktop apps that embed the tool (non-empty
   on darwin only). The key is compared and never printed. `cmd` owns the probe, the
   restart and the app handling; [ADAPTERS.md](ADAPTERS.md) § Resident processes owns

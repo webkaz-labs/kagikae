@@ -66,11 +66,18 @@ func (v upstreamVersion) movedPast(verified upstreamVersion) bool {
 // non-zero exit, i.e. the same silent skip as any other failing `--version`.
 var upstreamVersionProbeDeadline = 5 * time.Second
 
-// upstreamVersionChecks warns for each installed tool that is a newer
-// major/minor than the version its adapter's behaviour assumptions were verified
-// against (adapter.VerifiedVersion). It is the companion to identityDriftChecks:
-// that one catches an assumption already broken, this one flags the release where
-// one *could* have broken, before a silent switch failure.
+// upstreamProbeRound runs every doctor probe that launches an upstream AI CLI,
+// concurrently under upstreamVersionProbeDeadline, and returns the findings of
+// each half: upstream_version's `--version` probes (version) and, when
+// residentDaemonVersionEnabled, resident_drift's `daemon version` half
+// (resident; resident_daemon_version.go).
+//
+// The `--version` half warns for each installed tool that is a newer
+// major/minor than the version its adapter's behaviour assumptions were
+// verified against (adapter.VerifiedVersion). It is the companion to
+// identityDriftChecks: that one catches an assumption already broken, this one
+// flags the release where one *could* have broken, before a silent switch
+// failure.
 //
 // `<binary> --version` through the runner seam, one process per installed tool.
 // The probes run concurrently under upstreamVersionProbeDeadline: they are
@@ -83,7 +90,7 @@ var upstreamVersionProbeDeadline = 5 * time.Second
 // A tool that is not installed, declares no verified version, or prints nothing
 // parseable is skipped — a false warning here would train the user to ignore a
 // real one.
-func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []adapter.Check {
+func (app *App) upstreamProbeRound(ctx context.Context, toolFilter string) (version, resident []adapter.Check) {
 	ctx, cancel := context.WithTimeout(ctx, upstreamVersionProbeDeadline)
 	defer cancel()
 
@@ -93,12 +100,21 @@ func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []
 			tools = append(tools, tool)
 		}
 	}
-	found := make([]adapter.Check, len(tools))
+	realHome := app.realHomeEnv()
+	versionFound := make([]adapter.Check, len(tools))
+	residentFound := make([]adapter.Check, len(tools))
 	var wg sync.WaitGroup
 	for i, tool := range tools {
 		ad, err := adapter.ForTool(tool)
 		if err != nil {
 			continue
+		}
+		if p, ok := app.planDaemonVersion(tool, ad, realHome); ok {
+			wg.Go(func() {
+				if check, ok := p.run(ctx, app); ok {
+					residentFound[i] = check
+				}
+			})
 		}
 		verified := ad.VerifiedVersion()
 		if verified == "" {
@@ -107,23 +123,25 @@ func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []
 		if _, err := app.Env.LookPath(ad.Binary()); err != nil {
 			continue // binary_present already reports a missing CLI
 		}
-		wg.Add(1)
-		go func(i int, tool, verified string, binary string) {
-			defer wg.Done()
-			stdout, _, code := runner.Run(ctx, binary, "--version")
+		wg.Go(func() {
+			stdout, _, code := runner.Run(ctx, ad.Binary(), "--version")
 			if code != 0 {
 				return
 			}
 			if check, ok := upstreamVersionCheck(tool, stdout, verified); ok {
-				found[i] = check
+				versionFound[i] = check
 			}
-		}(i, tool, verified, ad.Binary())
+		})
 	}
 	wg.Wait()
+	return foundChecks(versionFound), foundChecks(residentFound)
+}
 
+// foundChecks drops the zeroed slots a skipped or silent tool left.
+func foundChecks(found []adapter.Check) []adapter.Check {
 	checks := []adapter.Check{}
 	for _, check := range found {
-		if check.Code != "" { // a skipped or silent tool left its slot zeroed
+		if check.Code != "" {
 			checks = append(checks, check)
 		}
 	}
@@ -131,7 +149,7 @@ func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []
 }
 
 // assumptionMaxAge is how long a tool's behaviour assumptions may go unchecked
-// before doctor says so. Six months, not one or three: upstreamVersionChecks
+// before doctor says so. Six months, not one or three: the `--version` probe
 // already covers the case where the tool actually moved, so this one exists for
 // the case where nothing did — and a reminder that fires while the answer is
 // still right is the kind users learn to scroll past, which would cost the real
@@ -139,7 +157,7 @@ func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []
 const assumptionMaxAge = 180 * 24 * time.Hour
 
 // assumptionAgeChecks reports tools whose behaviour assumptions have gone
-// unchecked for assumptionMaxAge. It is the half upstreamVersionChecks cannot
+// unchecked for assumptionMaxAge. It is the half the `--version` probe cannot
 // cover: that one only fires when the installed tool moves past the verified
 // release, so **a user who never upgrades gets no signal at all** — and cursor,
 // whose date versions make the comparison useless, would get none ever.

@@ -118,7 +118,7 @@ func TestUpstreamVersionChecksProbesInstalledBinary(t *testing.T) {
 	claudeOnlyPath(app)
 	fake := &runnertest.Fake{Stdout: "2.9.0 (Claude Code)\n"}
 	runner.With(fake, func() {
-		got := app.upstreamVersionChecks(context.Background(), "")
+		got := upstreamVersionOnly(app.upstreamProbeRound(context.Background(), ""))
 		if len(got) != 1 || got[0].Code != constants.CheckUpstreamVersion || got[0].Tool != constants.ToolClaude {
 			t.Fatalf("expected one claude upstream_version check, got %+v", got)
 		}
@@ -133,7 +133,7 @@ func TestUpstreamVersionChecksSkipsFailingProbe(t *testing.T) {
 	claudeOnlyPath(app)
 	fake := &runnertest.Fake{Stderr: "unknown flag: --version", Code: 1}
 	runner.With(fake, func() {
-		if got := app.upstreamVersionChecks(context.Background(), ""); len(got) != 0 {
+		if got := upstreamVersionOnly(app.upstreamProbeRound(context.Background(), "")); len(got) != 0 {
 			t.Fatalf("a failing --version must be skipped, got %+v", got)
 		}
 	})
@@ -193,7 +193,7 @@ func TestUpstreamVersionChecksStayInToolOrder(t *testing.T) {
 	}
 	var got []adapter.Check
 	start := time.Now()
-	runner.With(fake, func() { got = app.upstreamVersionChecks(context.Background(), "") })
+	runner.With(fake, func() { got = upstreamVersionOnly(app.upstreamProbeRound(context.Background(), "")) })
 	elapsed := time.Since(start)
 
 	want := []string{
@@ -248,7 +248,7 @@ func TestUpstreamVersionChecksHonorDeadline(t *testing.T) {
 
 	var got []adapter.Check
 	start := time.Now()
-	runner.With(fake, func() { got = app.upstreamVersionChecks(context.Background(), "") })
+	runner.With(fake, func() { got = upstreamVersionOnly(app.upstreamProbeRound(context.Background(), "")) })
 	if len(got) != 0 {
 		t.Fatalf("a probe killed by the deadline must be skipped, got %+v", got)
 	}
@@ -262,7 +262,7 @@ func TestUpstreamVersionChecksSkipsMissingBinary(t *testing.T) {
 	app := testApp(t, nil) // testApp's LookPath always fails
 	fake := &runnertest.Fake{Stdout: "9.9.9\n"}
 	runner.With(fake, func() {
-		if got := app.upstreamVersionChecks(context.Background(), ""); len(got) != 0 {
+		if got := upstreamVersionOnly(app.upstreamProbeRound(context.Background(), "")); len(got) != 0 {
 			t.Fatalf("no installed binary must mean no check, got %+v", got)
 		}
 	})
@@ -336,3 +336,6 @@ func mustAdapter(t *testing.T, tool string) adapter.Adapter {
 	}
 	return ad
 }
+
+// upstreamVersionOnly keeps the `--version` half of upstreamProbeRound.
+func upstreamVersionOnly(version, _ []adapter.Check) []adapter.Check { return version }

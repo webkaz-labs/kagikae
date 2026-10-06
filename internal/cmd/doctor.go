@@ -191,14 +191,19 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// upstream behaviour-assumption drift: the installed tool has moved past the
 	// version kae's assumptions were verified on. Per-tool, so it honors the
 	// filter, and needs no secret backend.
-	report.Checks = append(report.Checks, app.upstreamVersionChecks(ctx, toolFilter)...)
+	// The same round runs resident_drift's `daemon version` half, whose findings
+	// join the socket half's below.
+	versionChecks, daemonVersionChecks := app.upstreamProbeRound(ctx, toolFilter)
+	report.Checks = append(report.Checks, versionChecks...)
 	// ...and the assumptions nobody has re-checked in six months, which the
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
 	// A managed daemon still holding another account than the live credential: a
 	// local probe of its socket (no subprocess of the tool, no network), so like
-	// the version checks it honors the filter and needs no secret backend.
+	// the version checks it honors the filter and needs no secret backend. The
+	// `daemon version` half's findings, from the round above, follow it.
 	report.Checks = append(report.Checks, app.residentDriftChecks(ctx, toolFilter)...)
+	report.Checks = append(report.Checks, daemonVersionChecks...)
 	// state.json naming an account that has no snapshot. Deliberately out here and
 	// not with the credential-health checks: it needs no secret backend, and an
 	// unavailable backend is exactly when a user is diagnosing and least wants a

@@ -60,17 +60,13 @@ func (r recordedCredential) Orderable() bool { return r.Present && orderable(r.I
 // come back not-Present or not-Orderable are on those two, and are **not a closed
 // set** — each is a property of the payload rather than a list of causes.
 //
-// The `err != nil` arm converges with `!found` and cannot be killed on its own: every
+// backupCredential's `err != nil` arm converges with `!found` and cannot be killed on its own: every
 // backend that fails a read reports the payload as absent, so no fixture can reach the
 // arm alone (measured 2026-08-05). It stays as the statement that an unreadable payload
 // is not a credential, and the behaviour it guards is pinned through the pair.
 func readRecordedCredential(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) recordedCredential {
-	rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
-	if !ok || !rec.Present {
-		return recordedCredential{}
-	}
-	data, found, err := be.Get(ctx, rec.SecretRef)
-	if err != nil || !found {
+	data, ok := backupCredential(be, meta, tool)(ctx)
+	if !ok {
 		return recordedCredential{}
 	}
 	return recordedCredential{Info: freshnessOf(tool, data), Present: true}

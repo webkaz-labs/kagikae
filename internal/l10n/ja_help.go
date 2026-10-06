@@ -165,7 +165,7 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   --format text|json    output format
   --dry-run             preview without writing (add --no-login/use/rollback)
   --yes                 answer confirmations yes without asking
-  --no-restart          warn instead of restarting codex's managed daemon (use)
+  --no-restart          warn instead of restarting codex's managed daemon (use/add/rollback)
   --no-color            disable color
   --config <path>       explicit config file path
 `: `フラグ（構造化出力に対応するコマンド）:
@@ -173,7 +173,7 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   --format text|json    出力形式
   --dry-run             書き込まずに確認（add --no-login/use/rollback）
   --yes                 確認を求めずに yes と回答
-  --no-restart          codex の管理デーモンを再起動せずに警告（use）
+  --no-restart          codex の管理デーモンを再起動せずに警告（use/add/rollback）
   --no-color            色の無効化
   --config <path>       明示する設定ファイルのパス
 `,

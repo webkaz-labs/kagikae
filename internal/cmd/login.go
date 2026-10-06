@@ -60,15 +60,10 @@ func toolBinary(tool string) string {
 func CmdAdd(ctx context.Context, args []string) int {
 	// --identity takes a value; splitArgs must not treat the value as a positional.
 	flags, positionals := splitArgs(args, "--identity")
-	restore, noLogin := false, false
-	identityFlag := ""
-	opts, ok := parseCommon("add", flags, true, func(fs *flag.FlagSet) {
-		registerAddFlags(fs, &restore, &noLogin, &identityFlag)
-	})
+	opts, restore, noLogin, ok := parseAddFlags(flags)
 	if !ok {
 		return constants.ExitUsage
 	}
-	opts.IdentityOverride = identityFlag
 	if len(positionals) < 1 || len(positionals) > 2 {
 		return usageLine("add [--no-login] <tool> [<account>] [--restore]")
 	}
@@ -102,42 +97,71 @@ func CmdAdd(ctx context.Context, args []string) int {
 	return runLogin(ctx, app, opts, tool, explicitName, restore)
 }
 
+// parseAddFlags parses `kae add`'s flags, carrying --identity and --no-restart in
+// opts.
+func parseAddFlags(flags []string) (opts commonOpts, restore, noLogin, ok bool) {
+	var noRestart bool
+	identityFlag := ""
+	opts, ok = parseCommon("add", flags, true, func(fs *flag.FlagSet) {
+		registerAddFlags(fs, &restore, &noLogin, &noRestart, &identityFlag)
+	})
+	opts.NoRestart = noRestart
+	opts.IdentityOverride = identityFlag
+	return opts, restore, noLogin, ok
+}
+
 // runLogin launches the official login flow and snapshots the result. tool is
 // already canonical (CmdAdd); explicitName is the given account name, or "" to
 // auto-detect it. The name is resolved after the login flow exits, because the
 // login identity only becomes live once the flow completes.
+//
+// Once the flow has succeeded and its lock is released, it reconciles the tool's
+// resident processes against the account finally left live (docs/CLI.md § kae add
+// Semantics, codex resident processes). A failed flow and an auth_unchanged exit
+// reconcile nothing.
 func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) int {
+	code, before := loginFlow(ctx, app, opts, tool, explicitName, restore)
+	if code == constants.ExitOK {
+		app.residentsAfterLogin(ctx, tool, before, residentModeOf(opts))
+	}
+	return code
+}
+
+// loginFlow is runLogin up to the release of the tool lock, which its deferred
+// releaseLocks performs before runLogin reconciles. before reads the credential
+// live before the flow, as the flow's backup recorded it.
+func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) (code int, before credentialReader) {
 	if err := app.requireConfig(); err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	command := loginCommand(tool)
 	if command == nil {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool))
+			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool)), nil
 	}
 	// Plan the tool before the name is known; only plan.Account (set after login)
 	// depends on it, and that is not read until captureSnapshot below.
 	plan, err := app.planTool(ctx, tool, explicitName)
 	if err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	be, err := app.secretBackend()
 	if err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	locks, err := app.acquireLocks([]string{tool})
 	if err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	defer releaseLocks(locks)
 
 	st, err := app.loadState()
 	if err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, constants.BackupReasonLogin)
 	if err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 
 	if explicitName != "" {
@@ -148,7 +172,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 			tool, meta.ID)
 	}
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
-		return finish(opts, errLaunchLogin(tool, err))
+		return finish(opts, errLaunchLogin(tool, err)), nil
 	} else if code != 0 {
 		infof("%s exited with %d; capturing whatever auth state is live now", command[0], code)
 	}
@@ -162,7 +186,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	plan = app.refreshPlan(ctx, plan)
 
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCompare, err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCompare, err), nil
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
@@ -172,7 +196,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
 			"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s",
-			tool, hint))
+			tool, hint)), nil
 	}
 
 	// The login flow changed auth, so the new identity is now live: resolve the
@@ -180,29 +204,29 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	// identity to record in the snapshot, then snapshot.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepDetect, err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepDetect, err), nil
 	}
 	plan.Account = accountName
 	plan.Identity = identity
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil
 	}
 
 	if restore {
 		if err := app.applyBackup(ctx, be, meta, nil, false); err != nil {
 			return finish(opts, errf(exitOf(err),
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
-				tool, accountName, err, meta.ID))
+				tool, accountName, err, meta.ID)), nil
 		}
 		reportf("Captured %s/%s and restored the previous login", tool, accountName)
-		return constants.ExitOK
+		return constants.ExitOK, backupCredential(be, meta, tool)
 	}
 	if err := app.saveActive(map[string]string{tool: accountName}, ""); err != nil {
-		return finish(opts, err)
+		return finish(opts, err), nil
 	}
 	reportf("Captured %s/%s (now active)", tool, accountName)
-	return constants.ExitOK
+	return constants.ExitOK, backupCredential(be, meta, tool)
 }
 
 // loginChangedAuth reports whether any live artifact differs from the

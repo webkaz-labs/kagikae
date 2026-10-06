@@ -37,6 +37,9 @@ func runCapture(ctx context.Context, app *App, opts commonOpts, tool, explicitNa
 	if err != nil {
 		return finish(opts, err)
 	}
+	// The capture leaves the live login as it is, so it restarts nothing; it only
+	// warns about a daemon on another account (docs/CLI.md § kae add Semantics).
+	app.residentsAtCapture(ctx, tool)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}

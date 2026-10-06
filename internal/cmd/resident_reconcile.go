@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -70,6 +71,27 @@ type pendingRestart struct {
 func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target credentialReader,
 	slot *residentSlot, mode residentMode,
 ) {
+	app.planResidents(ctx, tool, target, nil, slot, mode)
+}
+
+// residentsAfterLogin is the reconcile of `kae add`'s login flow (docs/CLI.md
+// § kae add Semantics, codex resident processes): the flow decides the account,
+// so it runs after the flow and after the lock is released, probes the daemon
+// once against the credential finally left live, and restarts it at once when
+// it differs and --no-restart is not given. before reads the credential live
+// before the flow, for whether the command changed the tool's account.
+func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) {
+	var slot residentSlot
+	app.planResidents(ctx, tool, nil, before, &slot, mode)
+	app.reconcileSlot(ctx, &slot)
+}
+
+// planResidents is residentsBeforeSwitch with the two credentials it compares
+// open: target is what the command leaves live and previous what was live
+// before it; nil reads the live credential.
+func (app *App) planResidents(ctx context.Context, tool string, target, previous credentialReader,
+	slot *residentSlot, mode residentMode,
+) {
 	slot.Residents = []residentEntry{}
 	ad, err := adapter.ForTool(tool)
 	if err != nil {
@@ -84,8 +106,14 @@ func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target c
 	// directory's CODEX_HOME does not reach it.
 	spec := holder.ResidentDaemon(app.Env)
 	// The probe and accountChanges share one read of each credential.
+	if target == nil {
+		target = liveCredential(ad, app.Env)
+	}
+	if previous == nil {
+		previous = liveCredential(ad, app.Env)
+	}
 	target = readOnce(target)
-	live := readOnce(liveCredential(ad, app.Env))
+	live := readOnce(previous)
 	observed := app.probeResidentDaemon(ctx, holder, spec, target)
 	outcome, owed := daemonOutcomeBefore(observed, mode)
 	noticeBeforeSwitch(observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
@@ -217,6 +245,48 @@ func snapshotCredential(be secret.Backend, plan toolPlan) credentialReader {
 			return nil, false
 		}
 		return payload, true
+	}
+}
+
+// backupCredential reads tool's credential payload as meta recorded it: what a
+// rollback to meta puts back, and for `kae add` what was live before the login
+// flow. ok is false when be is nil, the backup has no credential record for tool
+// or records it as absent, or its payload cannot be read.
+func backupCredential(be secret.Backend, meta backup.Meta, tool string) credentialReader {
+	return func(ctx context.Context) ([]byte, bool) {
+		if be == nil {
+			return nil, false
+		}
+		rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
+		if !ok || !rec.Present {
+			return nil, false
+		}
+		data, found, err := be.Get(ctx, rec.SecretRef)
+		if err != nil || !found {
+			return nil, false
+		}
+		return data, true
+	}
+}
+
+// residentsAtCapture is the reconcile of `kae add --no-login` (docs/CLI.md
+// § kae add Semantics, codex resident processes): the live login stays as it
+// is, so nothing is restarted, and a daemon of the real home that holds another
+// account than the live credential, or whose account kae cannot read, gets a
+// warning only. It only reads, so --dry-run runs it too.
+func (app *App) residentsAtCapture(ctx context.Context, tool string) {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return
+	}
+	holder, ok := ad.(adapter.ResidentHolder)
+	if !ok {
+		return
+	}
+	spec := holder.ResidentDaemon(app.Env)
+	observed := app.probeResidentDaemon(ctx, holder, spec, liveCredential(ad, app.Env))
+	if msg, ok := app.residentDriftMessage(tool, holder, spec, observed); ok {
+		warnMessage(msg)
 	}
 }
 

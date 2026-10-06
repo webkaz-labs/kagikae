@@ -66,6 +66,11 @@ Intel Mac（darwin/amd64）は v0.24.0 から対象外で、リリースバイ�
 プロセスによるトークン更新の影響を受けます。復元は保存済みの内容を戻す操作で、
 上流サービス側で失効したログインを有効にし直すものではありません。
 
+`kae use` での切替の後、kae は codex の管理デーモンを再起動することがあります。これは
+ファイルではなくプロセスへの操作なので、バックアップと `kae rollback` の対象外です。
+kae はプロセスにシグナルを送りません。`--no-restart` で止められます
+（[SECURITY.md](SECURITY.md) § Resident processes）。
+
 `doctor` の上流バージョン警告や確認済みの指紋は、調査の入口です。警告がないことを
 認証方式全体の互換性証明として扱わないでください。測定範囲は
 [VALIDATION.md](VALIDATION.md) に、実機確認の範囲は [ACCEPTANCE.md](ACCEPTANCE.md) にあります。

@@ -250,6 +250,10 @@ const (
 	// binding of that account refreshes, so this is the migration prompt: re-run
 	// `kae pin` in that directory.
 	CheckCredentialUnsplit = "credential_unsplit"
+	// CheckResidentDrift: a tool's managed daemon for the real home holds another
+	// account than the live credential, or kae cannot read which one it holds.
+	// A local probe of the daemon's socket, not an offline comparison.
+	CheckResidentDrift = "resident_drift"
 )
 
 // Credential freshness states, the `credential` field of a `kae ls` /
@@ -277,6 +281,39 @@ const (
 	// fresh local read, is what answered.
 	UsageOriginLocal  = "local"
 	UsageOriginRemote = "remote"
+)
+
+// What the probe of a resident daemon observed, the `observed` field of a
+// switch report's `residents` entry for the `daemon` kind (docs/CLI.md
+// § kae use Semantics, **Resident processes (codex)**): no socket, the daemon
+// holds the compared account, it holds another one, or kae could not read it.
+const (
+	ResidentObservedAbsent  = "absent"
+	ResidentObservedMatches = "matches"
+	ResidentObservedDiffers = "differs"
+	ResidentObservedUnknown = "unknown"
+)
+
+// The `kind` of a switch report's `residents` entry: codex's managed daemon, and
+// the codex sessions kae does not look for (docs/CLI.md § `kae use ... --json`
+// (the switch report)). A session entry's `observed` is always
+// ResidentObservedUnknown.
+const (
+	ResidentKindDaemon  = "daemon"
+	ResidentKindSession = "session"
+)
+
+// The `outcome` of a `residents` entry: nothing to do, what --dry-run would do,
+// the three results of a restart, --no-restart, and a warning in place of an
+// action (docs/CLI.md § `kae use ... --json` (the switch report)).
+const (
+	ResidentOutcomeNone              = "none"
+	ResidentOutcomePlanned           = "planned"
+	ResidentOutcomeRestarted         = "restarted"
+	ResidentOutcomeRestartUnverified = "restart_unverified"
+	ResidentOutcomeRestartFailed     = "restart_failed"
+	ResidentOutcomeOptedOut          = "opted_out"
+	ResidentOutcomeWarned            = "warned"
 )
 
 // Backup reasons, the `reason` field of a backup's metadata and of every

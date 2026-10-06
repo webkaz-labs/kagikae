@@ -100,3 +100,39 @@ func TestLaunchFallsBackToRun(t *testing.T) {
 		t.Fatalf("code %d, ran %s %v", code, fake.name, fake.args)
 	}
 }
+
+// LaunchWithEnv sets its entries over the inherited environment, waits for the
+// program only, and returns at ctx's deadline even when the program hangs.
+func TestLaunchWithEnv(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	t.Setenv("KAE_LAUNCH_TEST", "inherited")
+	ctx := context.Background()
+	if code, err := LaunchWithEnv(ctx, []string{"KAE_LAUNCH_TEST=set"}, sh, "-c", `test "$KAE_LAUNCH_TEST" = set`); code != 0 || err != nil {
+		t.Fatalf("the extra entry did not win over the inherited one: %d %v", code, err)
+	}
+	if code, err := LaunchWithEnv(ctx, nil, sh, "-c", "exit 3"); code != 3 || err != nil {
+		t.Fatalf("exit code = %d (%v), want 3", code, err)
+	}
+	start := time.Now()
+	if code, err := LaunchWithEnv(ctx, nil, sh, "-c", "sleep 5 & exit 0"); code != 0 || err != nil {
+		t.Fatalf("code = %d, err = %v", code, err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("LaunchWithEnv waited %v for the program's background child", elapsed)
+	}
+	deadline, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	start = time.Now()
+	if code, _ := LaunchWithEnv(deadline, nil, sh, "-c", "sleep 5 & exec sleep 5"); code == 0 {
+		t.Fatal("a program killed at the deadline reported success")
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("LaunchWithEnv returned %v after a 200ms deadline", elapsed)
+	}
+	if code, err := LaunchWithEnv(ctx, nil, "/nonexistent/kae-restart"); code == 0 || err == nil {
+		t.Fatalf("an unstartable program = %d %v", code, err)
+	}
+}

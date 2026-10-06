@@ -64,6 +64,14 @@ const (
 // docs/VALIDATION.md § "Upstream Behaviour Assumptions" carries the rule and its
 // login-free verification.
 func storeKey(env adapter.Env) string {
+	sum := sha256.Sum256([]byte(canonicalHome(env)))
+	return fmt.Sprintf("cli|%x", sum[:8])
+}
+
+// canonicalHome is the codex home made absolute and symlink-resolved, the way
+// codex canonicalizes it, falling back step by step to the unresolved path.
+// The keyring store key hashes it and the resident daemon is addressed by it.
+func canonicalHome(env adapter.Env) string {
 	home := codexHome(env)
 	if abs, err := filepath.Abs(home); err == nil {
 		home = abs
@@ -71,8 +79,7 @@ func storeKey(env adapter.Env) string {
 	if resolved, err := filepath.EvalSymlinks(home); err == nil {
 		home = resolved
 	}
-	sum := sha256.Sum256([]byte(home))
-	return fmt.Sprintf("cli|%x", sum[:8])
+	return home
 }
 
 // A **relative** CODEX_HOME diverges harder than claude's variable, which is why

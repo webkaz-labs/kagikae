@@ -25,6 +25,10 @@ const (
 // TestMain closes two process-wide holes that a per-test fixture cannot close:
 // t.TempDir must never land inside a repository whose info/exclude a pin can
 // append to, and every subprocess seam starts fail-loud until a test opts in.
+// osLaunchWithEnv is runner.LaunchWithEnv before TestMain stubs it, for the one
+// test that runs a stand-in program through it (TestRestartDoesNotWaitForWhatItLeavesRunning).
+var osLaunchWithEnv = runner.LaunchWithEnv
+
 func TestMain(m *testing.M) {
 	// These variables select a repository independently of the process cwd. Clear
 	// them for the process, not only for the probe below: ensureGitExcluded uses
@@ -62,6 +66,7 @@ func TestMain(m *testing.M) {
 	savedDefault := runner.Default
 	savedInteractive := runner.RunInteractive
 	savedWithEnv := runner.RunWithEnv
+	savedLaunchWithEnv := runner.LaunchWithEnv
 	runner.Default = cmdTestRunnerGuard{next: savedDefault}
 	runner.RunInteractive = func(_ context.Context, _ []string, name string, args ...string) (int, error) {
 		panicUnstubbedRunner("runner.RunInteractive", name, args)
@@ -72,10 +77,16 @@ func TestMain(m *testing.M) {
 		return "", "", 1
 	}
 
+	runner.LaunchWithEnv = func(_ context.Context, _ []string, name string, args ...string) (int, error) {
+		panicUnstubbedRunner("runner.LaunchWithEnv", name, args)
+		return 1, nil
+	}
+
 	code := m.Run()
 	runner.Default = savedDefault
 	runner.RunInteractive = savedInteractive
 	runner.RunWithEnv = savedWithEnv
+	runner.LaunchWithEnv = savedLaunchWithEnv
 	patch.SyncFile, patch.SyncDir = savedSyncFile, savedSyncDir
 	os.Exit(code)
 }

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -377,6 +378,18 @@ func (app *App) pinnedGlobalScope() {
 	app.applyGlobalScope()
 }
 
+// realHomeEnv is app.Env with the isolation values kae itself set hidden, the
+// view a global switch acts on, without changing app.Env: doctor's
+// bound-directory checks read the binding, and residentRestartCommand compares
+// against the shell's view. It applies applyGlobalScope to a temporary
+// App{Paths, Env}; if applyGlobalScope comes to read or write fields other than
+// those, revisit what the copy carries.
+func (app *App) realHomeEnv() adapter.Env {
+	scoped := App{Paths: app.Paths, Env: app.Env}
+	scoped.applyGlobalScope()
+	return scoped.Env
+}
+
 // applyGlobalScope hides kae-managed isolation env values from everything
 // resolved through app.Env. Idempotent: the guard runs once per command
 // path but may be reached twice (bare use delegates to buildSwitch).
@@ -385,6 +398,11 @@ func (app *App) applyGlobalScope() {
 		return
 	}
 	app.globalScope = true
+	// Kept before masking: the shell kae runs in still exports what is masked
+	// here, and a command kae tells the person to type runs under it
+	// (residentRestartCommand).
+	shellEnv := app.Env
+	app.shellEnv = &shellEnv
 	isolated := map[string]bool{}
 	credential := map[string]bool{}
 	for _, tool := range constants.Tools {

@@ -26,6 +26,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/textui"
+	"github.com/webkaz-labs/kagikae/internal/wsrpc"
 )
 
 // App bundles the resolved environment every command needs. Tests construct
@@ -42,6 +43,10 @@ type App struct {
 	// globalScope records that applyGlobalScope already wrapped Env.Getenv.
 	// Set by pinnedGlobalScope (modes.go) on the first global-scope command.
 	globalScope bool
+	// shellEnv is Env as it was before applyGlobalScope masked kae-managed
+	// isolation values: the environment of the shell kae was started from. Nil
+	// until then, when Env is that environment.
+	shellEnv *adapter.Env
 
 	// backendForTest overrides the resolved secret backend when set. It is a
 	// test seam (App is constructed directly in tests; see app.go newApp doc);
@@ -58,6 +63,24 @@ type App struct {
 	// pick replaces the interactive picker in tests, which have no terminal to
 	// drive; it is handed exactly what the picker would show. Nil in production.
 	pick func(ctx context.Context, items []picker.Item, opts picker.Options) (string, bool, error)
+	// dialUnix connects the resident-daemon probe to its Unix socket; nil means
+	// net.Dialer.DialContext (unixDialer). Tests leave it nil and serve a fake
+	// daemon on a real socket, so the WebSocket framing is exercised.
+	dialUnix wsrpc.Dialer
+	// residentProbeTimeout bounds one daemon probe; zero means the default
+	// (residentProbeLimit). Tests shorten it so a silent daemon costs little.
+	residentProbeTimeout time.Duration
+	// residentRestartTimeout bounds the daemon restart command; zero means the
+	// default (residentRestartLimit). Tests shorten it to reach the timeout.
+	residentRestartTimeout time.Duration
+	// euidForTest replaces os.Geteuid for the probe's socket-owner check, which a
+	// test cannot otherwise fail without a file owned by another user. Nil in
+	// production.
+	euidForTest func() int
+	// sleepForTest replaces the wait between the re-probes that verify a daemon
+	// restart (App.sleep); a test advances its clock (Now) there instead of
+	// sleeping. Nil in production.
+	sleepForTest func(time.Duration)
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.
@@ -599,6 +622,13 @@ type commonOpts struct {
 	// tables keep their Identity and Driver columns (printAccountTable). False
 	// for every other command.
 	Full bool
+	// NoRestart carries `--no-restart` (kae use): a resident daemon that holds
+	// another account gets a warning instead of a restart. ResidentHook marks the
+	// hook shape (`kae use --auto`), which only warns too, even with --yes
+	// (docs/CLI.md § kae use Semantics, **Resident processes (codex)**). Both are
+	// false for every other command.
+	NoRestart    bool
+	ResidentHook bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are
@@ -635,7 +665,7 @@ func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.F
 func registerCommonFlags(fs *flag.FlagSet, opts *commonOpts, withDryRun bool) *bool {
 	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
 	jsonFlag := fs.Bool("json", false, "shorthand for --format json")
-	fs.BoolVar(&opts.Yes, "yes", false, "non-interactive confirmation (reserved)")
+	fs.BoolVar(&opts.Yes, "yes", false, "answer confirmations yes without asking")
 	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
 	fs.StringVar(&opts.ConfigPath, "config", "", "explicit config file path")
 	if withDryRun {

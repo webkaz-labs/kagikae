@@ -57,6 +57,81 @@ catalog test fails on every finding outside its two permanent allowlists. A chan
 that adds or rewords a message updates its Japanese string, the smoke assertions and
 the documents that quote it in the same commit.
 
+In progress: **codex resident processes**, requested by the operator on
+2026-10-06. codex's managed daemon, the ChatGPT desktop app and long-running codex
+sessions keep the account they started with after a switch
+([ADAPTERS.md](ADAPTERS.md) § Resident processes). The contract is
+[CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
+[SECURITY.md](SECURITY.md) § Resident processes and
+[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
+the code that slices 4 to 8 below still have to write. Slice 3, the reconcile in
+`kae use`, is the first slice users can see; the contract and the work done on the
+integration branch `feat/resident-reconcile` land on main together, not one before
+the others. The feature then ships stage by stage, so a release cut between slices
+ships only part of what the contract describes: the release notes of each release
+name which slices it ships, and the user-facing paragraphs (README, README.ja,
+GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
+and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
+from slice 6. Slices 1 to 3 — the WebSocket client (`internal/wsrpc`), the codex
+adapter's `ResidentHolder` with the daemon probe, and the reconcile in `kae use` —
+are done on the integration branch; git log records them. The rest, each its own
+commit and review:
+
+4. The same reconcile in `kae add` and `kae rollback`.
+5. The ChatGPT app's confirmation, quit and relaunch. The package
+   `internal/desktopapp` (detecting the app, quitting it, waiting and relaunching)
+   is done; what remains is wiring it into `kae use`, `kae add` and `kae rollback`
+   with the confirmation and the `desktop_app` entry. Until then, slices 3 and 4
+   emit no `desktop_app` entry and do nothing to the app.
+6. `doctor resident_drift`. Its socket half is done and runs by default. Its
+   moved-socket half (`codex app-server daemon version`) is not built; it ships
+   disabled and stays disabled until the acceptance records that the command
+   starts no daemon when none runs and makes no network call; once that is
+   recorded it is enabled by default. `daemon version`
+   is read, so it needs the capturing `runner.RunWithEnv`, which a daemon the
+   command starts would hold open; enabling it needs `WaitDelay` or a seam of its
+   own first. Its findings name the manual restart through the helper the switch's
+   warnings use (`residentRestartCommand` in `internal/cmd`), so a shell that
+   exports another `CODEX_HOME` is told the real home.
+7. Usage attribution: a veto on a codex usage reading kae would attribute to the
+   wrong account (a veto only, no re-attribution). Last, as a separate slice.
+8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
+   placeholder names, and codex's `VerifiedVersion()` raised to 0.160.0.
+
+The operator's decisions, which the slices do not reopen: an explicit or bare
+`kae use`, `kae add` and `kae rollback` restart a daemon that holds another
+account and say so, `--no-restart` suppresses that, and nothing happens when the
+accounts match; the hook shape is `--auto` alone (`--quiet` changes output only)
+and only warns, even with `--yes`; the ChatGPT app is quit and relaunched only after
+a terminal confirmation or `--yes`, which counts as consent; sessions kae does not
+touch get a fixed warning; warnings never change the exit code.
+
+Before slice 8 can pass, the acceptance has to settle what is not yet verified:
+
+- whether the `codex` on `PATH`, which runs the restart, can differ in version from
+  the managed daemon's own copy, and what the restart does then;
+- whether the daemon's `workspaceRouting.chatgptAccountId` and the credential's
+  `tokens.account_id` are one namespace — if not, every probe reads `differs`;
+- whether the daemon contacts the network to answer `account/read` with
+  `refreshToken: false`, or to answer `codex app-server daemon version`, and
+  whether the latter starts a daemon when none runs. The answer decides whether
+  `resident_drift` stays a default check or becomes opt-in;
+- which `osascript` calls need the Automation (TCC) permission, and what the first
+  one does without it;
+- whether a codex TUI session connects to the managed daemon at all, which decides
+  whether a restart reaches it and what the session warning should say;
+- what an automatic daemon restart interrupts in the clients connected to it;
+- whether the daemon `codex app-server daemon restart` starts closes the stdio it
+  inherits. kae gives the restart the null device rather than pipes, so it does not
+  wait on the daemon either way; a daemon that keeps them open would hold a caller
+  that captures the restart's output;
+- whether a resident process still on the old account can write a refreshed token
+  back to `auth.json`, which would overwrite a switch while a hook or
+  `--no-restart` leaves it running.
+
+Done when slice 8's acceptance is recorded, each question above has a recorded
+answer, and the contract has been corrected wherever an answer contradicts it.
+
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
@@ -1235,6 +1310,22 @@ alternative exists (`secret-tool`).
   the capability (dropping codex from `bindableNotYetDeclared`) is what that result
   unblocks. Until it passes a bound directory has no codex login until you log in
   inside it.
+- **Does a codex session in a `pin -s` directory reach the global managed daemon?**
+  (recorded 2026-10-06, not measured). codex's daemon socket lives under
+  `CODEX_HOME` ([ADAPTERS.md](ADAPTERS.md) § Resident processes), and `use -i`,
+  `run -i` and `pin -i` homes each have their own. A shared bind's codex home is built
+  from symlinks into the real home, so if `app-server-control` is among them, a
+  session in a `pin -s` directory talks to the global daemon and runs the global
+  account rather than the bound one. Whether it does depends first on whether a codex
+  session uses the managed daemon at all, which § Current work order's acceptance
+  answers. `kae run -s` is a different case: it applies the account to the real home
+  in place, so its child already runs under the real `CODEX_HOME` and the global
+  daemon's socket. It writes the real codex home but is outside the resident-process
+  reconcile by the operator's decision ([CLI.md](CLI.md) § kae use Semantics).
+  Done when a measurement in a scratch codex home records which socket a session in
+  a `pin -s` directory connects to and which account it runs. If it reaches the
+  global daemon, the decision of what kae does about it (deny the link in the shared
+  bind, warn, or accept) becomes its own entry.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
   returns one spec), and the restore path reconciles a backup record against it.

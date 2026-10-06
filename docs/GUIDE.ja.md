@@ -339,12 +339,38 @@ kae pin main
 | 元のストアに保全した認証を戻したい | `kae preservation list` の記録を確認し、`kae preservation restore <id>` |
 
 codex は、ChatGPT アプリ、管理デーモン（`codex app-server daemon`）、長時間のセッションが
-ログイン後も常駐し、以前のログインを保持している可能性があります。`kae add` で取り込み
-直す前に、アプリと長時間のセッションを終了し、デーモンを再起動してください
-（`codex app-server daemon restart`）。再ログイン直後に「Your access token could not be
-refreshed because you have since logged out or signed in to another account. Please sign
-in again.」と出た場合は、同じプロセスを終了・再起動してください。2026-10-05 に、`kae add`
-の直後に出たこの表示は、アプリとデーモンの再起動で消えました。仕組みは確かめていません。
+切替やログインの後も常駐し、起動時のアカウントを使い続けます。`kae use` は、管理デーモンが
+切替後のアカウントとは別のアカウントを使っていればデーモンを自動で再起動し、結果を
+標準エラー出力に表示します。この表示は `--quiet` でも消えず、終了コードも変えません。
+デーモンの再起動が、接続中のセッションの作業をどこまで中断するかは確かめていません。
+切替で codex のアカウントが変わった場合は、管理デーモンに接続していない codex のセッションが
+再起動するまで前のアカウントを使うことを警告します。長時間のセッションは自分で開き直して
+ください。ChatGPT アプリには何もしません。
+
+- `--no-restart` を付けると、デーモンをそのままにして、警告だけを出します。
+- `--auto` を付けた実行（mise の enter フックの `kae use --auto --quiet`）と `--dry-run` は、
+  `--yes` があっても再起動せず、警告か予定の表示だけを出します。`--quiet` は表示を変えるだけ
+  なので、`--auto` なしで手で打った `kae use` や `kae use --quiet` は再起動の対象です。
+- デーモンがどのアカウントを使っているか読み取れない場合は、再起動せずに警告します。
+
+kae を使わずにログインした場合、`kae add` や `kae rollback` の後、`--no-restart` やフックで
+切り替えた場合、再起動の失敗や再起動後の確認ができなかったこと（未確認）が表示された場合は、
+アプリと長時間のセッションを終了し、`codex app-server daemon restart` を
+実行してください。固定したディレクトリやグローバルな独立環境の `CODEX_HOME` を export して
+いるシェルでは、そのホームのデーモンが再起動されてしまうため、
+`CODEX_HOME='<実ホーム側の codex ホーム>'` を前に付けて実行してください。kae の警告は、
+その場合この形でコマンドを表示します（bash や zsh などの POSIX シェルの書き方です）。
+切替やログインの直後に「Your access token could not be refreshed because you have since
+logged out or signed in to another account. Please sign in again.」と出た場合も、
+同じプロセスを終了・再起動してください。2026-10-05 に、`kae add` の直後に出た
+この表示は、アプリとデーモンの再起動で消えました。翌日、デーモンがディスク上の別アカウントを
+取り込まないことを観測しましたが、この表示が同じ原因によるものかは確かめていません。
+
+`kae doctor` は、管理デーモンが現在の認証情報とは別のアカウントを使っている場合と、
+使っているアカウントを読み取れない場合に警告します。doctor 自身はデーモンを再起動しないので、
+警告が表示するコマンドを実行してください。固定したディレクトリやグローバルな独立環境の
+`CODEX_HOME` を export しているシェルでは、上と同じく
+`CODEX_HOME='<実ホーム側の codex ホーム>'` を前に付けた形で表示されます。
 
 `relogin` は固定先のストアを選択します。対応フローと拒否条件は
 [CLI.md](CLI.md#kae-relogin-semantics) を参照してください。手動で固定先にログインする

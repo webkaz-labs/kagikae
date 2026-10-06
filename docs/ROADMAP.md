@@ -87,19 +87,21 @@ The operator's decisions, which the slices do not reopen, are the behaviour
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
 The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ codex resident processes — local acceptance (2026-10-06) and
-[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips, which answer the
-questions they settled. Before slice 8 can pass, the acceptance still has to settle:
+§ codex resident processes — local acceptance (2026-10-06),
+[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
+[ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit
+dialog, which answer the questions they settled. Before slice 8 can pass, the acceptance still has to settle:
 
 - what the restart does when the `codex` on `PATH` and the daemon's own copy
   differ in version;
 - whether the daemon contacts the network to answer `account/read` with
-  `refreshToken: false`, which decides whether the socket half of
-  `resident_drift` stays a default check or becomes opt-in. A lead, not an answer:
-  in upstream's source, a daemon with no cached routing runs routing discovery
+  `refreshToken: false` right after a restart, which decides whether the socket
+  half of `resident_drift` stays a default check or becomes opt-in. In its steady
+  state it did not; a lead, not an answer, for the moment after a restart: in
+  upstream's source, a daemon with no cached routing runs routing discovery
   through its `BackendClient`, which can connect;
-- what an automatic daemon restart does to a task running in a client connected to
-  it;
+- whether the daemon still restarts after kae's 30 s limit has ended a restart
+  that was waiting for a running task to finish;
 - what kae does about a resident process still on the old account that refreshes
   that account's token. Whether it writes the token back to `auth.json` is not
   measured; an old session not connected to the daemon is inferred to invalidate
@@ -108,10 +110,7 @@ questions they settled. Before slice 8 can pass, the acceptance still has to set
 - how kae's probe should name itself to the daemon, which is inferred to give later
   threads the `clientInfo.name` of the first client that initialized. Undecided; a
   name that passes kae off as another client is not an option;
-- how the ChatGPT app's y and n answers behave on a real app;
-- what happens when the app answers the quit with a confirmation dialog: the quit
-  request then times out (`-1712`), the 20 s wait ends in `quit_timeout`, and if
-  the user chooses to quit afterwards the app is not relaunched.
+- how the ChatGPT app's n answer behaves on a real app.
 
 Done when slice 8's acceptance is recorded, each question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.

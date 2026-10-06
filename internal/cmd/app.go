@@ -43,6 +43,10 @@ type App struct {
 	// globalScope records that applyGlobalScope already wrapped Env.Getenv.
 	// Set by pinnedGlobalScope (modes.go) on the first global-scope command.
 	globalScope bool
+	// shellEnv is Env as it was before applyGlobalScope masked kae-managed
+	// isolation values: the environment of the shell kae was started from. Nil
+	// until then, when Env is that environment.
+	shellEnv *adapter.Env
 
 	// backendForTest overrides the resolved secret backend when set. It is a
 	// test seam (App is constructed directly in tests; see app.go newApp doc);
@@ -66,6 +70,9 @@ type App struct {
 	// residentProbeTimeout bounds one daemon probe; zero means the default
 	// (residentProbeLimit). Tests shorten it so a silent daemon costs little.
 	residentProbeTimeout time.Duration
+	// residentRestartTimeout bounds the daemon restart command; zero means the
+	// default (residentRestartLimit). Tests shorten it to reach the timeout.
+	residentRestartTimeout time.Duration
 	// euidForTest replaces os.Geteuid for the probe's socket-owner check, which a
 	// test cannot otherwise fail without a file owned by another user. Nil in
 	// production.

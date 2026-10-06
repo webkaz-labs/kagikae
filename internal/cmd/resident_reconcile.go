@@ -16,6 +16,9 @@ import (
 const (
 	residentRecheckInterval = 250 * time.Millisecond
 	residentRecheckLimit    = 5 * time.Second
+	// defaultResidentRestartTimeout bounds the restart command itself; one that
+	// has not finished by then is restart_failed.
+	defaultResidentRestartTimeout = 30 * time.Second
 )
 
 // residentOutcomeOwed marks a daemon entry whose restart is owed after the
@@ -85,7 +88,7 @@ func (app *App) probeResidentsBeforeSwitch(ctx context.Context, be secret.Backen
 		outcome := daemonOutcomeBefore(observed, mode)
 		results[i].Residents = append(results[i].Residents,
 			residentEntry{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome})
-		noticeBeforeSwitch(observed, outcome)
+		noticeBeforeSwitch(observed, outcome, app.residentRestartCommand(holder, spec))
 		if outcome == residentOutcomeOwed {
 			pending = append(pending, pendingRestart{
 				result: i, entry: len(results[i].Residents) - 1, ad: ad, holder: holder, spec: spec,
@@ -96,7 +99,11 @@ func (app *App) probeResidentsBeforeSwitch(ctx context.Context, be secret.Backen
 				Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
 				Outcome: constants.ResidentOutcomeWarned,
 			})
-			warnf("codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted")
+			if mode.dryRun {
+				warnf("codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted")
+			} else {
+				warnf("codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted")
+			}
 		}
 	}
 	return pending
@@ -126,11 +133,12 @@ func daemonOutcomeBefore(observed string, mode residentMode) string {
 	return constants.ResidentOutcomeNone
 }
 
-// noticeBeforeSwitch is step 2's stderr line for one daemon. absent and matches
-// print nothing.
-func noticeBeforeSwitch(observed, outcome string) {
+// noticeBeforeSwitch is step 2's stderr line for one daemon; restart is the
+// manual step it names (residentRestartCommand). absent and matches print
+// nothing.
+func noticeBeforeSwitch(observed, outcome, restart string) {
 	if observed == constants.ResidentObservedUnknown {
-		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: codex app-server daemon restart")
+		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: %s", restart)
 		return
 	}
 	if observed != constants.ResidentObservedDiffers {
@@ -142,9 +150,9 @@ func noticeBeforeSwitch(observed, outcome string) {
 	case constants.ResidentOutcomePlanned:
 		notef("codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it")
 	case constants.ResidentOutcomeOptedOut:
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart")
+		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: %s", restart)
 	case constants.ResidentOutcomeWarned:
-		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart")
+		warnf("codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", restart)
 	}
 }
 
@@ -214,29 +222,52 @@ func (app *App) reconcileResidents(ctx context.Context, results []switchResult, 
 
 // restartDaemon runs the daemon's restart command with the spec's environment,
 // which sets CODEX_HOME to the real home after everything inherited, so a bound
-// directory's value cannot select another daemon. It then re-probes against the
-// live credential as it reads at each attempt — not the switch's target, so a
-// later switch by another kae process does not make this restart look
-// unverified.
+// directory's value cannot select another daemon, and bounds it by
+// residentRestartLimit. It then re-probes against the live credential as it
+// reads at each attempt — not the switch's target, so a later switch by another
+// kae process does not make this restart look unverified — each probe bounded by
+// what is left of the 5 s.
 func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
-	if _, _, code := runner.RunWithEnv(ctx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...); code != 0 {
-		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart", code)
+	manual := app.residentRestartCommand(p.holder, p.spec)
+	limit := app.residentRestartLimit()
+	runCtx, cancel := context.WithTimeout(ctx, limit)
+	_, _, code := runner.RunWithEnv(runCtx, p.spec.Env, p.spec.Restart[0], p.spec.Restart[1:]...)
+	timedOut := runCtx.Err() != nil
+	cancel()
+	if timedOut {
+		warnf("codex: codex app-server daemon restart did not finish within %s; the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", limit, manual)
+		return constants.ResidentOutcomeRestartFailed
+	}
+	if code != 0 {
+		warnf("codex: codex app-server daemon restart failed (exit %d); the switch is kept, and the managed daemon may still use the previous account; to retry, run: %s", code, manual)
 		return constants.ResidentOutcomeRestartFailed
 	}
 	deadline := app.Now().Add(residentRecheckLimit)
 	for {
-		live := liveCredential(p.ad, app.Env)
-		if app.probeResidentDaemon(ctx, p.holder, p.spec, live) == constants.ResidentObservedMatches {
+		remaining := deadline.Sub(app.Now())
+		if remaining <= 0 || ctx.Err() != nil {
+			break
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, remaining)
+		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, liveCredential(p.ad, app.Env))
+		cancel()
+		if observed == constants.ResidentObservedMatches {
 			notef("codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live")
 			return constants.ResidentOutcomeRestarted
 		}
-		if ctx.Err() != nil || !app.Now().Before(deadline) {
-			break
-		}
 		app.sleep(ctx, residentRecheckInterval)
 	}
-	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: codex app-server daemon restart")
+	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: %s", manual)
 	return constants.ResidentOutcomeRestartUnverified
+}
+
+// residentRestartLimit bounds the restart command: App.residentRestartTimeout,
+// or the default.
+func (app *App) residentRestartLimit() time.Duration {
+	if app.residentRestartTimeout > 0 {
+		return app.residentRestartTimeout
+	}
+	return defaultResidentRestartTimeout
 }
 
 // sleep waits d or until ctx ends: App.sleepForTest, or a timer.

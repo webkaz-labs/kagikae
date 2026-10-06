@@ -52,17 +52,11 @@ type switchReport struct {
 // at a per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile", "P")
-	var shared, isolated, quiet, auto, noRestart bool
-	var profileFlag string
-	var useFlags *flag.FlagSet
-	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
-		useFlags = fs
-		registerUseFlags(fs, &shared, &isolated, &quiet, &auto, &noRestart, &profileFlag)
-	})
+	opts, uf, ok := parseUseFlags(flags)
 	if !ok {
 		return constants.ExitUsage
 	}
-	opts.NoRestart, opts.ResidentHook = noRestart, auto
+	shared, isolated, quiet, auto, profileFlag, useFlags := uf.shared, uf.isolated, uf.quiet, uf.auto, uf.profile, uf.fs
 	isolatedMode, ok := resolveScope(shared, isolated)
 	if !ok {
 		return constants.ExitUsage
@@ -97,6 +91,28 @@ func CmdUse(ctx context.Context, args []string) int {
 		return runUseIsolated(ctx, app, opts, target, name)
 	}
 	return runSwitch(ctx, app, opts, target, name)
+}
+
+// useFlagValues is what parseUseFlags read beyond commonOpts; fs is the parsed
+// set, for asking which flags were given.
+type useFlagValues struct {
+	shared, isolated, quiet, auto bool
+	profile                       string
+	fs                            *flag.FlagSet
+}
+
+// parseUseFlags parses `kae use`'s flags and carries the two that steer the
+// resident reconcile into opts: --no-restart as NoRestart and --auto as the hook
+// shape (ResidentHook).
+func parseUseFlags(flags []string) (commonOpts, useFlagValues, bool) {
+	var v useFlagValues
+	var noRestart bool
+	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
+		v.fs = fs
+		registerUseFlags(fs, &v.shared, &v.isolated, &v.quiet, &v.auto, &noRestart, &v.profile)
+	})
+	opts.NoRestart, opts.ResidentHook = noRestart, v.auto
+	return opts, v, ok
 }
 
 func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) int {

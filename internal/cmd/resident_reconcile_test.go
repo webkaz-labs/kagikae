@@ -62,8 +62,8 @@ func startResidentDaemon(t *testing.T, accountID string) *residentDaemon {
 			if err != nil || f.Op == wsrpctest.OpClose {
 				return
 			}
-			if i == 2 {
-				_ = p.Send(wsrpctest.Text(*d.answer.Load()))
+			if answer := *d.answer.Load(); i == 2 && answer != "" {
+				_ = p.Send(wsrpctest.Text(answer))
 			}
 		}
 	})
@@ -251,15 +251,16 @@ func assertNoResidentPII(t *testing.T, outputs ...string) {
 }
 
 const (
-	noticeRestart = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch"
-	noticePlanned = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it"
-	warnOptedOut  = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
-	warnHook      = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
-	warnUnknown   = "kae: warning: codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: codex app-server daemon restart"
-	warnSession   = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted"
-	noteRestarted = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live"
-	warnUnverfied = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: codex app-server daemon restart"
-	warnFailed    = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
+	noticeRestart  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live; kae restarts it after the switch"
+	noticePlanned  = "kae: note: codex: the managed daemon (codex app-server daemon) holds another account than this switch would leave live; the switch would restart it"
+	warnOptedOut   = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and --no-restart leaves it running; to move it to the new account, run: codex app-server daemon restart"
+	warnHook       = "kae: warning: codex: the managed daemon (codex app-server daemon) holds another account than this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: codex app-server daemon restart"
+	warnUnknown    = "kae: warning: codex: could not read which account the managed daemon (codex app-server daemon) holds; if it still uses the previous account, run: codex app-server daemon restart"
+	warnSession    = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon keep the previous account until they are restarted"
+	warnSessionDry = "kae: warning: codex sessions started before this switch that are not connected to the managed daemon would keep the previous account until they are restarted"
+	noteRestarted  = "kae: note: codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live"
+	warnUnverfied  = "kae: warning: codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it still uses the previous account, run: codex app-server daemon restart"
+	warnFailed     = "kae: warning: codex: codex app-server daemon restart failed (exit 3); the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart"
 )
 
 // The everyday case: the daemon holds the live account (side), the switch leaves
@@ -403,7 +404,11 @@ func TestUseSuppressesTheRestart(t *testing.T) {
 				if f.restartCount() != 0 {
 					t.Errorf("%s: restarted", format)
 				}
-				for _, line := range []string{tc.line, warnSession} {
+				session := warnSession
+				if opts.DryRun {
+					session = warnSessionDry
+				}
+				for _, line := range []string{tc.line, session} {
 					if !strings.Contains(stderr, line+"\n") {
 						t.Errorf("%s: stderr lacks %q:\n%s", format, line, stderr)
 					}
@@ -659,5 +664,188 @@ func TestUseResidentsInJapanese(t *testing.T) {
 func TestUseOffersNoRestart(t *testing.T) {
 	if !strings.Contains(strings.Join(flagCompletions("use"), " "), "--no-restart") {
 		t.Errorf("use flags = %q", flagCompletions("use"))
+	}
+}
+
+// Inside a shell that exports a kae-managed CODEX_HOME (a bound directory or a
+// global isolation), the probe and the restart still reach the real home's
+// daemon, and the manual step names the real home: the bare command typed in
+// that shell would restart the bound home's daemon instead.
+func TestBoundShellReachesAndNamesTheRealHomeDaemon(t *testing.T) {
+	for _, noRestart := range []bool{true, false} {
+		f := newResidentFixture(t)
+		f.withDaemon(t, residentSide)
+		f.stubRestart(t, f.restartTo(t))
+		realSpec := f.holder.ResidentDaemon(f.app.Env)
+		bound := f.app.Paths.GlobalIsolatedHomeDir(constants.ToolCodex, "main")
+		if err := os.MkdirAll(bound, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		inner, innerLookup := f.app.Env.Getenv, f.app.Env.LookupEnv
+		f.app.Env.Getenv = func(key string) string {
+			if key == "CODEX_HOME" {
+				return bound
+			}
+			return inner(key)
+		}
+		f.app.Env.LookupEnv = func(key string) (string, bool) {
+			if key == "CODEX_HOME" {
+				return bound, true
+			}
+			return innerLookup(key)
+		}
+		// The bound home's own daemon already holds the target: a probe that went
+		// there would read matches and restart nothing.
+		boundDaemon := startResidentDaemon(t, residentMain)
+		linkSocket(t, f.app, f.holder, boundDaemon.socket)
+		canonicalBound, err := filepath.EvalSymlinks(bound)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := f.holder.ResidentDaemon(f.app.Env).Socket; !strings.HasPrefix(got, canonicalBound) {
+			t.Fatalf("fixture: bound socket %s is not under %s", got, canonicalBound)
+		}
+
+		code, stdout, stderr := captureBoth(t, func() int {
+			return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON, NoRestart: noRestart}, constants.ToolCodex, "main")
+		})
+		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		if n := boundDaemon.accepted.Load(); n != 0 {
+			t.Errorf("noRestart=%v: the bound home's daemon was probed %d times", noRestart, n)
+		}
+		manual := "CODEX_HOME=" + shellSingleQuote(strings.TrimPrefix(realSpec.Env[0], "CODEX_HOME=")) +
+			" codex app-server daemon restart"
+		if noRestart {
+			if !strings.Contains(stderr, "and --no-restart leaves it running; to move it to the new account, run: "+manual+"\n") {
+				t.Errorf("the manual step does not name the real home %q:\n%s", manual, stderr)
+			}
+			continue
+		}
+		if f.restartCount() != 1 {
+			t.Fatalf("restarted %d times, want once (the real home's daemon differs)", f.restartCount())
+		}
+		if want := strings.TrimPrefix(realSpec.Env[0], "CODEX_HOME="); f.restarts[0].codexHome != want {
+			t.Errorf("the restart sees CODEX_HOME=%s, want the real home %s", f.restarts[0].codexHome, want)
+		}
+	}
+}
+
+// Outside such a shell the manual step is the bare command.
+func TestResidentRestartCommandIsBareForTheRealHome(t *testing.T) {
+	f := newResidentFixture(t)
+	f.app.pinnedGlobalScope()
+	if got := f.app.residentRestartCommand(f.holder, f.holder.ResidentDaemon(f.app.Env)); got != "codex app-server daemon restart" {
+		t.Errorf("command = %q", got)
+	}
+}
+
+// --auto is the hook shape and --no-restart opts out; neither stands for the
+// other.
+func TestParseUseFlagsWiresTheResidentFlags(t *testing.T) {
+	for _, tc := range []struct {
+		flags           []string
+		hook, noRestart bool
+	}{
+		{nil, false, false},
+		{[]string{"--auto"}, true, false},
+		{[]string{"--no-restart"}, false, true},
+		{[]string{"--auto", "--no-restart", "--yes"}, true, true},
+	} {
+		opts, _, ok := parseUseFlags(tc.flags)
+		if !ok {
+			t.Fatalf("%q: parse failed", tc.flags)
+		}
+		if opts.ResidentHook != tc.hook || opts.NoRestart != tc.noRestart {
+			t.Errorf("%q: ResidentHook=%v NoRestart=%v, want %v %v", tc.flags, opts.ResidentHook, opts.NoRestart, tc.hook, tc.noRestart)
+		}
+	}
+}
+
+// A restart command that does not finish in time is restart_failed; the switch
+// stays applied.
+func TestRestartTimesOut(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	f.app.residentRestartTimeout = 50 * time.Millisecond
+	var deadline time.Duration
+	f.stubRestart(t, f.restartTo(t))
+	saved := runner.RunWithEnv
+	runner.RunWithEnv = func(ctx context.Context, env []string, name string, args ...string) (string, string, int) {
+		if d, ok := ctx.Deadline(); ok {
+			deadline = time.Until(d)
+		}
+		select {
+		case <-ctx.Done():
+			return "", "", -1
+		case <-time.After(2 * time.Second):
+			return saved(ctx, env, name, args...)
+		}
+	}
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
+		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartFailed), sessionEntry,
+	}) {
+		t.Errorf("residents = %+v", got)
+	}
+	if want := "kae: warning: codex: codex app-server daemon restart did not finish within 50ms; the switch is kept, and the managed daemon may still use the previous account; to retry, run: codex app-server daemon restart\n"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr lacks %q:\n%s", want, stderr)
+	}
+	if deadline <= 0 || deadline > 50*time.Millisecond {
+		t.Errorf("the restart ran with %v left, want at most the 50ms limit", deadline)
+	}
+	if f.liveAccountID(t) != residentMain {
+		t.Error("a timed-out restart rolled the switch back")
+	}
+}
+
+// The production limit on the restart command is 30 s.
+func TestRestartLimitDefault(t *testing.T) {
+	if got := (&App{}).residentRestartLimit(); got != 30*time.Second {
+		t.Errorf("default restart limit = %v, want 30s", got)
+	}
+}
+
+// Each re-probe is bounded by what is left of the 5 s: a daemon that stops
+// answering after a restart that took 4.9 s costs 0.1 s more, not a whole probe
+// timeout.
+func TestReprobesStayWithinTheWait(t *testing.T) {
+	f := newResidentFixture(t)
+	d := f.withDaemon(t, residentSide)
+	f.app.residentProbeTimeout = 10 * time.Second
+	// After the restart, the first clock reading (the 5 s deadline) is the
+	// fixture's; every later one is 4.9 s on, as if the wait had nearly run out.
+	restarted, reads := false, 0
+	f.stubRestart(t, func(*restartCall) int {
+		d.answers("")
+		restarted = true
+		return 0
+	})
+	base := f.app.Now
+	f.app.Now = func() time.Time {
+		now := base()
+		if restarted {
+			reads++
+			if reads > 1 {
+				return now.Add(4900 * time.Millisecond)
+			}
+		}
+		return now
+	}
+	start := time.Now()
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runSwitch(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	})
+	elapsed := time.Since(start)
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got := codexResidents(t, stdout)[constants.ToolCodex]; !reflect.DeepEqual(got, []residentEntry{
+		daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartUnverified), sessionEntry,
+	}) {
+		t.Errorf("residents = %+v", got)
+	}
+	if elapsed > 3*time.Second {
+		t.Errorf("the wait took %v; a re-probe outlived the 5 s", elapsed)
 	}
 }

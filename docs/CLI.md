@@ -285,10 +285,10 @@ them as follows; tools without resident processes are unaffected.
    250 ms, at most 20 s counted from the quit request, so an app slow to answer it
    shortens the wait rather than extending it), and relaunches it only once it has
    stopped. It never forces the quit: an app still running at the deadline is left
-   running with a warning.
-   When macOS refuses kae permission to control the app, kae says how to quit and
-   reopen it by hand. An app that is not installed counts as not running. When kae
-   cannot tell whether the app is running at all, it warns and does nothing to it. Without `--yes`, a run that cannot ask — no
+   running with a warning. When macOS refuses kae permission to control the app,
+   kae says how to quit and reopen it by hand. An app that is not installed counts
+   as not running. When kae cannot tell whether the app is running at all, it
+   warns and does nothing to it. Without `--yes`, a run that cannot ask — no
    terminal, `--json` — warns instead.
 6. **Sessions.** Whenever this command changed codex's account, kae warns that a
    codex session started before the switch and not connected to the managed daemon

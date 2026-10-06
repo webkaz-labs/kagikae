@@ -224,7 +224,7 @@ func TestQuitTimeoutDoesNotRelaunch(t *testing.T) {
 			t.Fatalf("ran %#v after a timeout", c)
 		}
 	}
-	// 20 秒 / 250ms = 80 回待ち、締切の時点で最後にもう一度問う。
+	// 待機 80 回 + 最終 poll 1 回（20 秒 / 250ms = 80 回待ち、締切の時点でもう一度問う）。
 	if n := len(clock.sleeps); n != 80 {
 		t.Fatalf("slept %d times, want 80", n)
 	}
@@ -342,6 +342,7 @@ func TestPollCountStopsWithoutAMovingClock(t *testing.T) {
 	if got != OutcomeQuitTimeout {
 		t.Fatalf("outcome = %v", got)
 	}
+	// 待機 80 回 + 最終 poll 1 回。
 	if polls := len(fake.calls) - 1; polls != 81 {
 		t.Fatalf("polled %d times, want 81", polls)
 	}

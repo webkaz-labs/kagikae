@@ -97,14 +97,14 @@ func (o Outcome) String() string {
 // deadline counts from before the quit request, so a slow Apple Event eats into
 // the wait instead of extending it.
 const (
-	PollInterval = 250 * time.Millisecond
-	QuitDeadline = 20 * time.Second
+	pollInterval = 250 * time.Millisecond
+	quitDeadline = 20 * time.Second
 	// quitEventTimeout bounds the quit Apple Event itself (`with timeout`);
-	// it stays inside QuitDeadline.
+	// it stays inside quitDeadline.
 	quitEventTimeout = 10 * time.Second
 	// maxPolls stops the wait even when only one of Now and Sleep is
 	// injected, so a frozen clock or a sleep that does not sleep cannot loop.
-	maxPolls = int(QuitDeadline/PollInterval) + 1
+	maxPolls = int(quitDeadline/pollInterval) + 1
 )
 
 var (
@@ -112,6 +112,8 @@ var (
 	// not placed in an AppleScript source or argv; nothing was run.
 	ErrInvalidBundleID = errors.New("desktopapp: invalid bundle id")
 	// ErrUnsupported: QuitAndRelaunch was called off darwin; nothing was run.
+	// Running answers StateNotRunning off darwin, so a caller that quits only
+	// a running app never reaches this; it is a guard, not a branch to handle.
 	ErrUnsupported = errors.New("desktopapp: desktop apps are handled on darwin only")
 )
 
@@ -178,7 +180,8 @@ func validBundleID(id string) bool {
 }
 
 // Running asks whether the app is running. Off darwin it answers
-// StateNotRunning without running anything: there is no app to handle.
+// StateNotRunning without running anything: there is no app to handle. The only
+// error is ErrInvalidBundleID, returned before anything runs.
 func (c Controller) Running(ctx context.Context, bundleID string) (State, error) {
 	if !validBundleID(bundleID) {
 		return StateUnknown, ErrInvalidBundleID
@@ -231,16 +234,18 @@ func quitArgs(bundleID string) []string {
 	}
 }
 
-// QuitAndRelaunch asks the app to quit, polls `is running` every PollInterval
-// until QuitDeadline after the request was sent, and runs `open -b <id>` only
+// QuitAndRelaunch asks the app to quit, polls `is running` every pollInterval
+// until quitDeadline after the request was sent, and runs `open -b <id>` only
 // once the app has been observed stopped. A poll that reads StateUnknown is not
 // a stop. A quit whose Apple Event timed out (-1712) is not a failure: the app
 // may still be quitting, so the wait goes on. It never forces the quit. The
 // caller has already established that the app is running and that the user
 // consented.
 //
-// A done ctx returns ctx.Err() and no Outcome; nothing further is run and the
-// app is not relaunched. Mapping that to a report is the caller's.
+// It returns an error and no Outcome in three cases: ErrInvalidBundleID and
+// ErrUnsupported, before anything runs, and ctx.Err() once ctx is done, after
+// which nothing further is run and the app is not relaunched. Mapping a ctx
+// error to a report is the caller's.
 func (c Controller) QuitAndRelaunch(ctx context.Context, bundleID string) (Outcome, error) {
 	if !validBundleID(bundleID) {
 		return 0, ErrInvalidBundleID
@@ -251,7 +256,7 @@ func (c Controller) QuitAndRelaunch(ctx context.Context, bundleID string) (Outco
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	deadline := c.now().Add(QuitDeadline)
+	deadline := c.now().Add(quitDeadline)
 	if _, stderr, code := runner.Run(ctx, "osascript", quitArgs(bundleID)...); code != 0 {
 		if err := ctx.Err(); err != nil {
 			return 0, err
@@ -279,6 +284,6 @@ func (c Controller) QuitAndRelaunch(ctx context.Context, bundleID string) (Outco
 		if polls >= maxPolls || !c.now().Before(deadline) {
 			return OutcomeQuitTimeout, nil
 		}
-		c.sleep(ctx, PollInterval)
+		c.sleep(ctx, pollInterval)
 	}
 }

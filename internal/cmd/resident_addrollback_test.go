@@ -12,6 +12,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
@@ -584,5 +585,40 @@ func TestRollbackReadsTheBackupPayloadOnce(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, stdout+stderr)
 	if got := counter.gets[rec.SecretRef]; got != 1 {
 		t.Errorf("read the backup's codex payload %d times, want once", got)
+	}
+}
+
+// The rollback's keychain read cache opens under its locks: the resident probe's
+// lock-free read of codex's live keyring item is not reused for the pre-rollback
+// backup, which reads the item again under the lock.
+func TestRollbackKeychainCacheStartsUnderTheLocks(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
+	sim := &keychainSim{payload: codexChatGPTAuth(residentMain, "codex-main-token"), present: true}
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	var reads int
+	runner.With(sim, func() {
+		code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, constants.ToolCodex, "main") })
+		mustExit(t, constants.ExitOK, code, out)
+		sim.payload = codexChatGPTAuth(residentSide, "codex-side-token")
+		code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, constants.ToolCodex, "side") })
+		mustExit(t, constants.ExitOK, code, out)
+		// The newest backup records side; main is live after the switch.
+		code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, constants.ToolCodex, "main") })
+		mustExit(t, constants.ExitOK, code, out)
+
+		before := sim.readW
+		code, stdout, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		reads = sim.readW - before
+	})
+	if !strings.Contains(sim.payload, residentSide) {
+		t.Fatal("the rollback did not restore side")
+	}
+	// The probe's read before the locks, and the backup's under them.
+	if reads < 2 {
+		t.Errorf("read codex's live keyring item %d times during the rollback, want the probe's and the backup's (2 or more)", reads)
 	}
 }

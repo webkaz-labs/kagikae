@@ -918,9 +918,9 @@ func TestReprobesStayWithinTheWait(t *testing.T) {
 	}
 }
 
-// A command that exits 0 as the deadline passes restarted the daemon: the
-// timeout is judged only for a command that did not succeed.
-func TestRestartExitingZeroAtTheDeadlineIsNotATimeout(t *testing.T) {
+// A launcher that answers exit 0 after the limit has passed restarted the daemon:
+// only its ErrStillRunning makes a restart restart_pending, not the limit itself.
+func TestRestartExitingZeroAfterTheLimitIsRestarted(t *testing.T) {
 	f := newResidentFixture(t)
 	f.withDaemon(t, residentSide)
 	f.app.residentRestartTimeout = 20 * time.Millisecond
@@ -954,47 +954,51 @@ func TestRestartDoesNotWaitForWhatItLeavesRunning(t *testing.T) {
 	}
 }
 
-// Through the real runner, under sh and dash, a restart command still running at
-// the limit is not killed: kae returns restart_pending, and the command goes on
-// to finish its work afterwards, as upstream's restart starts the new daemon only
-// after the old one has stopped.
+// Through the real runner, a restart command still running at the limit is not
+// killed: kae returns restart_pending, and the command goes on to finish its work
+// afterwards, as upstream's restart starts the new daemon only after the old one
+// has stopped. dash is covered by the runner's own test.
 func TestRestartStillRunningAtTheLimitKeepsRunning(t *testing.T) {
-	for _, shell := range []string{"/bin/sh", "/bin/dash"} {
-		t.Run(filepath.Base(shell), func(t *testing.T) {
-			if _, err := os.Stat(shell); err != nil {
-				t.Skipf("no %s", shell)
-			}
-			f := newResidentFixture(t)
-			f.withDaemon(t, residentSide)
-			f.app.residentRestartTimeout = 100 * time.Millisecond
-			marker := filepath.Join(t.TempDir(), "restarted")
-			standInCodex(t, fmt.Sprintf("#!%s\nsleep 2\necho done > '%s'\n", shell, marker))
-			// Time the restart alone, not the whole switch, so a loaded machine's
-			// slower transaction does not count against the limit.
-			var waited time.Duration
-			launch := runner.LaunchWithEnv
-			runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
-				start := time.Now()
-				defer func() { waited = time.Since(start) }()
-				return launch(ctx, env, name, args...)
-			}
-			stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
-			if waited <= 0 || waited > 1500*time.Millisecond {
-				t.Errorf("kae waited %v for the restart, want about the 100ms limit", waited)
-			}
-			wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
-			if _, err := os.Stat(marker); err == nil {
-				t.Fatal("the restart finished within the limit; the test proves nothing")
-			}
-			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-				if _, err := os.Stat(marker); err == nil {
-					break
-				}
-				if time.Now().After(deadline) {
-					t.Fatal("the restart command did not go on after kae stopped waiting for it")
-				}
-			}
-		})
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	f.app.residentRestartTimeout = 100 * time.Millisecond
+	marker := filepath.Join(t.TempDir(), "restarted")
+	standInCodex(t, fmt.Sprintf("#!/bin/sh\nsleep 1\necho done > '%s'\n", marker))
+	// Time the restart alone, not the whole switch, and look for the marker as it
+	// returns, so a loaded machine's slower transaction counts against neither.
+	var waited time.Duration
+	finishedInTime := false
+	launch := runner.LaunchWithEnv
+	runner.LaunchWithEnv = func(ctx context.Context, env []string, name string, args ...string) (int, error) {
+		start := time.Now()
+		code, err := launch(ctx, env, name, args...)
+		waited = time.Since(start)
+		_, statErr := os.Stat(marker)
+		finishedInTime = statErr == nil
+		return code, err
+	}
+	stdout, _ := f.use(t, context.Background(), commonOpts{Format: formatJSON}, constants.ToolCodex, "main")
+	if finishedInTime {
+		t.Fatal("the restart finished within the limit; the test proves nothing")
+	}
+	if waited <= 0 || waited > 700*time.Millisecond {
+		t.Errorf("kae waited %v for the restart, want about the 100ms limit", waited)
+	}
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeRestartPending), sessionEntry)
+	if !pathAppears(marker, 5*time.Second) {
+		t.Fatal("the restart command did not go on after kae stopped waiting for it")
+	}
+}
+
+// pathAppears polls for path for at most within and reports whether it appeared.
+func pathAppears(path string, within time.Duration) bool {
+	for deadline := time.Now().Add(within); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
 	}
 }
 

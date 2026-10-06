@@ -147,13 +147,15 @@ func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
 			}
 			dir := t.TempDir()
 			pidFile, marker := filepath.Join(dir, "pid"), filepath.Join(dir, "done")
-			script := `echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; sleep 1; echo done > "$2.tmp" && mv "$2.tmp" "$2"`
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			script := `echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; sleep 0.6; echo done > "$2.tmp" && mv "$2.tmp" "$2"`
+			// The bound on the return stays below the program's 0.6 s sleep, so a
+			// return within it always finds the program still running.
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
 			start := time.Now()
 			code, err := LaunchWithEnv(ctx, nil, shell, "-c", script, shell, pidFile, marker)
-			if elapsed := time.Since(start); elapsed > 900*time.Millisecond {
-				t.Fatalf("LaunchWithEnv returned %v after a 100ms deadline", elapsed)
+			if elapsed := time.Since(start); elapsed > 450*time.Millisecond {
+				t.Fatalf("LaunchWithEnv returned %v after a 50ms deadline", elapsed)
 			}
 			if code != -1 || !errors.Is(err, ErrStillRunning) {
 				t.Fatalf("at the deadline = %d %v, want -1 and ErrStillRunning", code, err)
@@ -166,7 +168,7 @@ func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
 			if err != nil {
 				t.Fatalf("pid file %q: %v", pid, err)
 			}
-			// It sleeps for a second after writing its pid, so it is still there.
+			// It sleeps for 0.6 s after writing its pid, so it is still there.
 			if sid, err := sessionOf(n); err != nil || sid != n {
 				t.Errorf("the program's session = %d (%v), want its own (%d)", sid, err, n)
 			}

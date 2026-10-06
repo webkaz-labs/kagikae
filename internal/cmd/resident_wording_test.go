@@ -11,8 +11,8 @@ import (
 // The warnings after the transaction, for each command, in English and in
 // Japanese: a failed restart (restartFailed splices the cause and the kept result
 // into one sentence, so each part's catalog entry is checked here), a restart kae
-// left running (restart_pending), and the app still running at the quit deadline,
-// which reads the same for every command (docs/CLI.md § kae use Semantics,
+// left running (restart_pending), and, once, the app still running at the quit
+// deadline, which takes no command (docs/CLI.md § kae use Semantics,
 // steps 4 and 5).
 func TestResidentWarningWording(t *testing.T) {
 	const manual = "codex app-server daemon restart"
@@ -65,22 +65,22 @@ func TestResidentWarningWording(t *testing.T) {
 					kept + "。管理デーモンが再起動されない場合は、" + manual + " を実行してください。"
 			},
 		},
-		{
-			"quit timeout", func(residentOp) message { return desktopQuitTimeoutMessage() },
-			func(string) string {
-				return "codex: the ChatGPT app did not quit in time and kae left it running; " +
-					"it may be asking you to confirm the quit, and kae will not reopen it, so open it yourself after it quits; " +
-					"until then it keeps the codex account it started with"
-			},
-			func(string) string {
-				return "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。" +
-					"アプリが終了の確認を求めている可能性があり、kae は起動し直さないので、終了した後に手動で起動してください。" +
-					"それまでは起動時の codex アカウントを使い続けます。"
-			},
-		},
 	}
 	// Error() stays English whatever the language; Render follows it.
 	l10ntest.UseJapanese(t)
+	quit := desktopQuitTimeoutMessage() // no op: it reads the same for all three
+	const quitEN = "codex: the ChatGPT app did not quit in time and kae left it running; " +
+		"it may be asking you to confirm the quit, and kae will not reopen it, so open it yourself after it quits; " +
+		"until then it keeps the codex account it started with"
+	const quitJA = "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。" +
+		"アプリが終了の確認を求めている可能性があり、kae は起動し直さないので、終了した後に手動で起動してください。" +
+		"それまでは起動時の codex アカウントを使い続けます。"
+	if got := quit.Error(); got != quitEN {
+		t.Errorf("quit timeout: English = %q, want %q", got, quitEN)
+	}
+	if got := l10n.Render(quit); got != quitJA {
+		t.Errorf("quit timeout: Japanese = %q, want %q", got, quitJA)
+	}
 	for _, o := range ops {
 		for _, c := range cases {
 			m := c.build(o.op)

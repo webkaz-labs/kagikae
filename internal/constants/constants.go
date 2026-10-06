@@ -292,15 +292,21 @@ const (
 	ResidentObservedMatches = "matches"
 	ResidentObservedDiffers = "differs"
 	ResidentObservedUnknown = "unknown"
+	// ResidentObservedRunning is the `observed` of a `desktop_app` entry: the
+	// app is running. A desktop app kae could not tell about reads
+	// ResidentObservedUnknown; one that is not running has no entry.
+	ResidentObservedRunning = "running"
 )
 
-// The `kind` of a switch report's `residents` entry: codex's managed daemon, and
-// the codex sessions kae does not look for (docs/CLI.md § `kae use ... --json`
-// (the switch report)). A session entry's `observed` is always
+// The `kind` of a switch report's `residents` entry: codex's managed daemon, the
+// ChatGPT desktop app, and the codex sessions kae does not look for (docs/CLI.md
+// § `kae use ... --json` (the switch report)). A session entry's `observed` is always
 // ResidentObservedUnknown.
 const (
 	ResidentKindDaemon  = "daemon"
 	ResidentKindSession = "session"
+	// ResidentKindDesktopApp is the ChatGPT desktop app (macOS).
+	ResidentKindDesktopApp = "desktop_app"
 )
 
 // The `outcome` of a `residents` entry: nothing to do, what --dry-run would do,
@@ -314,6 +320,18 @@ const (
 	ResidentOutcomeRestartFailed     = "restart_failed"
 	ResidentOutcomeOptedOut          = "opted_out"
 	ResidentOutcomeWarned            = "warned"
+)
+
+// The `outcome` of a `desktop_app` entry beyond the shared ones above: the
+// confirmation answered no, and how a consented quit and relaunch ended
+// (docs/CLI.md § kae use Semantics, **Resident processes (codex)**, step 5).
+const (
+	ResidentOutcomeDeclined       = "declined"
+	ResidentOutcomeRelaunched     = "relaunched"
+	ResidentOutcomeRelaunchFailed = "relaunch_failed"
+	ResidentOutcomeQuitTimeout    = "quit_timeout"
+	ResidentOutcomeQuitDenied     = "quit_denied"
+	ResidentOutcomeQuitFailed     = "quit_failed"
 )
 
 // Backup reasons, the `reason` field of a backup's metadata and of every

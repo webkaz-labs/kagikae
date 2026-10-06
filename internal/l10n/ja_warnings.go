@@ -297,6 +297,37 @@ var jaWarnings = map[string]string{
 
 	"codex: restarted the managed daemon (codex app-server daemon); it now holds the account this kae rollback put back": "codex: 管理デーモン（codex app-server daemon）を再起動しました。この kae rollback で戻したアカウントを使っています。",
 
+	// resident_desktop.go and resident_wording.go: the ChatGPT app.
+	"codex: the ChatGPT app is running and keeps the codex account it started with; after the switch, kae quits and relaunches it with your consent": "codex: ChatGPT アプリが起動中で、起動時の codex アカウントを使い続けています。切替の後に、同意を得たうえで kae が終了して再起動します。",
+
+	"codex: the ChatGPT app is running and keeps the codex account it started with; kae quits and relaunches it now with your consent": "codex: ChatGPT アプリが起動中で、起動時の codex アカウントを使い続けています。同意を得たうえで kae がいま終了して再起動します。",
+
+	"codex: the ChatGPT app is running and keeps the codex account it started with; after the rollback, kae quits and relaunches it with your consent": "codex: ChatGPT アプリが起動中で、起動時の codex アカウントを使い続けています。kae rollback の後に、同意を得たうえで kae が終了して再起動します。",
+
+	"codex: the ChatGPT app is running and keeps the codex account it started with; the switch would quit and relaunch it with your consent": "codex: ChatGPT アプリが起動中で、起動時の codex アカウントを使い続けています。切替を実行すると、同意を得たうえで kae が終了して再起動します。",
+
+	"codex: the ChatGPT app is running and keeps the codex account it started with; the rollback would quit and relaunch it with your consent": "codex: ChatGPT アプリが起動中で、起動時の codex アカウントを使い続けています。kae rollback を実行すると、同意を得たうえで kae が終了して再起動します。",
+
+	"codex: the ChatGPT app keeps the codex account it started with, and --no-restart leaves it running; to use the codex account now live, quit and reopen it": "codex: ChatGPT アプリは起動時の codex アカウントを使い続けますが、--no-restart が指定されているため終了しません。現在有効な codex アカウントを使うには、アプリを終了して起動し直してください。",
+
+	"codex: the ChatGPT app keeps the codex account it started with, and the enter hook (--auto) does not quit it; to use the codex account now live, quit and reopen it": "codex: ChatGPT アプリは起動時の codex アカウントを使い続けますが、enter フック（--auto）では終了しません。現在有効な codex アカウントを使うには、アプリを終了して起動し直してください。",
+
+	"codex: the ChatGPT app keeps the codex account it started with, and kae cannot ask here whether to quit it (no terminal, or --json); to use the codex account now live, quit and reopen it, or pass --yes to let kae do it": "codex: ChatGPT アプリは起動時の codex アカウントを使い続けますが、ここでは終了するかを確認できません（端末がないか、--json が指定されています）。現在有効な codex アカウントを使うには、アプリを終了して起動し直すか、kae に任せる場合は --yes を指定してください。",
+
+	"codex: could not tell whether the ChatGPT app is running; if it is, quit and reopen it to use the codex account now live": "codex: ChatGPT アプリが起動中か判断できませんでした。起動中の場合は、現在有効な codex アカウントを使うために、アプリを終了して起動し直してください。",
+
+	"codex: left the ChatGPT app running; it keeps the codex account it started with until you quit and reopen it": "codex: ChatGPT アプリは起動したままにします。終了して起動し直すまで、起動時の codex アカウントを使い続けます。",
+
+	"codex: quit and relaunched the ChatGPT app, so it uses the codex account now live": "codex: ChatGPT アプリを終了して再起動しました。現在有効な codex アカウントを使います。",
+
+	"codex: the ChatGPT app quit, but kae could not open it again (open -b %s); open it yourself": "codex: ChatGPT アプリは終了しましたが、kae は起動し直せませんでした（open -b %s）。アプリを手動で起動してください。",
+
+	"codex: the ChatGPT app did not quit in time and kae left it running; it keeps the codex account it started with until you quit and reopen it": "codex: ChatGPT アプリが時間内に終了しなかったため、kae は起動したままにしました。終了して起動し直すまで、起動時の codex アカウントを使い続けます。",
+
+	"codex: macOS did not let kae control the ChatGPT app; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again": "codex: macOS が kae による ChatGPT アプリの操作を許可しませんでした。現在有効な codex アカウントを使うには、アプリで Command-Q を押して終了し、もう一度起動してください。",
+
+	"codex: could not ask the ChatGPT app to quit; to use the codex account now live, quit it yourself (Command-Q in the app) and open it again": "codex: ChatGPT アプリに終了を要求できませんでした。現在有効な codex アカウントを使うには、アプリで Command-Q を押して終了し、もう一度起動してください。",
+
 	// run.go.
 	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、実ホームのままです（%s で独立させられるのは claude と codex だけです）。",
 

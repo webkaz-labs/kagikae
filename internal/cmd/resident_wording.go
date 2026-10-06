@@ -107,3 +107,23 @@ func (op residentOp) restarted() message {
 	}
 	return msgf("codex: restarted the managed daemon (codex app-server daemon); it now holds the account this switch left live")
 }
+
+// appAhead is the notice before the ChatGPT app's confirmation and quit, which
+// follow the command's transaction (the login flow's have followed it already).
+func (op residentOp) appAhead() message {
+	switch op {
+	case residentOpLogin:
+		return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; kae quits and relaunches it now with your consent")
+	case residentOpRollback:
+		return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; after the rollback, kae quits and relaunches it with your consent")
+	}
+	return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; after the switch, kae quits and relaunches it with your consent")
+}
+
+// appPlanned is appAhead under --dry-run. The login flow has no --dry-run.
+func (op residentOp) appPlanned() message {
+	if op == residentOpRollback {
+		return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; the rollback would quit and relaunch it with your consent")
+	}
+	return msgf("codex: the ChatGPT app is running and keeps the codex account it started with; the switch would quit and relaunch it with your consent")
+}

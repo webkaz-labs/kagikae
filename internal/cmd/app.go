@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -73,6 +74,17 @@ type App struct {
 	// residentRestartTimeout bounds the daemon restart command; zero means the
 	// default (residentRestartLimit). Tests shorten it to reach the timeout.
 	residentRestartTimeout time.Duration
+	// desktopApps lists a resident holder's desktop apps for the ChatGPT app
+	// handling (docs/CLI.md § kae use Semantics, step 5). Nil in tests means
+	// none, so no test reaches a real app; production sets it to DesktopApps.
+	desktopApps func(adapter.ResidentHolder) []string
+	// desktopGOOS overrides the platform the desktop-app controller acts on
+	// (desktopapp.Controller.GOOS), so a test reaches the darwin path anywhere.
+	// Empty in production.
+	desktopGOOS string
+	// terminalIOForTest is read and written in place of the terminal's file
+	// when openTerminal returns the file-less stand-in. Nil in production.
+	terminalIOForTest io.ReadWriter
 	// euidForTest replaces os.Geteuid for the probe's socket-owner check, which a
 	// test cannot otherwise fail without a file owned by another user. Nil in
 	// production.
@@ -130,6 +142,7 @@ func newApp(configPath string) *App {
 		openTerminal: func() (*textui.Terminal, bool) {
 			return textui.Open(os.Stdin, os.Getenv("TERM"))
 		},
+		desktopApps: adapter.ResidentHolder.DesktopApps,
 	}
 }
 

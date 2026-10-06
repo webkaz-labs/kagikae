@@ -142,8 +142,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			pinnedAccounts = info.Accounts
 		}
 	}
-	credentials := app.capturedCredentialStates(ctx, captured)
-	usages := app.accountUsages(ctx, captured, st)
+	credentials, usages := app.accountReadings(ctx, captured, st)
 	activeProfile := app.activeProfileName(st)
 	if activeProfile != "" {
 		report.ActiveProfile = &activeProfile
@@ -438,8 +437,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 	if err != nil {
 		return finish(opts, err)
 	}
-	states := app.capturedCredentialStates(ctx, captured)
-	usages := app.accountUsages(ctx, captured, st)
+	states, usages := app.accountReadings(ctx, captured, st)
 	report := accountsReport{
 		SchemaVersion: constants.SchemaVersion,
 		Accounts:      accountItems(st, captured, states, usages),

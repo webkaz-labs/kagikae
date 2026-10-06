@@ -196,10 +196,10 @@ func (app *App) capturedCredentialStates(ctx context.Context, captured []account
 	if err != nil {
 		return nil
 	}
-	// No secret.Cached wrap: it only does anything under a secret.WithReadCache
-	// context, which these commands do not install, and credentialStates reads each
-	// account's key exactly once regardless — there is nothing to coalesce.
-	return app.credentialStates(ctx, be, captured)
+	// credentialStates reads each account's key once. The listings call this
+	// through accountReadings, whose read cache lets the usage veto reuse what it
+	// read; without that cache, secret.Cached delegates unchanged.
+	return app.credentialStates(ctx, secret.Cached(be), captured)
 }
 
 // credentialStateAt classifies one freshness reading into the three states every

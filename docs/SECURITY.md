@@ -215,7 +215,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   recorded login (`expected_login`) is non-secret config.toml inline.
 - `kae`, `kae ls` and `kae accounts` may read subscription windows. The local
   read (Claude's `usage-exact.json`, Codex session rollouts) is offline and
-  does not open the credential. The network read runs only when no local file
+  does not open the live credential. The codex veto ([CLI.md](CLI.md)
+  § Subscription windows in listings) reads the captured codex snapshots'
+  account ids from kae's own secret store, only when a shared home's rollout
+  names a creator; no account id is written to the usage cache, argv, stdout,
+  or stderr, and a redaction test pins that. The network read runs only when no local file
   yields a window that has not reset, and the cache has neither a still-valid
   local reading nor a remote reading younger than ten minutes. It sends the captured access
   token in the `Authorization` header to `api.anthropic.com` or `chatgpt.com`

@@ -2067,6 +2067,35 @@ Where the number comes from, in order:
    switching accounts does not relabel the previous windows onto the new account
    until the tool rewrites the file. An isolated home belongs to the account in
    its path.
+
+   **Codex veto.** A process that still holds the previous account after a
+   switch (§ kae use Semantics, **Resident processes (codex)**) keeps appending
+   that account's windows to a shared home's rollout, which the rule above would
+   attribute to the new account. A rollout's first line, `session_meta`, records
+   the account id of the login that created the session (`creator_account_id`).
+
+   - **When kae vetoes.** A shared home's reading would be attributed to an
+     account whose captured credential names another account id than the
+     creator, **and** the creator is the account id of another captured codex
+     account. kae then neither shows nor caches the reading for that account,
+     and drops that account's remembered reading from the same rollout, whatever
+     its mtime: the creator does not change within a file. The account shows
+     what the cache or the usage request below gives it, or `-`. kae does not
+     move the reading onto the creator's account.
+   - **When it does not.** A rollout whose first line names no creator (codex
+     0.154 and earlier), a creator that matches no captured account, an
+     attributed account whose credential names no account id, and an isolated
+     home keep the attribution above.
+   - **What it reads.** The account id of each captured codex credential, from
+     kae's own secret store, only when a shared home's rollout names a creator.
+     The ids are compared in memory and never printed or stored.
+   - **Limits.** The creator is the session's, not each reading's: a session
+     resumed under another account can have correct readings vetoed (shown as
+     `-`), and a held-over process writing into a session the new account
+     created is not caught. That `creator_account_id` and the credential's
+     `tokens.account_id` are one namespace is not yet verified
+     ([ROADMAP.md](ROADMAP.md) § Current work order); if they are not, no
+     creator matches and nothing is vetoed.
 2. **The usage cache** (`usage-cache.json` next to `state.json`;
    [DATA-MODEL.md](DATA-MODEL.md) § State). A local reading is remembered so the
    account still shows it after the shared home moves on. A remembered local

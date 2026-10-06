@@ -245,8 +245,7 @@ func buildAccountItemsWith(ctx context.Context, app *App, tool string, loaded lo
 	if err != nil {
 		return nil, nil, err
 	}
-	states := app.capturedCredentialStates(ctx, captured)
-	usages := app.accountUsages(ctx, captured, st)
+	states, usages := app.accountReadings(ctx, captured, st)
 	return accountItems(st, captured, states, usages), st, nil
 }
 

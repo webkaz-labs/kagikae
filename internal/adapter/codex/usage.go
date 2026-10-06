@@ -1,6 +1,8 @@
 package codex
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,6 +21,10 @@ import (
 // windows. It is not a documented public API; the local session record is
 // preferred, and this is only the fill-in when that record is absent.
 const usageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
+
+// sessionHead caps the rollout's first line, its session_meta, which carries
+// the session's instructions and so can be long. A longer line names no creator.
+const sessionHead = 1 << 20
 
 // sessionTail is how much of a rollout file is read from the end. Rate-limit
 // events are written as the session goes, so the latest one is at the tail;
@@ -45,6 +51,26 @@ func (Codex) LocalUsage(home string) (usagelimit.Reading, bool) {
 		return usagelimit.Reading{Path: path, ModTime: info.ModTime(), Windows: windows}, true
 	}
 	return usagelimit.Reading{}, false
+}
+
+// UsageCreator reads payload.creator_account_id from the rollout's first line
+// when that line is session_meta: the account of the login that created the
+// session, not of each reading in it. Rollouts of 0.154 and earlier have none.
+func (Codex) UsageCreator(path string) (adapter.ResidentAccount, bool) {
+	line, ok := firstLine(path, sessionHead)
+	if !ok {
+		return adapter.ResidentAccount{}, false
+	}
+	var doc struct {
+		Type    string `json:"type"`
+		Payload struct {
+			CreatorAccountID string `json:"creator_account_id"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &doc) != nil || doc.Type != "session_meta" {
+		return adapter.ResidentAccount{}, false
+	}
+	return adapter.NewResidentAccount(doc.Payload.CreatorAccountID)
 }
 
 func (Codex) ProbeUsage(payload []byte, now time.Time) (*http.Request, bool) {
@@ -203,6 +229,25 @@ func newestJSONL(dir string, n int) []string {
 	return out
 }
 
+// firstLine reads path's first line, without its newline. ok is false when the
+// file cannot be read or the line is longer than limit.
+func firstLine(path string, limit int64) ([]byte, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	line, err := bufio.NewReader(io.LimitReader(f, limit+1)).ReadBytes('\n')
+	if err != nil && err != io.EOF {
+		return nil, false
+	}
+	line = bytes.TrimRight(line, "\r\n")
+	if int64(len(line)) > limit {
+		return nil, false
+	}
+	return line, true
+}
+
 func readTail(path string, n int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -220,3 +265,5 @@ func readTail(path string, n int64) ([]byte, error) {
 	}
 	return io.ReadAll(f)
 }
+
+var _ adapter.UsageCreator = Codex{}

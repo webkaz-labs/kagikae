@@ -865,3 +865,21 @@ func TestResidentsBeforeSwitchReadsTheTargetOnce(t *testing.T) {
 		t.Errorf("residents = %+v\n%s", slot.Residents, stderr)
 	}
 }
+
+// runUseAuto is the hook shape by construction: called without ResidentHook,
+// it still only warns, rather than announcing a restart it never runs.
+func TestUseAutoIsTheHookShapeWithoutTheFlag(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentSide)
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runUseAuto(context.Background(), f.app, commonOpts{Format: formatJSON}, "main", true)
+	})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	wantCodexResidents(t, stdout, daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeWarned), sessionEntry)
+	if !strings.Contains(stderr, warnHook+"\n") || strings.Contains(stderr, noticeRestart) {
+		t.Errorf("stderr is not the hook's warning:\n%s", stderr)
+	}
+	if f.restartCount() != 0 {
+		t.Error("the hook shape restarted the daemon")
+	}
+}

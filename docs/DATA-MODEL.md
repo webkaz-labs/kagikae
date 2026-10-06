@@ -409,7 +409,9 @@ apply) decides its no-op by comparing the target profile against `active`
 
 `usage-cache.json` sits in the same directory. It remembers subscription windows
 per tool and account: `origin` (`local` or `remote`), the source path and mtime
-of a local file, `observed_at`, and the windows. It holds no credential.
+of a local file, `observed_at`, and the windows. It holds no credential and no
+account id: a reading the codex veto rejects is not written, and the veto's ids
+never are.
 `kae`, `kae ls` and `kae accounts` write it when a reading is new; a failure to
 write does not change the exit code, and the file is not under the `state` lock.
 The listing rules are in [CLI.md](CLI.md) § Subscription windows in listings.

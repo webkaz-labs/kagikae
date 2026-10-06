@@ -64,7 +64,7 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code that slices 6 to 8 below still have to write. Slice 3, the reconcile in
+the code that slices 6 and 8 below still have to write. Slice 3, the reconcile in
 `kae use`, is the first slice users can see; the contract and the work done on the
 integration branch `feat/resident-reconcile` land on main together, not one before
 the others. The feature then ships stage by stage, so a release cut between slices
@@ -88,8 +88,8 @@ git log records them. The rest, each its own commit and review:
    own first. Its findings name the manual restart through the helper the switch's
    warnings use (`residentRestartCommand` in `internal/cmd`), so a shell that
    exports another `CODEX_HOME` is told the real home.
-7. Usage attribution: a veto on a codex usage reading kae would attribute to the
-   wrong account (a veto only, no re-attribution). Last, as a separate slice.
+7. Usage attribution: done — the codex veto in [CLI.md](CLI.md) § Subscription
+   windows in listings; git log records it.
 8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
    placeholder names, and codex's `VerifiedVersion()` raised to 0.160.0.
 
@@ -107,6 +107,9 @@ Before slice 8 can pass, the acceptance has to settle what is not yet verified:
   the managed daemon's own copy, and what the restart does then;
 - whether the daemon's `workspaceRouting.chatgptAccountId` and the credential's
   `tokens.account_id` are one namespace — if not, every probe reads `differs`;
+- whether a rollout's `session_meta.payload.creator_account_id` and the
+  credential's `tokens.account_id` are one namespace — if not, the usage veto
+  never matches and never acts;
 - whether the daemon contacts the network to answer `account/read` with
   `refreshToken: false`, or to answer `codex app-server daemon version`, and
   whether the latter starts a daemon when none runs. The answer decides whether

@@ -266,7 +266,8 @@ them as follows; tools without resident processes are unaffected.
    that keeps the account it already holds needs nothing. The probe only reads, so
    `--dry-run` runs it too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
-   transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
+   transaction, under the warning rules of § Output Rules, in the lines
+   **How the lines read** below sets out. `--dry-run` stops here:
    it writes nothing and reconciles nothing, its notice goes to stderr as a real
    run's does, and its plan carries the `planned` outcome.
 3. **The transaction** runs unchanged ([ARCHITECTURE.md](ARCHITECTURE.md)
@@ -291,9 +292,9 @@ them as follows; tools without resident processes are unaffected.
    order).
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
-   `ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: `.
-   The Japanese rendering takes the confirmation shape [L10N-JA.md](L10N-JA.md)
-   fixes rather than a question. `--yes` answers yes without asking, on a terminal
+   `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `.
+   The Japanese rendering is the short question [L10N-JA.md](L10N-JA.md) fixes for
+   this prompt. `--yes` answers yes without asking, on a terminal
    or not. On yes, kae first asks again whether the app is running: an app the user
    has closed since the probe is left closed — kae does not start an app the user
    quit — and one kae cannot tell about is treated as below. Otherwise kae asks the
@@ -306,10 +307,11 @@ them as follows; tools without resident processes are unaffected.
    as not running. When kae cannot tell whether the app is running at all, it
    warns and does nothing to it. Without `--yes`, a run that cannot ask — no
    terminal, `--json` — warns instead.
-6. **Sessions.** Whenever this command changed codex's account, kae warns that a
-   codex session started before the switch and not connected to the managed daemon
-   keeps the previous account until it is restarted. kae does not look for such a
-   session; the warning is a fixed sentence.
+6. **Sessions.** Whenever this command changed codex's account, kae warns, before
+   the write, that codex sessions started before the switch keep the previous account
+   until they are restarted. kae does not look for such a session; the warning is a
+   fixed sentence, and it names no exception, although a session connected to the
+   daemon follows the daemon's restart (step 4).
 
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 
@@ -359,6 +361,22 @@ this command changed codex's account:
 When kae cannot tell whether the app is running, at the probe or when it asks again
 after consent, the entry is `observed: unknown`, `outcome: warned`, whatever the
 condition.
+
+**How the lines read.** Before the write, one line says what kae will do to the
+daemon and the ChatGPT app together, naming only what it acts on: the restart it
+owes, and the app it will ask about or, under `--yes`, quit and relaunch; under
+`--dry-run` the same line says what it would do. `--no-restart` and the hook shape
+give one warning for both instead, with the manual steps: the restart command for
+the daemon, quitting and reopening for the app. A daemon whose account kae cannot
+read, an app kae cannot tell about, and an app it cannot ask about (no terminal,
+`--json`, without `--yes`) each get a warning of their own. After the transaction,
+a daemon `restarted` and an app `relaunched` read as one line, and either one alone
+as its own line; every other outcome — `restart_unverified`, `restart_failed`,
+`declined`, `none` for an app closed meanwhile, and the quit outcomes — is a line of
+its own, a warning naming the manual step except for `none`. The lines name the
+command only where they speak of its time or its result, in its own words: `after
+the switch`, `after kae add` and `after kae rollback`, and `the switch is kept`,
+`kae add's result is kept` and `kae rollback's result is kept`.
 
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result

@@ -64,9 +64,10 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code for slices 4 to 8. Slice 3, the reconcile in `kae use`, is the first slice
-users can see; the contract and slices 1 to 3 land on main together from the
-integration branch `feat/resident-reconcile`, not one before the others. The
+the code for what slices 4 to 8 below still have to do. Slice 3, the reconcile in
+`kae use`, is the first slice users can see; the contract and the work done on the
+integration branch `feat/resident-reconcile` land on main together, not one before
+the others. The
 feature then ships stage by stage, so a release cut between slices
 ships only part of what the contract describes: the release notes of each release
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
@@ -78,11 +79,14 @@ are done on the integration branch; git log records them. The rest, each its own
 commit and review:
 
 4. The same reconcile in `kae add` and `kae rollback`.
-5. `internal/desktopapp`: the ChatGPT app's confirmation, quit and relaunch.
-   Until it lands, slices 3 and 4 emit no `desktop_app` entry and do nothing to the
-   app.
-6. `doctor resident_drift`. Its socket half runs by default. Its moved-socket half
-   (`codex app-server daemon version`) ships disabled and stays disabled until the
+5. The ChatGPT app's confirmation, quit and relaunch. The package
+   `internal/desktopapp` (detecting the app, quitting it, waiting and relaunching)
+   is done; what remains is wiring it into `kae use`, `kae add` and `kae rollback`
+   with the confirmation and the `desktop_app` entry. Until then, slices 3 and 4
+   emit no `desktop_app` entry and do nothing to the app.
+6. `doctor resident_drift`. Its socket half is done and runs by default. Its
+   moved-socket half (`codex app-server daemon version`) is not built; it ships
+   disabled and stays disabled until the
    acceptance records that the command starts no daemon when none runs and makes no
    network call; once that is recorded it is enabled by default. `daemon version`
    is read, so it needs the capturing `runner.RunWithEnv`, which a daemon the

@@ -451,7 +451,18 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   as that client and attribute threads to it that it did not start, and upstream's
   reserved names that leave the originator unchanged (`codex_app_server_daemon`,
   `codex-backend`) are the daemon's and the backend's own, not an interface offered
-  to other clients.
+  to other clients. Upstream sources for this item (rust-v0.160.1, read
+  2026-10-07): `app-server/src/request_processors/initialize_processor.rs` lines 19
+  (the reserved names), 130–132 (the originator and the user-agent suffix from
+  `clientInfo.name`), 152–164 (automatic login), 165–183 (the originator set once),
+  192–193 (the suffix replaced) and 212–218 (`userAgent` built after);
+  `login/src/auth/default_client.rs` lines 54 and 85–98 (one originator per
+  process), 141–146 (first-party originators), 152–175 (the user agent begins with
+  `<originator>/`) and 456–460 (the originator and user agent on requests);
+  `core/src/thread_manager.rs` lines 372–384 (threads take the originator);
+  `core/src/mcp_skill_dependencies.rs` lines 47–50 (no MCP-dependency installation
+  for other originators); `app-server/src/message_processor.rs` lines 971–972
+  (`Not initialized` before `initialize`).
 - **account key** the credential's account id, `tokens.account_id` in either
   store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
   printed.
@@ -461,7 +472,18 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   any failure exits non-zero. The object has the shape `daemon version` prints,
   with `status` `restarted` and a `socketPath` under `CODEX_HOME` canonicalized,
   read by `ParseDaemonRestart` from the first JSON value printed. The new daemon
-  reads the login on disk when it starts.
+  reads the login on disk when it starts. Upstream sources (rust-v0.160.1, read
+  2026-10-07): `cli/src/main.rs` lines 1292–1294 and 2329–2333 (one JSON line on
+  success, the error propagated otherwise); `app-server-daemon/src/lib.rs` lines
+  66–92 (the output and its `status` tokens), 321–325 (the socket path), 459–506
+  (`restart_with_settings`: stop, start, `wait_until_ready`, `Restarted`), 636–651
+  (`wait_until_ready`) and 1045–1063 (`socketPath` in the output);
+  `app-server-daemon/src/client.rs` lines 26 and 110–111 (the wait connects as
+  `codex_app_server_daemon`, a reserved name);
+  `app-server-transport/src/transport/mod.rs` lines 64–70 and
+  `utils/home-dir/src/lib.rs` lines 13–49 (the socket under `CODEX_HOME`
+  canonicalized); `login/src/auth/manager.rs` lines 2034–2041 (the login loaded once
+  at start).
 - **status** `codex app-server daemon version`, whose JSON names `status` and
   `socketPath`, read by `ParseDaemonStatus` from the first JSON value printed
   (what follows it is ignored): `status` `running` with an absolute

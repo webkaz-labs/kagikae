@@ -437,7 +437,8 @@ except the success, which sits under the command's result line:
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result
 carries them in `residents` (§ `kae use ... --json` (the switch report)), and no
-prompt is shown. Only the global, real-home codex daemon is concerned: `use -i`,
+prompt is shown. The warning that kae became the daemon's first client is the
+exception: it goes to stderr only, and nothing in the JSON report carries it. Only the global, real-home codex daemon is concerned: `use -i`,
 `run -i` and `pin -i` run codex under their own `CODEX_HOME`, which has its own
 daemon socket, and kae neither probes nor restarts those. `kae run -s` writes the
 real codex home for the child's lifetime and is outside this reconcile: its child
@@ -2639,7 +2640,8 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   comparison, in two halves, and kae makes no network call for either:
   - **Off by default; `--yes` turns it on**, as it does `companion_token_drift`,
     and doctor does not ask for it. kae connects to the daemon's socket and sends
-    the read-only requests [SECURITY.md](SECURITY.md) § Resident processes allows,
+    the requests [SECURITY.md](SECURITY.md) § Resident processes allows, which
+    only read auth state,
     whose `initialize` can make kae the daemon's first client, with the side effects
     [ADAPTERS.md](ADAPTERS.md) § Resident processes describes; that is what `--yes`
     consents to here, and doctor does not warn about it. A readable `differs`

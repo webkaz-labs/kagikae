@@ -240,7 +240,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   pipe and hold kae past the restart's 30 s limit, and in a session of its own, so
   the interrupt and hangup of kae's terminal do not reach it; kae never kills it
   (§ Resident processes), reads at most 1 MiB of its output once it has exited, and
-  takes only `status` and `socketPath` from it;
+  takes only `status` and `socketPath` from it; a temporary file kae cannot make
+  stops the restart from starting, which reads `restart_failed`;
   `daemon version` through `runner.QueryWithEnv`, whose stdout is an
   unlinked temporary file rather than a pipe and whose stdin and stderr are the null
   device, for the same reason — a daemon it started would otherwise hold doctor —

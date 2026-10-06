@@ -207,9 +207,10 @@ codex's managed daemon does not pick up a credential kae writes while it runs, s
 when `kae use`, `kae add` or `kae rollback` leaves it holding another account or
 none, kae restarts it
 afterwards and says so on stderr. `--no-restart` turns that into a warning, and so
-does the mise enter hook (`kae use --auto`), even with `--yes`; those runs and
-`--dry-run` do not connect to the daemon, and warn whenever the command changes
-codex's account while a daemon is there. `kae add --no-login` leaves the live login
+does the mise enter hook (`kae use --auto`), even with `--yes`, and `--dry-run`
+notes the restart it would make instead. None of those three connects to the
+daemon: each gives its warning or note whenever the command changes codex's
+account while a daemon is there. `kae add --no-login` leaves the live login
 as it is, so it leaves the daemon alone. When the command changes codex's
 account, kae also warns that codex sessions started before it keep the previous
 account until you restart them ([docs/CLI.md](docs/CLI.md) § kae use Semantics,

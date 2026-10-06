@@ -274,21 +274,27 @@ func backupCredential(be secret.Backend, meta backup.Meta, tool string) credenti
 // § kae add Semantics, codex resident processes): the live login stays as it
 // is, so nothing is restarted, and a daemon of the real home that holds another
 // account than the live credential, or whose account kae cannot read, gets a
-// warning only. It only reads, so --dry-run runs it too.
-func (app *App) residentsAtCapture(ctx context.Context, tool string) {
+// warning only. It only reads, so --dry-run runs it too. It returns the
+// result's `residents`: that daemon's entry, outcome `warned`, or none.
+func (app *App) residentsAtCapture(ctx context.Context, tool string) []residentEntry {
+	residents := []residentEntry{}
 	ad, err := adapter.ForTool(tool)
 	if err != nil {
-		return
+		return residents
 	}
 	holder, ok := ad.(adapter.ResidentHolder)
 	if !ok {
-		return
+		return residents
 	}
 	spec := holder.ResidentDaemon(app.Env)
 	observed := app.probeResidentDaemon(ctx, holder, spec, liveCredential(ad, app.Env))
 	if msg, ok := app.residentDriftMessage(tool, holder, spec, observed); ok {
 		warnMessage(msg)
+		residents = append(residents, residentEntry{
+			Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: constants.ResidentOutcomeWarned,
+		})
 	}
+	return residents
 }
 
 // reconcileResidents is step 4 for a switch's results: it runs once per

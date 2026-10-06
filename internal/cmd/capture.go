@@ -19,6 +19,9 @@ type captureResult struct {
 	Captured bool      `json:"captured"`
 	Actions  []action  `json:"actions"`
 	Warnings []message `json:"warnings"`
+	// Residents is the switch report's `residents`: a daemon entry only when the
+	// daemon differs from the live login or cannot be read (residentsAtCapture).
+	Residents []residentEntry `json:"residents"`
 }
 
 type captureReport struct {
@@ -39,7 +42,7 @@ func runCapture(ctx context.Context, app *App, opts commonOpts, tool, explicitNa
 	}
 	// The capture leaves the live login as it is, so it restarts nothing; it only
 	// warns about a daemon on another account (docs/CLI.md § kae add Semantics).
-	app.residentsAtCapture(ctx, tool)
+	report.Results[0].Residents = app.residentsAtCapture(ctx, tool)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -76,7 +79,7 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 		Results: []captureResult{{
 			Tool: tool, Account: accountName, Driver: plan.Driver,
 			Captured: !opts.DryRun, Actions: app.actionsOf(plan.Specs),
-			Warnings: plan.Warnings,
+			Warnings: plan.Warnings, Residents: []residentEntry{},
 		}},
 	}
 	if opts.DryRun {

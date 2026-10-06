@@ -562,9 +562,10 @@ reconcile nothing. `kae add --no-login` leaves the live login as it is, so it
 restarts and quits nothing and gives no session warning; it only warns, with
 `doctor`'s `resident_drift` finding, when the daemon holds another account than the
 live login or kae cannot read which one it holds, and `--dry-run` probes and warns
-the same way. `--no-restart` and `--yes` mean what they mean for `kae use`. The
-notices of `kae add` and `kae rollback` name the command they come from rather than
-a switch.
+the same way. Its JSON result then carries that daemon's entry with outcome
+`warned` (§ `kae use ... --json` (the switch report)). `--no-restart` and `--yes`
+mean what they mean for `kae use`. The notices of `kae add` and `kae rollback` name
+the command they come from rather than a switch.
 
 **Account name auto-detection.** The account name is optional. With it omitted
 (`kae add <tool>`), kae derives a default from the live login identity: the
@@ -2645,7 +2646,10 @@ would change it. Which `outcome` the app gets under which condition is the table
 
 `profile` is `null` for the tool+account form. `kae add --no-login --json`
 uses the same shape with `"captured": true` instead of `"applied"` and no
-`backup_id`. With `--dry-run`, `ok` reflects whether the plan is valid and
+`backup_id`. Its `residents` is always an array too: it changes no login, so it
+carries a `daemon` entry, outcome `warned`, only when the daemon `differs` from the
+live login or reads `unknown`, and is `[]` otherwise and for every other tool
+(§ kae add Semantics). With `--dry-run`, `ok` reflects whether the plan is valid and
 `actions` lists what would change.
 
 ### Bare `kae use --json` (the idempotent apply report)

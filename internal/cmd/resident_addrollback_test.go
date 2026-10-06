@@ -26,6 +26,8 @@ const (
 	warnCaptureDiffers = "kae: warning: codex's managed daemon holds a different account from the live credential, so sessions connected to it keep using that account; to make it use the live account, run: codex app-server daemon restart"
 	// The same in Japanese.
 	warnCaptureDiffersJA = "kae: warning: codex の管理デーモンは現在の認証情報とは別のアカウントを使っているため、デーモンに接続したセッションはそのアカウントを使い続けます。現在のアカウントを使わせるには codex app-server daemon restart を実行してください。"
+	// The same finding when the daemon's account cannot be read.
+	warnCaptureUnknown = "kae: warning: kae cannot read which account codex's managed daemon holds, so it cannot tell whether the daemon uses the live account; if it does not, run: codex app-server daemon restart"
 	// Any line about the daemon contains this.
 	daemonMention = "managed daemon"
 	// The kae add (login flow) and kae rollback renderings of the switch's lines.
@@ -217,22 +219,30 @@ func TestAddResidentsInJapanese(t *testing.T) {
 // account gets a warning only, with or without --dry-run, and no session warning;
 // absent and matching daemons print nothing.
 func TestAddNoLoginOnlyWarns(t *testing.T) {
+	differs := []residentEntry{daemonEntry(constants.ResidentObservedDiffers, constants.ResidentOutcomeWarned)}
+	unknown := []residentEntry{daemonEntry(constants.ResidentObservedUnknown, constants.ResidentOutcomeWarned)}
 	for _, tc := range []struct {
-		name   string
-		daemon string // "" for none
-		dryRun bool
-		warn   bool
+		name      string
+		daemon    string // "" for none
+		unread    bool   // the daemon answers with no account
+		dryRun    bool
+		warning   string // "" for none
+		residents []residentEntry
 	}{
-		{"differs", residentMain, false, true},
-		{"differs dry-run", residentMain, true, true},
-		{"matches", residentSide, false, false},
-		{"absent", "", false, false},
+		{"differs", residentMain, false, false, warnCaptureDiffers, differs},
+		{"differs dry-run", residentMain, false, true, warnCaptureDiffers, differs},
+		{"unknown", residentMain, true, false, warnCaptureUnknown, unknown},
+		{"matches", residentSide, false, false, "", []residentEntry{}},
+		{"absent", "", false, false, "", []residentEntry{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, format := range []string{formatText, formatJSON} {
 				f := newResidentFixture(t)
 				if tc.daemon != "" {
-					f.withDaemon(t, tc.daemon)
+					d := f.withDaemon(t, tc.daemon)
+					if tc.unread {
+						d.answers(`{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"apiKey","email":"` + probeEmail + `"},"workspaceRouting":null}}`)
+					}
 				}
 				opts := commonOpts{Format: format, DryRun: tc.dryRun}
 				code, stdout, stderr := captureBoth(t, func() int {
@@ -242,18 +252,37 @@ func TestAddNoLoginOnlyWarns(t *testing.T) {
 				if f.restartCount() != 0 {
 					t.Errorf("%s: restarted", format)
 				}
-				if got := strings.Contains(stderr, warnCaptureDiffers+"\n"); got != tc.warn {
-					t.Errorf("%s: warning present = %v, want %v:\n%s", format, got, tc.warn, stderr)
+				if tc.warning != "" && !strings.Contains(stderr, tc.warning+"\n") {
+					t.Errorf("%s: stderr lacks %q:\n%s", format, tc.warning, stderr)
 				}
-				if !tc.warn && strings.Contains(stderr, daemonMention) {
+				if tc.warning == "" && strings.Contains(stderr, daemonMention) {
 					t.Errorf("%s: printed a daemon line:\n%s", format, stderr)
 				}
 				if strings.Contains(stderr, "codex sessions started before") {
 					t.Errorf("%s: warned about sessions though the account is unchanged:\n%s", format, stderr)
 				}
+				if format == formatJSON {
+					wantCodexResidents(t, stdout, tc.residents...)
+				}
 				assertNoResidentPII(t, stdout, stderr)
 			}
 		})
+	}
+}
+
+// A tool without resident processes carries `residents: []` in the capture report.
+func TestAddNoLoginResidentsEmptyForClaude(t *testing.T) {
+	f := newResidentFixture(t)
+	f.withDaemon(t, residentMain)
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runCapture(context.Background(), f.app, commonOpts{Format: formatJSON}, constants.ToolClaude, "side")
+	})
+	mustExit(t, constants.ExitOK, code, stdout+stderr)
+	if got, ok := codexResidents(t, stdout)[constants.ToolClaude]; !ok || len(got) != 0 {
+		t.Errorf("claude residents = %+v (present %v), want []", got, ok)
+	}
+	if strings.Contains(stderr, daemonMention) {
+		t.Errorf("a claude capture printed a daemon line:\n%s", stderr)
 	}
 }
 

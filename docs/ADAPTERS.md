@@ -379,8 +379,9 @@ is a credential nothing reads.
 ### Resident processes
 
 Observed on 0.160.0 (2026-10-06, below): a running codex keeps the credential it
-read when it started, or, as a daemon on 0.160.1 did the same day, drops it and
-holds no account. It re-read `auth.json` only on its own recovery path and
+read when it started; on 0.160.1 a daemon answered after a switch that it held no
+account ([ACCEPTANCE.md](ACCEPTANCE.md) § codex resident processes — local
+acceptance (2026-10-06)). It re-read `auth.json` only on its own recovery path and
 discarded what it read when the account id on disk differed from the one it held,
 so a switch did not reach a process that was already running. Upstream declined a
 request to let a running session follow a changed `auth.json` (openai/codex#43010,
@@ -405,11 +406,18 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   `Upgrade: websocket`). kae sends `initialize`, the `initialized` notification and
   `account/read` with `refreshToken: false`, and reads the account id from the
   answer's `result.workspaceRouting.chatgptAccountId` (`ParseDaemonAccount`). An
-  answer whose `account` is null, with `workspaceRouting` null or absent, is a
-  daemon that holds no account, which is not the same as one kae cannot read: it
-  compares as `differs` with a credential that names an account ([CLI.md](CLI.md)
-  § kae use Semantics). Any other shape without a string `chatgptAccountId`, an
-  API-key login's included, is unreadable. [SECURITY.md](SECURITY.md) § Resident
+  answer whose `account` is null, whose `workspaceRouting` is null or absent and
+  whose `requiresOpenaiAuth` is the literal `true` is a daemon that holds no
+  account, which is not the same as one kae cannot read: it compares as `differs`
+  with a credential that names an account ([CLI.md](CLI.md) § kae use Semantics).
+  Any other shape without a string `chatgptAccountId` is unreadable — an API-key
+  login's, and the same nulls with `requiresOpenaiAuth` false, absent or not a
+  boolean, which upstream answers for a model provider that needs no OpenAI login
+  whatever the credential (`account_state()` in upstream's `provider.rs`, read
+  2026-10-06), so a restart would not change it. Per the same source, a daemon whose
+  own token refresh failed also answers no account with `requiresOpenaiAuth` true;
+  kae then restarts it and reports `restart_unverified` when the restarted daemon
+  answers the same. [SECURITY.md](SECURITY.md) § Resident
   processes owns the limits.
 - **account key** the credential's account id, `tokens.account_id` in either
   store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
@@ -421,7 +429,9 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
   (what follows it is ignored): `status` `running` with an absolute
   `socketPath` is a running daemon, another `status` is not, and anything else is
   unreadable; doctor only, run by default. With no daemon running it exits 1
-  without starting one, and it answers with IP traffic denied (observed below).
+  without starting one, and it answers with IP traffic denied
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § codex resident
+  processes — local acceptance (2026-10-06)).
 - **desktop app** bundle id `com.openai.codex`, darwin only.
 
 None of this is a documented upstream interface, and two kinds of upstream change
@@ -453,28 +463,6 @@ read-only requests and issuing no login, logout, refresh or daemon command:
   `auth.json`. `codex app-server daemon restart` exists; it was **not executed**.
 - The ChatGPT app ran its own `codex … app-server` over stdio as a child of
   `/Applications/ChatGPT.app`.
-
-**Observed 2026-10-06 on 0.160.1**, on one macOS machine, in the local acceptance
-that ran daemon commands ([ACCEPTANCE.md](ACCEPTANCE.md) § codex resident
-processes — local acceptance (2026-10-06)):
-
-- A daemon started hours before kae switched the live ChatGPT login answered
-  `account/read` with `refreshToken: false` with `account` null and
-  `workspaceRouting` null (and `requiresOpenaiAuth`): it held no account rather
-  than the previous one.
-- `codex app-server daemon restart` returned within half a second with its output
-  piped, so the daemon it starts does not keep the inherited stdio open. After it,
-  `account/read` named an `account` (`type`, `email`, `planType`) and a
-  `workspaceRouting` (`chatgptAccountId`, `backendOrigin`,
-  `accountRoutingOverride`), and `chatgptAccountId` equalled the live credential's
-  `tokens.account_id`: the two are one namespace.
-- `codex app-server daemon version` printed one JSON object with `status`
-  (`running`), `backend`, `managedCodexPath`, `managedCodexVersion`,
-  `socketPath`, `cliVersion` and `appServerVersion`; `restart` printed the same
-  shape with `status` `restarted` and a `pid`. The daemon runs from its own copy
-  of codex under the codex home's `packages/app-server-daemon/`, separate from the
-  `codex` on `PATH`; both were 0.160.1, and `codex app-server daemon update`
-  exists.
 
 What is still unverified, and the acceptance that settles it, is tracked in
 [ROADMAP.md](ROADMAP.md) § Current work order. No re-executor reaches these

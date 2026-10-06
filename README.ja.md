@@ -129,7 +129,7 @@ kae profile set main codex main
 グローバルバックアップから戻す操作です。失効した認証の更新方法は
 [復旧ガイド](docs/GUIDE.ja.md#認証の復旧)を参照してください。
 
-codex の管理デーモンは切替の後も起動時のアカウントを使い続けるので、`kae use`、
+codex の管理デーモンは、起動中に kae が書き換えた認証情報を取り込まないので、`kae use`、
 `kae add`、`kae rollback` は、アカウントが食い違うデーモンとアカウントを持たないデーモンを実行の後に自動で再起動し、
 そのことを標準エラー出力に表示します。`--no-restart` を付けた場合と、mise の enter フック
 （`kae use --auto`）では、`--yes` があっても警告だけになります。`kae add --no-login` は

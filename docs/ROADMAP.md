@@ -78,39 +78,25 @@ same reconcile in `kae add` and `kae rollback`, and the ChatGPT app's confirmati
 quit and relaunch in those three commands — are done on the integration branch,
 and slice 6, `doctor resident_drift` with both halves on by default, and slice 7,
 the codex usage veto ([CLI.md](CLI.md) § Subscription windows in listings), on
-main; git log records them. What remains:
+main; git log records them. What remains is slice 8, the real-machine acceptance,
+recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names, after which
+codex's `VerifiedVersion()` is raised to the version it ran against; until then it
+stays where it is.
 
-8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
-   placeholder names, and codex's `VerifiedVersion()` raised to the version it ran
-   against. Its local part is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) § codex
-   resident processes — local acceptance (2026-10-06); `VerifiedVersion()` is
-   raised once the questions below are answered.
+The operator's decisions, which the slices do not reopen, are the behaviour
+[CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
-The operator's decisions, which the slices do not reopen: an explicit or bare
-`kae use`, `kae add` and `kae rollback` restart a daemon that holds another
-account and say so, `--no-restart` suppresses that, and nothing happens when the
-accounts match, and a daemon that holds no account counts as holding another one
-when the credential names an account (an API-key credential stays `unknown`); the
-hook shape is `--auto` alone (`--quiet` changes output only)
-and only warns, even with `--yes`; the ChatGPT app is quit and relaunched only after
-a terminal confirmation or `--yes`, which counts as consent; sessions kae does not
-touch get a fixed warning; warnings never change the exit code.
-
-The local acceptance answered: the daemon runs its own copy of codex, apart from
-the `codex` on `PATH` (both were 0.160.1); the daemon's
-`workspaceRouting.chatgptAccountId` and a rollout's
-`session_meta.payload.creator_account_id` are both in the credential's
-`tokens.account_id` namespace; `codex app-server daemon version` starts no daemon
-when none runs and answers with IP traffic denied, so it runs by default; the
-daemon `codex app-server daemon restart` starts closes the stdio it inherits; and
-`osascript`'s `is running` query needs no Automation permission. Before slice 8 can
-pass, the acceptance still has to settle:
+The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ codex resident processes — local acceptance (2026-10-06), which answers the
+questions it settled. Before slice 8 can pass, the acceptance still has to settle:
 
 - what the restart does when the `codex` on `PATH` and the daemon's own copy
   differ in version;
 - whether the daemon contacts the network to answer `account/read` with
   `refreshToken: false`, which decides whether the socket half of
-  `resident_drift` stays a default check or becomes opt-in;
+  `resident_drift` stays a default check or becomes opt-in. A lead, not an answer:
+  in upstream's source, a daemon with no cached routing runs routing discovery
+  through its `BackendClient`, which can connect;
 - whether the app's `quit` needs the Automation (TCC) permission, and what the
   first one does without it;
 - whether a newly started codex TUI session connects to the managed daemon (an

@@ -252,10 +252,12 @@ them as follows; tools without resident processes are unaffected.
 1. **Probe, before anything is written.** Without a lock, kae asks the daemon of the
    real codex home which account it holds, compares it with the account the switch
    will leave live, and reads `absent` (no daemon socket), `matches`, `differs` (the
-   daemon holds another account, or answers that it holds none — `account` null —
-   while the credential names one) or `unknown` (the socket exists but kae could
-   not read the daemon's answer, or the credential it is compared with names no
-   account, as an API-key login does, whatever the daemon answers). It also
+   daemon holds another account, or answers that it holds none — `account` null
+   with `requiresOpenaiAuth` true — while the credential names one) or `unknown`
+   (the socket exists but kae could not read the daemon's answer, which includes
+   `account` null without `requiresOpenaiAuth` true, or the credential it is
+   compared with names no account, as an API-key login does, whatever the daemon
+   answers; [ADAPTERS.md](ADAPTERS.md) § Resident processes has the shapes). It also
    asks whether this command changes codex's account at all: it does when the live
    credential and the target's name different accounts. When either names none or
    cannot be read, byte-identical credentials count as no change and anything else

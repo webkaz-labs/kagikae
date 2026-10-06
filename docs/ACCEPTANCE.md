@@ -26,20 +26,16 @@ re-executor reaches it.
 | What `daemon version` and `daemon restart` print | `codex app-server daemon version` printed one JSON object: `status` (`running`), `backend`, `managedCodexPath`, `managedCodexVersion`, `socketPath`, `cliVersion`, `appServerVersion`. `restart` printed the same shape with `status` `restarted` and a `pid`. | |
 | Does `daemon version` start a daemon | Under a `CODEX_HOME` with no daemon it exited 1 with `failed to connect to <home>/app-server-control/app-server-control.sock`, and no daemon started. | |
 | Does `daemon version` need the network | Under `sandbox-exec` with IP send and receive denied it printed the same output in 0.07 s. | Whether it attempts a connection that the sandbox refused. |
-| What a daemon holds after a switch | The daemon (started 04:34) answered `account/read` with `refreshToken: false` with `account` null, `workspaceRouting` null and `requiresOpenaiAuth`, after kae switched `auth.json` at 11:26. It held no account, not the previous one. The live credential was a ChatGPT login with `tokens.account_id`; kae read the daemon as `unknown` and only warned. | Whether `account/read` itself contacts the network. |
+| What a daemon holds after a switch | A daemon started hours before kae switched `auth.json` answered `account/read` with `refreshToken: false`, some time after the switch, with `account` null, `workspaceRouting` null and `requiresOpenaiAuth`. It held no account, not the previous one. The live credential was a ChatGPT login with `tokens.account_id`; kae read the daemon as `unknown` and only warned. | Whether `account/read` itself contacts the network. |
 | Restart and its stdio | `codex app-server daemon restart 2>&1 \| cat` finished in 0.45 s, so the daemon it starts closes the stdio it inherits. After it, `account/read` named `account` (`type`, `email`, `planType`) and `workspaceRouting` (`chatgptAccountId`, `backendOrigin`, `accountRoutingOverride`), and kae doctor's daemon warning was gone. | What the restart interrupts in connected clients. |
 | Daemon and credential namespace | `workspaceRouting.chatgptAccountId` after the restart equalled the live `tokens.account_id`. | |
-| Rollout and credential namespace | In 7 of the shared home's 60 newest rollouts, the first line's `session_meta.payload.creator_account_id` equalled the live `tokens.account_id`; the rest were created by another account. | |
+| Rollout and credential namespace | In 7 of the shared home's 60 newest rollouts, the first line's `session_meta.payload.creator_account_id` equalled the live `tokens.account_id`; the rest did not. | |
 | `osascript` and Automation (TCC) | `osascript -e 'application id "com.openai.codex" is running'` returned `true` in 0.06 s without a permission dialog. | Whether `quit` needs the Automation permission; the app's y / n / `--yes` paths and its quit confirmation dialog. |
 | Daemon and `PATH` versions | The daemon runs from its own copy of codex under `~/.codex/packages/app-server-daemon/`, apart from the `codex` on `PATH`; both were 0.160.1. `codex app-server daemon update` exists. | What a restart does when the two versions differ. |
 | Which sessions use the daemon | An existing `codex resume` TUI process was not connected to the daemon's socket. | Whether a newly started TUI connects. |
 
 Also not measured: whether a resident process still on the old account writes a
-refreshed token back to `auth.json`. kae's resulting changes — a daemon with no
-account reads `differs` when the credential names one, and `resident_drift`'s
-`daemon version` half runs by default — are in [CLI.md](CLI.md) § kae use
-Semantics and § `kae doctor --json`. codex's `VerifiedVersion()` stays at its
-previous value until the rest of the acceptance is recorded.
+refreshed token back to `auth.json`.
 
 ## v0.23.0 candidate
 

@@ -203,8 +203,9 @@ To add another tool, capture it separately (for example, `kae add --no-login
 codex main`) and add that tool to the profile with `kae profile set main codex
 main`.
 
-codex's managed daemon keeps the account it started with, so when `kae use`,
-`kae add` or `kae rollback` leaves it holding another account or none, kae restarts it
+codex's managed daemon does not pick up a credential kae writes while it runs, so
+when `kae use`, `kae add` or `kae rollback` leaves it holding another account or
+none, kae restarts it
 afterwards and says so on stderr. `--no-restart` turns that into a warning, and so
 does the mise enter hook (`kae use --auto`), even with `--yes`. `kae add --no-login`
 leaves the live login as it is, so it only warns. When the command changes codex's

@@ -608,6 +608,18 @@ func TestCallEachKeepsWhatCameBeforeAFailure(t *testing.T) {
 	serverErr(t, done)
 }
 
+// Every return, an argument error and a dial error included, has one entry per
+// wanted id.
+func TestCallEachAlwaysReturnsOneEntryPerID(t *testing.T) {
+	dial := func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("refused") }
+	for _, maxMsg := range []int{0, 1 << 20} {
+		got, err := CallEach(context.Background(), dial, "unused", nil, []int{1, 2}, maxMsg)
+		if err == nil || len(got) != 2 {
+			t.Errorf("maxMsg %d: CallEach = %d entries, %v; want 2 and an error", maxMsg, len(got), err)
+		}
+	}
+}
+
 func TestCallEachNeedsAnID(t *testing.T) {
 	dial := func(context.Context, string, string) (net.Conn, error) {
 		t.Fatal("dialed with no id to wait for")

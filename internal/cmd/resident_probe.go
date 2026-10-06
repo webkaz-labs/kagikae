@@ -53,20 +53,13 @@ func (app *App) euid() int {
 	return os.Geteuid()
 }
 
-// daemonProbe is what probeResidentDaemon read: observed, one of the
+// daemonProbe is what askResidentDaemon read: observed, one of the
 // constants.ResidentObserved* tokens, and originated, whether the daemon's
 // answer to initialize says the probe became its first client
 // (adapter.ProbeOriginated).
 type daemonProbe struct {
 	observed   string
 	originated bool
-}
-
-// probeResidentDaemon is askResidentDaemon's observed token alone, for doctor.
-func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolder, spec adapter.DaemonSpec,
-	credential credentialReader,
-) string {
-	return app.askResidentDaemon(ctx, h, spec, credential).observed
 }
 
 // askResidentDaemon asks the managed daemon spec describes which account it
@@ -115,14 +108,12 @@ func (app *App) askResidentDaemon(ctx context.Context, h adapter.ResidentHolder,
 	// also keeps a long declared path from reaching the sun_path limit.
 	msgs, err := wsrpc.CallEach(ctx, app.unixDialer(), socket, adapter.DaemonProbeRequests(),
 		[]int{adapter.DaemonProbeInitializeID, adapter.DaemonProbeResponseID}, residentProbeMaxMsg)
-	var got daemonProbe
-	if len(msgs) == 2 {
-		if result, ok := rpcResult(msgs[0]); ok {
-			got.originated = adapter.ProbeOriginated(result)
-		}
+	// CallEach returns one entry per wanted id, whatever the error.
+	got := daemonProbe{observed: constants.ResidentObservedUnknown}
+	if result, ok := rpcResult(msgs[0]); ok {
+		got.originated = adapter.ProbeOriginated(result)
 	}
-	got.observed = constants.ResidentObservedUnknown
-	if err != nil || len(msgs) != 2 {
+	if err != nil {
 		return got
 	}
 	result, ok := rpcResult(msgs[1])
@@ -192,6 +183,21 @@ func resolveDeclaredSocket(declared string) (resolved string, absent bool, err e
 	return resolved, false, err
 }
 
+// sameSocket reports whether the socket a restart reported is the declared one:
+// the same path, or two existing paths that resolve to the same one, as the
+// probe resolves the declared socket (resolveDeclaredSocket).
+func sameSocket(reported, declared string) bool {
+	if filepath.Clean(reported) == filepath.Clean(declared) {
+		return true
+	}
+	got, err := filepath.EvalSymlinks(reported)
+	if err != nil {
+		return false
+	}
+	want, absent, err := resolveDeclaredSocket(declared)
+	return err == nil && !absent && got == want
+}
+
 // jsonMember reports whether a raw JSON-RPC member is present and not null.
 func jsonMember(raw json.RawMessage) bool {
 	return len(raw) != 0 && string(raw) != "null"
@@ -209,7 +215,7 @@ func ownedSocket(path string, uid int) bool {
 
 // liveCredential returns a reader of ad's live credential in env, from
 // whichever store the adapter resolves (auth.json or the keyring item), for
-// probeResidentDaemon. It reads what is live when called, not what a switch
+// askResidentDaemon. It reads what is live when called, not what a switch
 // will leave: the probe before a switch is given the target's payload instead.
 // ok is false when the store cannot be resolved or read, or holds nothing.
 func liveCredential(ad adapter.Adapter, env adapter.Env) credentialReader {

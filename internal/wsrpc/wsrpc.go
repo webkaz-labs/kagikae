@@ -106,15 +106,17 @@ func Call(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantID
 // last of wantIDs has arrived. A response to an earlier id that has not arrived
 // by then is nil. On an error it returns the responses read before it beside the
 // error, so a caller can still use an answer that came before the failure;
-// wantIDs must not be empty.
+// wantIDs must not be empty. The slice it returns always has one entry per id
+// in wantIDs, whatever the error, so a caller may index it without checking its
+// length.
 func CallEach(ctx context.Context, dial Dialer, socket string, reqs [][]byte, wantIDs []int, maxMsg int) ([][]byte, error) {
+	got := make([][]byte, len(wantIDs))
 	if maxMsg <= 0 {
-		return nil, fmt.Errorf("wsrpc: maxMsg must be positive, got %d", maxMsg)
+		return got, fmt.Errorf("wsrpc: maxMsg must be positive, got %d", maxMsg)
 	}
 	if len(wantIDs) == 0 {
-		return nil, errors.New("wsrpc: no response id to wait for")
+		return got, errors.New("wsrpc: no response id to wait for")
 	}
-	got := make([][]byte, len(wantIDs))
 	conn, err := dial(ctx, "unix", socket)
 	if err != nil {
 		return got, fmt.Errorf("wsrpc: dial: %w", err)

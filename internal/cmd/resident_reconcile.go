@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"path/filepath"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -132,9 +131,10 @@ func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target c
 // § kae add Semantics, codex resident processes): the flow decides the account,
 // so it runs after the flow and after the lock is released, probes the daemon
 // once against the credential finally left live (without --no-restart; with it
-// it only checks the socket), and restarts it at once when it differs. before reads the credential live
-// before the flow, for whether the command changed the tool's account.
-// It returns the slot, whose held success follows add's result line.
+// it only checks the socket), and restarts it at once when it differs. before
+// reads the credential live before the flow, for whether the command changed the
+// tool's account. It returns the slot, whose held success follows add's result
+// line.
 func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) *residentSlot {
 	var slot residentSlot
 	mode.op = residentOpLogin
@@ -445,21 +445,6 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	}
 	warnMessage(restartUnverifiedMessage(manual()))
 	return constants.ResidentOutcomeRestartUnverified
-}
-
-// sameSocket reports whether the socket a restart reported is the declared one:
-// the same path, or two existing paths that resolve to the same one, as the
-// probe resolves the declared socket (resolveDeclaredSocket).
-func sameSocket(reported, declared string) bool {
-	if filepath.Clean(reported) == filepath.Clean(declared) {
-		return true
-	}
-	got, err := filepath.EvalSymlinks(reported)
-	if err != nil {
-		return false
-	}
-	want, absent, err := resolveDeclaredSocket(declared)
-	return err == nil && !absent && got == want
 }
 
 // residentRestartLimit bounds the restart command: App.residentRestartTimeout,

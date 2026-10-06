@@ -122,16 +122,13 @@ var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, ar
 	if err := ctx.Err(); err != nil {
 		return "", 1, err
 	}
-	out, err := os.CreateTemp("", "kae-launch-*")
+	out, err := unlinkedTemp("kae-launch-*")
 	if err != nil {
 		return "", 1, err
 	}
 	// The program has its own descriptor of the file; kae's is closed on return,
 	// also when the program is left running.
 	defer func() { _ = out.Close() }()
-	if err := os.Remove(out.Name()); err != nil {
-		return "", 1, err
-	}
 	cmd := exec.Command(name, args...) // Stdin, Stderr nil: the null device
 	cmd.Stdout = out
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -186,19 +183,15 @@ const QueryMaxOutput = 1 << 20
 // leave that process writing into a broken pipe. At most QueryMaxOutput bytes
 // are read, from the start of the file without moving the offset the process
 // shares with kae (readQueryOutput); what the program and anything it leaves
-// running write is not capped, only kae's read of it. code is the exit status, -1 when ctx killed the program, and 1 when
-// it could not be started or its output could not be read. Overridable in tests.
+// running write is not capped, only kae's read of it. code is the exit status,
+// -1 when ctx killed the program, and 1 when it could not be started or its
+// output could not be read. Overridable in tests.
 var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (stdout string, code int) {
-	out, err := os.CreateTemp("", "kae-query-*")
+	out, err := unlinkedTemp("kae-query-*")
 	if err != nil {
 		return "", 1
 	}
 	defer func() { _ = out.Close() }()
-	// Unlinked at once: the open descriptors keep it readable, and nothing is left
-	// on disk whatever the program leaves running.
-	if err := os.Remove(out.Name()); err != nil {
-		return "", 1
-	}
 	cmd := exec.CommandContext(ctx, name, args...) // Stdin, Stderr nil: the null device
 	cmd.Stdout = out
 	setExtraEnv(cmd, extraEnv)
@@ -211,6 +204,21 @@ var QueryWithEnv = func(ctx context.Context, extraEnv []string, name string, arg
 		return "", 1
 	}
 	return data, code
+}
+
+// unlinkedTemp creates a temporary file for a program's stdout and unlinks it at
+// once: the open descriptors keep it readable, and nothing is left on disk
+// whatever the program leaves running. The caller closes it.
+func unlinkedTemp(pattern string) (*os.File, error) {
+	f, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Remove(f.Name()); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // readQueryOutput reads up to QueryMaxOutput bytes of f from its start with

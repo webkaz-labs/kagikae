@@ -98,7 +98,7 @@ func newResidentFixture(t *testing.T) *residentFixture {
 	}
 	app.sleepForTest = func(d time.Duration) {
 		if d != 250*time.Millisecond {
-			t.Errorf("waited %v between checks, want 250ms", d)
+			t.Errorf("waited %v between the ChatGPT app's quit checks, want 250ms", d)
 		}
 		f.mu.Lock()
 		f.sleeps++

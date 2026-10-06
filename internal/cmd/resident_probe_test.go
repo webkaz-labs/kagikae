@@ -147,7 +147,7 @@ func probe(t *testing.T, app *App, ad adapter.Adapter, h adapter.ResidentHolder)
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return app.probeResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env))
+	return app.askResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env)).observed
 }
 
 func TestProbeResidentDaemonMatchesAndDiffers(t *testing.T) {
@@ -362,7 +362,7 @@ func TestProbeResidentDaemonDeadlineIsUnknown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if got := app.probeResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env)); got != constants.ResidentObservedUnknown {
+	if got := app.askResidentDaemon(ctx, h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env)).observed; got != constants.ResidentObservedUnknown {
 		t.Errorf("probe = %q, want unknown", got)
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
@@ -379,7 +379,7 @@ func TestProbeResidentDaemonBoundsASilentDaemon(t *testing.T) {
 	d := startFakeDaemon(t, "")
 	linkSocket(t, app, h, d.socket)
 	start := time.Now()
-	got := app.probeResidentDaemon(context.Background(), h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env))
+	got := app.askResidentDaemon(context.Background(), h, h.ResidentDaemon(app.Env), liveCredential(ad, app.Env)).observed
 	elapsed := time.Since(start)
 	if got != constants.ResidentObservedUnknown {
 		t.Errorf("probe = %q, want unknown", got)

@@ -130,7 +130,7 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 	writeFile(t, credFile,
 		deadClaudeCred)
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	if report.SchemaVersion != constants.SchemaVersion {
 		t.Fatalf("schema_version changed: %d", report.SchemaVersion)
 	}
@@ -174,7 +174,7 @@ func TestDoctorReportsExpiringBoundDirectoryCredential(t *testing.T) {
 
 	writeFile(t, credFile, `{"claudeAiOauth":`+endOfLifeClaudeCred(app.Now(), 5*24*time.Hour, "a")+`}`)
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckCredentialExpiring)
 	if !ok {
 		t.Fatalf("expected a credential_expiring check for the bound directory, got %+v", report.Checks)
@@ -283,7 +283,7 @@ func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 	if checks := app.pinCredentialChecks(ctx, app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("a deleted directory is pinChecks' finding only, got %+v", checks)
 	}
-	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckPinStale); !ok {
+	if _, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckPinStale); !ok {
 		t.Fatal("pinChecks must still report the absent recorded path")
 	}
 }
@@ -297,7 +297,7 @@ func TestFilteredDoctorSkipsBoundDirectoryCredentials(t *testing.T) {
 	writeFile(t, credFile,
 		deadClaudeCred)
 
-	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, false).Checks {
+	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{}).Checks {
 		if strings.Contains(c.Message.Error(), "bound to ") {
 			t.Fatalf("a filtered run must not include the bound-directory sweep: %q", c.Message)
 		}
@@ -484,7 +484,7 @@ func TestDoctorReportsBoundDirectoryIdentityNamingAnotherAccount(t *testing.T) {
 	// Something logged in inside the directory as another account.
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	msg, ok := findCheck(report, constants.CheckIdentityDrift)
 	if !ok {
 		t.Fatalf("expected identity_drift for the bound directory, got %+v", report.Checks)
@@ -829,7 +829,7 @@ func TestFilteredDoctorSkipsBoundDirectoryIdentity(t *testing.T) {
 	ctx := context.Background()
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
-	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, false).Checks {
+	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{}).Checks {
 		if strings.Contains(c.Message.Error(), dir) {
 			t.Fatalf("a filtered run must not include bound-directory findings: %q", c.Message)
 		}
@@ -854,7 +854,7 @@ func TestBoundDirectoryCredentialSurvivesAnUnavailableBackendButIdentityIsSkippe
 		t.Fatal("this test needs an unavailable backend to be meaningful")
 	}
 
-	report := buildDoctor(ctx, app, "", false)
+	report := buildDoctor(ctx, app, "", doctorOptIns{})
 	if _, ok := findCheck(report, constants.CheckCredentialStale); !ok {
 		t.Fatalf("the bound credential half must survive an unavailable backend, got %+v", report.Checks)
 	}
@@ -876,7 +876,7 @@ func TestDoctorReportsStaleCredentialInAnIsolatedBoundDirectory(t *testing.T) {
 	writeFile(t, credFile,
 		deadClaudeCred)
 
-	msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckCredentialStale)
+	msg, ok := findCheck(buildDoctor(ctx, app, "", doctorOptIns{}), constants.CheckCredentialStale)
 	if !ok {
 		t.Fatal("an isolated bound directory's dead credential must be reported too")
 	}

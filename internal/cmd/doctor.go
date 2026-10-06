@@ -50,7 +50,7 @@ func CmdDoctor(ctx context.Context, args []string) int {
 // runDoctor exits 0/1 (health pass/fail) by design, not via the general
 // exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
-	report := buildDoctorWith(ctx, app, toolFilter, doctorOptIns{
+	report := buildDoctor(ctx, app, toolFilter, doctorOptIns{
 		tokenDrift: app.resolveTokenDriftOptIn(opts, toolFilter),
 		// resident_drift's socket half connects to the daemon, which has side
 		// effects on it, so only --yes turns it on (docs/CLI.md § `kae doctor
@@ -133,13 +133,7 @@ type doctorOptIns struct {
 	tokenDrift, residentSocket bool
 }
 
-// buildDoctor is buildDoctorWith with only the token drift check's opt-in.
-func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDrift bool) *doctorReport {
-	return buildDoctorWith(ctx, app, toolFilter, doctorOptIns{tokenDrift: checkTokenDrift})
-}
-
-func buildDoctorWith(ctx context.Context, app *App, toolFilter string, optIns doctorOptIns) *doctorReport {
-	checkTokenDrift := optIns.tokenDrift
+func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctorOptIns) *doctorReport {
 	report := &doctorReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
@@ -285,7 +279,7 @@ func buildDoctorWith(ctx context.Context, app *App, toolFilter string, optIns do
 	// companionDriftChecks. Runs only when the caller opted in (--yes or the
 	// doctor prompt), since it makes a network call.
 	if toolFilter == "" {
-		report.Checks = append(report.Checks, app.companionTokenDriftChecks(ctx, checkTokenDrift)...)
+		report.Checks = append(report.Checks, app.companionTokenDriftChecks(ctx, optIns.tokenDrift)...)
 	}
 
 	for _, check := range report.Checks {

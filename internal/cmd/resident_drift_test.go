@@ -33,7 +33,7 @@ func residentDriftRows(report *doctorReport) []adapter.Check {
 // doctorWithResidentSocket is the doctor report of a run under --yes as far as
 // resident_drift's socket half goes.
 func doctorWithResidentSocket(app *App, filter string) *doctorReport {
-	return buildDoctorWith(context.Background(), app, filter, doctorOptIns{residentSocket: true})
+	return buildDoctor(context.Background(), app, filter, doctorOptIns{residentSocket: true})
 }
 
 // Without --yes doctor does not connect to the daemon and says nothing of the

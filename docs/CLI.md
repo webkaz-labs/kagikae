@@ -266,7 +266,8 @@ them as follows; tools without resident processes are unaffected.
    that keeps the account it already holds needs nothing. The probe only reads, so
    `--dry-run` runs it too.
 2. **Notice, before the write.** What kae is about to do goes to stderr ahead of the
-   transaction, under the warning rules of § Output Rules. `--dry-run` stops here:
+   transaction, under the warning rules of § Output Rules, in the lines
+   **How the lines read** below sets out. `--dry-run` stops here:
    it writes nothing and reconciles nothing, its notice goes to stderr as a real
    run's does, and its plan carries the `planned` outcome.
 3. **The transaction** runs unchanged ([ARCHITECTURE.md](ARCHITECTURE.md)
@@ -284,13 +285,14 @@ them as follows; tools without resident processes are unaffected.
    A failed or unverified restart is a warning: the switch stays applied and is not
    rolled back, and the exit code stays `0`. When the transaction failed or rolled
    any tool back, there is no restart. A profile switch reconciles once, after the
-   whole transaction. What a restart interrupts in clients connected to the daemon
-   has not been measured ([ROADMAP.md](ROADMAP.md) § Current work order).
+   whole transaction. What a restart was seen to do to clients connected to the
+   daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips;
+   what is still open is in [ROADMAP.md](ROADMAP.md) § Current work order.
 5. **The ChatGPT app**, when it is running and this command changed codex's
    account: kae asks on the terminal, default No:
-   `ChatGPT keeps the codex account it started with. Quit and relaunch it now? Tasks running in ChatGPT will be interrupted. [y/N]: `.
-   The Japanese rendering takes the confirmation shape [L10N-JA.md](L10N-JA.md)
-   fixes rather than a question. `--yes` answers yes without asking, on a terminal
+   `Quit and relaunch ChatGPT now? Running tasks will be interrupted. [y/N]: `.
+   The Japanese rendering is the short question [L10N-JA.md](L10N-JA.md) fixes for
+   this prompt. `--yes` answers yes without asking, on a terminal
    or not. On yes, kae first asks again whether the app is running: an app the user
    has closed since the probe is left closed — kae does not start an app the user
    quit — and one kae cannot tell about is treated as below. Otherwise kae asks the
@@ -303,10 +305,10 @@ them as follows; tools without resident processes are unaffected.
    as not running. When kae cannot tell whether the app is running at all, it
    warns and does nothing to it. Without `--yes`, a run that cannot ask — no
    terminal, `--json` — warns instead.
-6. **Sessions.** Whenever this command changed codex's account, kae warns that a
-   codex session started before the switch and not connected to the managed daemon
-   keeps the previous account until it is restarted. kae does not look for such a
-   session; the warning is a fixed sentence.
+6. **Sessions.** Whenever this command changed codex's account, kae warns, before
+   the write, that codex sessions started before the switch and not connected to
+   the managed daemon keep the previous account until they are restarted. kae does
+   not look for such a session; the warning is a fixed sentence.
 
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 
@@ -356,6 +358,35 @@ this command changed codex's account:
 When kae cannot tell whether the app is running, at the probe or when it asks again
 after consent, the entry is `observed: unknown`, `outcome: warned`, whatever the
 condition.
+
+**How the lines read.** Each line is one `kae: note:` or `kae: warning:` line,
+except the success, which sits under the command's result line:
+
+- Before the write, one note says what kae will do to the daemon and the ChatGPT
+  app together, naming only what it acts on: the restart it owes, and the app it
+  will ask about or, under `--yes`, quit and relaunch. Under `--dry-run` the same
+  note says what the run would do, and the app's consent is judged as a real run
+  would judge it, so a dry run that could not ask gets the warning below too; the
+  app's `outcome` stays `planned`.
+- `--no-restart` and the hook shape give one warning for both instead, with the
+  manual steps: the restart command for the daemon, quitting and reopening for the
+  app.
+- A daemon whose account kae cannot read, an app kae cannot tell about, and an app
+  it cannot ask about (no terminal, `--json`, without `--yes`) each get a warning
+  of their own.
+- After the transaction, every outcome but the success is a line of its own, as it
+  settles: `restart_unverified`, `restart_failed`, `declined` and the quit outcomes
+  are warnings naming the manual step, and `none` for an app closed meanwhile is a
+  note.
+- The success — a daemon `restarted`, an app `relaunched`, or both as one line — is
+  held until the command prints its result, and then goes to stderr, indented and
+  without a prefix, right after the line of that result: `Switched codex -> <account>`,
+  `Captured codex/<account> ...` (which `kae add` prints after the reconcile), or
+  the codex item of `kae rollback`. A run that prints no result line (`--json`,
+  `--quiet`) says it as a `kae: note:` line instead. An interrupt before the result
+  line says nothing of a success that had already happened.
+- Which words a line uses, and where it names the command, is set by
+  `internal/cmd/resident_wording.go`, whose doc comment states the rules.
 
 **Reporting.** The notices and outcomes go to stderr, not stdout, so `--quiet` does
 not suppress them, and they never change the exit code. With `--json`, each result
@@ -1871,7 +1902,8 @@ in the same transaction.
   resident process after the transaction (§ kae use Semantics) can only be known
   once it has happened, so kae gives the advance notice before the write and the
   outcome after it — a restart's result, a declined or timed-out app quit — once
-  that outcome is settled. Where the account is not known before the write — the
+  that outcome is settled; the success follows the result line (§ kae use Semantics,
+  **How the lines read**). Where the account is not known before the write — the
   login flow of `kae add`, which decides it — there is no advance notice: the
   probe and its outcome both follow the flow (§ kae add Semantics).
 - JSON mode never emits color, progress, prompts, or localized text (§ Localization), on stdout or stderr.

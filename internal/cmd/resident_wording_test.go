@@ -51,7 +51,7 @@ func TestRestartFailureWording(t *testing.T) {
 				t.Errorf("%s, %s: English = %q, want %q", o.kept, c.name, got, english)
 			}
 			japanese := "codex: " + c.causeJA + "。" + o.keptJA +
-				"が、管理デーモン（codex app-server daemon）は現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" +
+				"が、管理デーモンは現在有効なアカウントをまだ使っていない可能性があります。再試行するには、" +
 				manual + " を実行してください。"
 			if got := l10n.Render(m); got != japanese {
 				t.Errorf("%s, %s: Japanese = %q, want %q", o.kept, c.name, got, japanese)

@@ -87,8 +87,9 @@ The operator's decisions, which the slices do not reopen, are the behaviour
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
 The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ codex resident processes — local acceptance (2026-10-06), which answers the
-questions it settled. Before slice 8 can pass, the acceptance still has to settle:
+§ codex resident processes — local acceptance (2026-10-06) and
+[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips, which answer the
+questions they settled. Before slice 8 can pass, the acceptance still has to settle:
 
 - what the restart does when the `codex` on `PATH` and the daemon's own copy
   differ in version;
@@ -97,19 +98,20 @@ questions it settled. Before slice 8 can pass, the acceptance still has to settl
   `resident_drift` stays a default check or becomes opt-in. A lead, not an answer:
   in upstream's source, a daemon with no cached routing runs routing discovery
   through its `BackendClient`, which can connect;
-- whether the app's `quit` needs the Automation (TCC) permission, and what the
-  first one does without it;
-- whether a newly started codex TUI session connects to the managed daemon (an
-  existing `codex resume` one did not), which decides whether a restart reaches it
-  and what the session warning should say;
-- what an automatic daemon restart interrupts in the clients connected to it;
-- whether a resident process still on the old account can write a refreshed token
-  back to `auth.json`, which would overwrite a switch while a hook or
-  `--no-restart` leaves it running;
-- how the ChatGPT app's y / n / `--yes` paths behave on a real app, and what happens
-  when it answers the quit with a confirmation dialog: the quit request then times
-  out (`-1712`), the 20 s wait ends in `quit_timeout`, and if the user chooses to
-  quit afterwards the app is not relaunched.
+- what an automatic daemon restart does to a task running in a client connected to
+  it;
+- what kae does about a resident process still on the old account that refreshes
+  that account's token. Whether it writes the token back to `auth.json` is not
+  measured; an old session not connected to the daemon is inferred to invalidate
+  the token in kae's snapshot by rotating it, which a new login of that account
+  repairs;
+- how kae's probe should name itself to the daemon, which is inferred to give later
+  threads the `clientInfo.name` of the first client that initialized. Undecided; a
+  name that passes kae off as another client is not an option;
+- how the ChatGPT app's y and n answers behave on a real app;
+- what happens when the app answers the quit with a confirmation dialog: the quit
+  request then times out (`-1712`), the 20 s wait ends in `quit_timeout`, and if
+  the user chooses to quit afterwards the app is not relaunched.
 
 Done when slice 8's acceptance is recorded, each question above has a recorded
 answer, and the contract has been corrected wherever an answer contradicts it.

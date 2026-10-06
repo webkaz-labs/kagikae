@@ -118,7 +118,9 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 	}
 	app.reconcileResidents(ctx, report.Results)
 	if opts.Format == formatJSON {
-		return encodeJSON(report)
+		code := encodeJSON(report)
+		printResidentsDone(report.Results)
+		return code
 	}
 	printSwitchReport(report)
 	return constants.ExitOK
@@ -351,8 +353,11 @@ func printSwitchReport(report *switchReport) {
 	// Warnings are not repeated here: warnBeforeApply already put them on stderr,
 	// before the apply and independent of --quiet. The dry-run branch above still
 	// prints them, since nothing is applied there and no stderr line is emitted.
-	for _, result := range report.Results {
+	for i := range report.Results {
+		result := &report.Results[i]
 		reportf("Switched %s -> %s", result.Tool, result.Account)
+		// A resident reconcile's success, under the line of its tool.
+		result.printDone(true)
 	}
 	if report.Profile != nil {
 		reportf("Active profile: %s", *report.Profile)

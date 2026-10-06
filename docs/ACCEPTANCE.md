@@ -27,15 +27,32 @@ re-executor reaches it.
 | Does `daemon version` start a daemon | Under a `CODEX_HOME` with no daemon it exited 1 with `failed to connect to <home>/app-server-control/app-server-control.sock`, and no daemon started. | |
 | Does `daemon version` need the network | Under `sandbox-exec` with IP send and receive denied it printed the same output in 0.07 s. | Whether it attempts a connection that the sandbox refused. |
 | What a daemon holds after a switch | A daemon started hours before kae switched `auth.json` answered `account/read` with `refreshToken: false`, some time after the switch, with `account` null, `workspaceRouting` null and `requiresOpenaiAuth` present. It held no account, not the previous one. The value of `requiresOpenaiAuth` in that answer was not recorded; the restarted daemon, under the default `model_provider`, answered `true`, and upstream derives it from the provider rather than the login. The live credential was a ChatGPT login with `tokens.account_id`; kae read the daemon as `unknown` and only warned. | Whether `account/read` itself contacts the network. |
-| Restart and its stdio | `codex app-server daemon restart 2>&1 \| cat` finished in 0.45 s, so the daemon it starts closes the stdio it inherits. After it, `account/read` named `account` (`type`, `email`, `planType`) and `workspaceRouting` (`chatgptAccountId`, `backendOrigin`, `accountRoutingOverride`), and kae doctor's daemon warning was gone. | What the restart interrupts in connected clients. |
+| Restart and its stdio | `codex app-server daemon restart 2>&1 \| cat` finished in 0.45 s, so the daemon it starts closes the stdio it inherits. After it, `account/read` named `account` (`type`, `email`, `planType`) and `workspaceRouting` (`chatgptAccountId`, `backendOrigin`, `accountRoutingOverride`), and kae doctor's daemon warning was gone. | What the restart interrupts in connected clients; the second part below covers a connected TUI. |
 | Daemon and credential namespace | `workspaceRouting.chatgptAccountId` after the restart equalled the live `tokens.account_id`. | |
 | Rollout and credential namespace | In 7 of the shared home's 60 newest rollouts, the first line's `session_meta.payload.creator_account_id` equalled the live `tokens.account_id`; the rest did not. | |
-| `osascript` and Automation (TCC) | `osascript -e 'application id "com.openai.codex" is running'` returned `true` in 0.06 s without a permission dialog. | Whether `quit` needs the Automation permission; the app's y / n / `--yes` paths and its quit confirmation dialog. |
+| `osascript` and Automation (TCC) | `osascript -e 'application id "com.openai.codex" is running'` returned `true` in 0.06 s without a permission dialog. | Whether `quit` needs the Automation permission, which the second part below answers for this machine; the app's y / n paths and its quit confirmation dialog. |
 | Daemon and `PATH` versions | The daemon runs from its own copy of codex under `~/.codex/packages/app-server-daemon/`, apart from the `codex` on `PATH`; both were 0.160.1. `codex app-server daemon update` exists. | What a restart does when the two versions differ. |
-| Which sessions use the daemon | An existing `codex resume` TUI process was not connected to the daemon's socket. | Whether a newly started TUI connects. |
+| Which sessions use the daemon | An existing `codex resume` TUI process was not connected to the daemon's socket. | Whether a newly started TUI connects, which the second part below answers. |
 
-Also not measured: whether a resident process still on the old account writes a
-refreshed token back to `auth.json`.
+Also not measured in this first part: whether a resident process still on the old
+account writes a refreshed token back to `auth.json`; the second part below records
+what a round trip of switches did to the account left behind.
+
+### Second part: switch round trips
+
+Measured by the operator's agent on 2026-10-06 on the same machine with codex
+0.160.1, switching with kae between two ChatGPT accounts, main and side. Each row is
+bounded to what was inspected; an inference is marked as one.
+
+| Question | Observed | Not measured |
+|---|---|---|
+| What happens to the account a switch leaves | Over round trips between main and side, upstream invalidated the refresh token of the account a switch had left: the daemon's log showed `token_revoked` / `refresh_token_invalidated`, while kae's credential for that account still matched its account id and its access token had not expired. With the daemon, the ChatGPT app and a `codex resume` TUI running since 2026-09-30 and not connected to the daemon all resident, it happened twice in 3 round trips. With the daemon alone it did not happen in 4 round trips, nor with the daemon and the app quit and relaunched by `--yes` each time in 4. Inferred, not measured: the old session not connected to the daemon refreshed the left account's token itself, the rotation invalidated the token in kae's snapshot, and the session did not write it back because the disk held the other account. Logging in again with `kae add --restore codex <account>` (or `kae add codex <account>` while it is live), which updates the snapshot, recovered the account. | When the old TUI refreshed. |
+| Does a newly started TUI use the daemon | A `codex` TUI started with this version was connected to the daemon: the peer of the socket the daemon had accepted was the TUI's socket. After a switch restarted the daemon, the TUI's `/status` showed the new account and it still answered. | What a restart does to a task running in a connected client. |
+| What `--no-restart` leaves running | After a switch with `--no-restart` the daemon still used the previous account 0, 20, 40 and 60 s later: it did not load the new `auth.json`. A TUI connected to it showed the previous account meanwhile. | |
+| Does the ChatGPT app follow a switch without a relaunch | After one switch without a relaunch the app showed and used the account on disk; after the next it created a new task on the previous account (the new rollout's creator did not match the live credential). It does not follow a switch reliably. | |
+| `quit` and Automation (TCC) | Quitting the app (`osascript` quit) and relaunching it (`open -b`) showed no Automation permission dialog: by the operator's recollection, and in 4 `--yes` runs without a terminal that each settled `relaunched`. | Whether a permission granted earlier was in effect. |
+| Does the daemon contact the network | Right after it started, the daemon connected to chatgpt.com, to fetch the model list and refresh the token (its log showed a 401). | Whether `account/read` itself connects. |
+| Which client name the daemon's threads carry | After a restart, kae's probe was the first client to initialize (`clientInfo.name` `kae_probe`), and a thread a TUI then created through the daemon recorded `kae_probe` as its rollout's `originator` (one case). Inferred, not measured: the daemon gives later threads the name of the first client that initialized. | |
 
 ## v0.23.0 candidate
 

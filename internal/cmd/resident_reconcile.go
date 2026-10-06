@@ -38,6 +38,32 @@ type residentSlot struct {
 	Residents []residentEntry `json:"residents"`
 	restart   *pendingRestart
 	quits     []pendingQuit
+	// done is the success the reconcile settled (residentDone), held for the line
+	// after the command's result line; nil when there is none or it was said.
+	done *message
+}
+
+// printDone says the held success once: indented under the command's result line
+// when underReport, or as a `kae: note:` line for a run that prints no result
+// line (--json, --quiet). Both go to stderr.
+func (s *residentSlot) printDone(underReportLine bool) {
+	if s.done == nil {
+		return
+	}
+	done := *s.done
+	s.done = nil
+	if underReportLine {
+		printUnderReport(underReport(done))
+		return
+	}
+	noteMessage(alone(done))
+}
+
+// printResidentsDone is printDone, alone, for each of results.
+func printResidentsDone(results []switchResult) {
+	for i := range results {
+		results[i].printDone(false)
+	}
 }
 
 // residentMode is what suppresses a restart: --dry-run, --no-restart and the
@@ -48,6 +74,32 @@ type residentMode struct {
 	dryRun, noRestart, hook bool
 	yes, json               bool
 	op                      residentOp
+}
+
+// residentStance is how a run treats the resident processes it finds: it acts on
+// them, or, under --dry-run, --no-restart or the hook shape, it does not.
+type residentStance int
+
+const (
+	stanceAct residentStance = iota
+	stanceDryRun
+	stanceOptedOut
+	stanceHook
+)
+
+// stance is the one precedence the daemon's outcome, the app's plan and the
+// notice share: --no-restart wins over the hook shape, and both over --dry-run,
+// because `planned` says the run would restart and neither of them would.
+func (m residentMode) stance() residentStance {
+	switch {
+	case m.noRestart:
+		return stanceOptedOut
+	case m.hook:
+		return stanceHook
+	case m.dryRun:
+		return stanceDryRun
+	}
+	return stanceAct
 }
 
 func residentModeOf(opts commonOpts) residentMode {
@@ -88,11 +140,13 @@ func (app *App) residentsBeforeSwitch(ctx context.Context, tool string, target c
 // once against the credential finally left live, and restarts it at once when
 // it differs and --no-restart is not given. before reads the credential live
 // before the flow, for whether the command changed the tool's account.
-func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) {
+// It returns the slot, whose held success follows add's result line.
+func (app *App) residentsAfterLogin(ctx context.Context, tool string, before credentialReader, mode residentMode) *residentSlot {
 	var slot residentSlot
 	mode.op = residentOpLogin
 	app.planResidents(ctx, tool, nil, before, &slot, mode)
 	app.reconcileSlot(ctx, &slot)
+	return &slot
 }
 
 // planResidents is residentsBeforeSwitch with the two credentials it compares
@@ -127,14 +181,14 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 	live := readOnce(previous)
 	observed := app.probeResidentDaemon(ctx, holder, spec, target)
 	outcome, owed := daemonOutcomeBefore(observed, mode)
-	noticeBeforeSwitch(mode.op, observed, outcome, owed, func() string { return app.residentRestartCommand(holder, spec) })
 	residents := []residentEntry{{Kind: constants.ResidentKindDaemon, Observed: observed, Outcome: outcome}}
 	// The desktop apps matter only to a command that changes the account: one
 	// that does not leaves them on the account they hold, so they are not asked
 	// about and get no entry.
 	var apps []desktopEntry
 	appBase := 0
-	if accountChanges(ctx, holder, live, target) {
+	changes := accountChanges(ctx, holder, live, target)
+	if changes {
 		apps = app.planDesktopApps(ctx, holder, mode)
 		appBase = len(residents)
 		for _, a := range apps {
@@ -144,6 +198,10 @@ func (app *App) planResidents(ctx context.Context, tool string, target, previous
 			Kind: constants.ResidentKindSession, Observed: constants.ResidentObservedUnknown,
 			Outcome: constants.ResidentOutcomeWarned,
 		})
+	}
+	noticeResidents(mode, observed, apps, func() string { return app.residentRestartCommand(holder, spec) })
+	// The session warning follows the notice, so the entries are built above it.
+	if changes {
 		warnMessage(mode.op.session(mode.dryRun))
 	}
 	// The array is complete before an entry points into it.
@@ -178,17 +236,16 @@ func readOnce(r credentialReader) credentialReader {
 // daemonOutcomeBefore is the daemon entry's outcome as far as it is known before
 // the transaction. owed is true when a restart is owed; the outcome is then
 // `planned` until the restart settles restarted, restart_unverified or
-// restart_failed. --no-restart wins over the hook shape, and both over --dry-run,
-// because `planned` says the switch would restart and neither of them would.
+// restart_failed.
 func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, owed bool) {
 	switch observed {
 	case constants.ResidentObservedDiffers:
-		switch {
-		case mode.noRestart:
+		switch mode.stance() {
+		case stanceOptedOut:
 			return constants.ResidentOutcomeOptedOut, false
-		case mode.hook:
+		case stanceHook:
 			return constants.ResidentOutcomeWarned, false
-		case mode.dryRun:
+		case stanceDryRun:
 			return constants.ResidentOutcomePlanned, false
 		}
 		return constants.ResidentOutcomePlanned, true
@@ -199,27 +256,45 @@ func daemonOutcomeBefore(observed string, mode residentMode) (outcome string, ow
 	return constants.ResidentOutcomeNone, false
 }
 
-// noticeBeforeSwitch is step 2's stderr line for one daemon, in op's words;
-// manual builds the manual step the warnings name (residentRestartCommand).
-// absent and matches print nothing.
-func noticeBeforeSwitch(op residentOp, observed, outcome string, owed bool, manual func() string) {
+// noticeResidents is step 2's stderr lines for the daemon and the running apps
+// (docs/CLI.md § kae use Semantics, **How the lines read**): a daemon kae cannot
+// read gets its own warning; then one line says what the run does to the daemon
+// (when it differs) and the apps together — a note, or under --no-restart and the
+// hook shape a warning with the manual steps; then each app kae cannot ask about
+// or cannot tell about gets its own warning. manual builds the manual restart
+// (residentRestartCommand). absent and matches print nothing.
+func noticeResidents(mode residentMode, observed string, apps []desktopEntry, manual func() string) {
 	if observed == constants.ResidentObservedUnknown {
-		warnf("codex: could not read which account the managed daemon (codex app-server daemon) holds; if it is not using the live account, run: %s", manual())
-		return
+		warnMessage(daemonUnknownMessage(manual()))
 	}
-	if observed != constants.ResidentObservedDiffers {
-		return
+	daemon := observed == constants.ResidentObservedDiffers
+	app := residentAppNone
+	for _, a := range apps {
+		if app == residentAppNone && a.entry.Observed == constants.ResidentObservedRunning {
+			app = a.plan.announced()
+		}
 	}
-	switch {
-	case owed:
-		noteMessage(op.restartAhead())
-	case outcome == constants.ResidentOutcomePlanned:
-		noteMessage(op.restartPlanned())
-	case outcome == constants.ResidentOutcomeOptedOut:
-		warnMessage(op.optedOut(manual()))
-	case outcome == constants.ResidentOutcomeWarned:
-		// Only a switch has the hook shape.
-		warnf("codex: the managed daemon (codex app-server daemon) is not using the account this switch leaves live, and the enter hook (--auto) does not restart it; to move it to the new account, run: %s", manual())
+	switch stance := mode.stance(); stance {
+	case stanceOptedOut, stanceHook:
+		if m, ok := suppressedMessage(suppressedReason(stance == stanceHook), daemon, app != residentAppNone, manual); ok {
+			warnMessage(m)
+		}
+	case stanceDryRun:
+		if action, ok := residentAction(daemon, app); ok {
+			noteMessage(mode.op.planned(action))
+		}
+	default:
+		if action, ok := residentAction(daemon, app); ok {
+			noteMessage(mode.op.ahead(action))
+		}
+	}
+	for _, a := range apps {
+		switch {
+		case a.entry.Observed == constants.ResidentObservedUnknown:
+			warnMessage(desktopUnknownMessage())
+		case a.plan.consent == consentCannotAsk:
+			warnMessage(desktopCannotAskMessage())
+		}
 	}
 }
 
@@ -314,19 +389,32 @@ func (app *App) reconcileResidents(ctx context.Context, results []switchResult) 
 
 // reconcileSlot runs the restart slot owes, if any, and settles its daemon
 // entry's outcome; then, after the restart, it asks about and quits each desktop
-// app slot owes (step 5) and settles that entry. Each reports on stderr. A
-// failed or unverified restart, and every app outcome but a relaunch, is a
-// warning: the exit code is unchanged and nothing is rolled back. It owes
-// nothing afterwards, so a second call does not act again.
+// app slot owes (step 5) and settles that entry. A failed or unverified restart,
+// and every app outcome but a relaunch and an app closed meanwhile, is a warning
+// said here: the exit code is unchanged and nothing is rolled back. The success —
+// a verified restart, the first relaunch, or both — is held in slot.done for the
+// line after the command's result (printDone), so an interrupt before then says
+// nothing of it. It owes nothing afterwards, so a second call does not act again.
 func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
+	restarted := false
 	if p := slot.restart; p != nil {
 		slot.restart = nil
 		p.entry.Outcome = app.restartDaemon(ctx, *p)
+		restarted = p.entry.Outcome == constants.ResidentOutcomeRestarted
 	}
 	quits := slot.quits
 	slot.quits = nil
+	relaunched := false
 	for _, q := range quits {
-		app.quitDesktopApp(ctx, q)
+		line := app.quitDesktopApp(ctx, q)
+		if !relaunched && q.entry.Outcome == constants.ResidentOutcomeRelaunched {
+			relaunched = true
+			continue
+		}
+		line.print()
+	}
+	if done, ok := residentDone(restarted, relaunched); ok {
+		slot.done = &done
 	}
 }
 
@@ -372,12 +460,12 @@ func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 		observed := app.probeResidentDaemon(probeCtx, p.holder, p.spec, p.live)
 		cancel()
 		if observed == constants.ResidentObservedMatches {
-			noteMessage(p.op.restarted())
+			// reconcileSlot holds it for the line after the result.
 			return constants.ResidentOutcomeRestarted
 		}
 		app.sleep(ctx, residentRecheckInterval)
 	}
-	warnf("codex: restarted the managed daemon (codex app-server daemon) but could not confirm that it holds the account now live; if it is still not using it, run: %s", manual())
+	warnMessage(restartUnverifiedMessage(manual()))
 	return constants.ResidentOutcomeRestartUnverified
 }
 

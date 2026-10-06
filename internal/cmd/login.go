@@ -120,48 +120,54 @@ func parseAddFlags(flags []string) (opts commonOpts, restore, noLogin, ok bool) 
 // Semantics, codex resident processes). A failed flow and an auth_unchanged exit
 // reconcile nothing.
 func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) int {
-	code, before := loginFlow(ctx, app, opts, tool, explicitName, restore)
-	if code == constants.ExitOK {
-		app.residentsAfterLogin(ctx, tool, before, residentModeOf(opts))
+	code, before, result := loginFlow(ctx, app, opts, tool, explicitName, restore)
+	if code != constants.ExitOK {
+		return code
 	}
+	slot := app.residentsAfterLogin(ctx, tool, before, residentModeOf(opts))
+	// The result line follows the reconcile, so that the reconcile's success sits
+	// under it as a switch's does.
+	reportMessage(result)
+	slot.printDone(true)
 	return code
 }
 
 // loginFlow is runLogin up to the release of the tool lock, which its deferred
 // releaseLocks performs before runLogin reconciles. before reads the credential
-// live before the flow, as the flow's backup recorded it.
-func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) (code int, before credentialReader) {
+// live before the flow, as the flow's backup recorded it, and result is the
+// report line runLogin prints after the reconcile.
+func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) (code int, before credentialReader, result message) {
 	if err := app.requireConfig(); err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 	command := loginCommand(tool)
 	if command == nil {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool)), nil
+			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool)), nil, message{}
 	}
 	// Plan the tool before the name is known; only plan.Account (set after login)
 	// depends on it, and that is not read until captureSnapshot below.
 	plan, err := app.planTool(ctx, tool, explicitName)
 	if err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 	be, err := app.secretBackend()
 	if err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 	locks, err := app.acquireLocks([]string{tool})
 	if err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 	defer releaseLocks(locks)
 
 	st, err := app.loadState()
 	if err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, constants.BackupReasonLogin)
 	if err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
 
 	if explicitName != "" {
@@ -172,7 +178,7 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitNam
 			tool, meta.ID)
 	}
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
-		return finish(opts, errLaunchLogin(tool, err)), nil
+		return finish(opts, errLaunchLogin(tool, err)), nil, message{}
 	} else if code != 0 {
 		infof("%s exited with %d; capturing whatever auth state is live now", command[0], code)
 	}
@@ -186,7 +192,7 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitNam
 	plan = app.refreshPlan(ctx, plan)
 
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCompare, err), nil
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCompare, err), nil, message{}
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
@@ -196,7 +202,7 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitNam
 		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
 			"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s",
-			tool, hint)), nil
+			tool, hint)), nil, message{}
 	}
 
 	// The login flow changed auth, so the new identity is now live: resolve the
@@ -204,29 +210,28 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, tool, explicitNam
 	// identity to record in the snapshot, then snapshot.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepDetect, err), nil
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepDetect, err), nil, message{}
 	}
 	plan.Account = accountName
 	plan.Identity = identity
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil, message{}
 	}
 
 	if restore {
 		if err := app.applyBackup(ctx, be, meta, nil, false); err != nil {
 			return finish(opts, errf(exitOf(err),
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
-				tool, accountName, err, meta.ID)), nil
+				tool, accountName, err, meta.ID)), nil, message{}
 		}
-		reportf("Captured %s/%s and restored the previous login", tool, accountName)
-		return constants.ExitOK, backupCredential(be, meta, tool)
+		return constants.ExitOK, backupCredential(be, meta, tool),
+			msgf("Captured %s/%s and restored the previous login", tool, accountName)
 	}
 	if err := app.saveActive(map[string]string{tool: accountName}, ""); err != nil {
-		return finish(opts, err), nil
+		return finish(opts, err), nil, message{}
 	}
-	reportf("Captured %s/%s (now active)", tool, accountName)
-	return constants.ExitOK, backupCredential(be, meta, tool)
+	return constants.ExitOK, backupCredential(be, meta, tool), msgf("Captured %s/%s (now active)", tool, accountName)
 }
 
 // loginChangedAuth reports whether any live artifact differs from the

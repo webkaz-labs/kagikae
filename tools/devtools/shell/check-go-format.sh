@@ -15,8 +15,9 @@ elif [ "$#" -ne 0 ]; then
   printf 'usage: check-go-format.sh [--portable ROOT]\n' >&2
   exit 2
 fi
-# shellcheck source=lint-cache.sh
-. "$(dirname -- "$0")/lint-cache.sh"
+cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
+# shellcheck source=cache-root.sh
+. "$(dirname -- "$0")/cache-root.sh"
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"

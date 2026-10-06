@@ -28,7 +28,8 @@ hide = true
 description = "Run bug-class Staticcheck analyzers"
 run = """
 set -eu
-. tools/devtools/shell/lint-cache.sh
+cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
+. tools/devtools/shell/cache-root.sh
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"
@@ -42,7 +43,8 @@ hide = true
 description = "Run curated golangci-lint checks"
 run = """
 set -eu
-. tools/devtools/shell/lint-cache.sh
+cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
+. tools/devtools/shell/cache-root.sh
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"
@@ -165,7 +167,8 @@ hide = true
 description = "Run Go vulnerability audit"
 run = """
 set -eu
-cache_root="${GOCLI_AUDIT_CACHE_DIR:-${TMPDIR:-/tmp}/kae-audit}"
+cache_name=kae-audit cache_override=${GOCLI_AUDIT_CACHE_DIR:-}
+. tools/devtools/shell/cache-root.sh
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"
 export GOCACHE="$cache_root/gocache"

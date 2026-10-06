@@ -64,22 +64,25 @@ sessions keep the account they started with after a switch
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. It is written ahead of
-the code. Until the first slice users can see (slice 3, the reconcile in
-`kae use`) is ready, the contract and the slices before it stay on the integration
-branch `feat/resident-reconcile`, and they land on main together with slice 3, not
-before it. The feature then ships stage by stage, so a release cut between slices
+the code for slices 4 to 8. Slice 3, the reconcile in `kae use`, is the first slice
+users can see; the contract and slices 1 to 3 land on main together from the
+integration branch `feat/resident-reconcile`, not one before the others. The
+feature then ships stage by stage, so a release cut between slices
 ships only part of what the contract describes: the release notes of each release
 name which slices it ships, and the user-facing paragraphs (README, README.ja,
 GUIDE.ja, PRODUCT, PRODUCT.ja) describe the daemon restart from slice 3, `kae add`
 and `kae rollback` from slice 4, the ChatGPT app from slice 5 and `resident_drift`
-from slice 6. Each slice is its own commit and review:
+from slice 6. Each slice is its own commit and review. Slices 1 to 3 are done on
+the integration branch, git log records how, and the contract describes what they
+do:
 
 1. `internal/wsrpc`, the WebSocket-over-Unix-socket client.
 2. The codex adapter's `ResidentHolder` and the daemon probe.
 3. The reconcile in `kae use`, `--no-restart`, the `residents` report and the
-   session warning. The `--yes` flag description, which still reads
-   "non-interactive confirmation (reserved)" (`internal/cmd/cmd.go`), is corrected
-   in this slice.
+   session warning.
+
+What remains:
+
 4. The same reconcile in `kae add` and `kae rollback`.
 5. `internal/desktopapp`: the ChatGPT app's confirmation, quit and relaunch.
    Until it lands, slices 3 and 4 emit no `desktop_app` entry and do nothing to the
@@ -87,7 +90,10 @@ from slice 6. Each slice is its own commit and review:
 6. `doctor resident_drift`. Its socket half runs by default. Its moved-socket half
    (`codex app-server daemon version`) ships disabled and stays disabled until the
    acceptance records that the command starts no daemon when none runs and makes no
-   network call; once that is recorded it is enabled by default.
+   network call; once that is recorded it is enabled by default. Its findings name
+   the manual restart through the helper the switch's warnings use
+   (`residentRestartCommand` in `internal/cmd`), so a shell that exports another
+   `CODEX_HOME` is told the real home.
 7. Usage attribution: a veto on a codex usage reading kae would attribute to the
    wrong account (a veto only, no re-attribution). Last, as a separate slice.
 8. The real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with

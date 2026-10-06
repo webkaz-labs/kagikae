@@ -80,15 +80,13 @@ and slice 7, the codex usage veto ([CLI.md](CLI.md) § Subscription windows in
 listings), on main; git log records them. The rest, each its own commit and review:
 
 6. `doctor resident_drift`. Its socket half is done and runs by default. Its
-   moved-socket half (`codex app-server daemon version`) is not built; it ships
-   disabled and stays disabled until the acceptance records that the command
-   starts no daemon when none runs and makes no network call; once that is
-   recorded it is enabled by default. `daemon version`
-   is read, so it needs the capturing `runner.RunWithEnv`, which a daemon the
-   command starts would hold open; enabling it needs `WaitDelay` or a seam of its
-   own first. Its findings name the manual restart through the helper the switch's
-   warnings use (`residentRestartCommand` in `internal/cmd`), so a shell that
-   exports another `CODEX_HOME` is told the real home.
+   moved-socket half (`codex app-server daemon version`) is built and disabled
+   until the acceptance: it stays disabled until slice 8 records that the command
+   starts no daemon when none runs and makes no network call, and is then enabled
+   by default by setting `residentDaemonVersionEnabled` in
+   `internal/cmd/resident_daemon_version.go` to true, the one line that gates it.
+   It reads the output through `runner.QueryWithEnv`, whose stdout is a file
+   rather than a pipe, so a daemon the command starts cannot hold doctor.
 
 Then, last:
 

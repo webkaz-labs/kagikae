@@ -73,8 +73,8 @@ func (app *App) euid() int {
 func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolder, spec adapter.DaemonSpec,
 	credential credentialReader,
 ) string {
-	socket, err := filepath.EvalSymlinks(spec.Socket)
-	if errors.Is(err, fs.ErrNotExist) {
+	socket, absent, err := resolveDeclaredSocket(spec.Socket)
+	if absent {
 		return constants.ResidentObservedAbsent
 	}
 	if err != nil || !ownedSocket(socket, app.euid()) {
@@ -114,6 +114,18 @@ func (app *App) probeResidentDaemon(ctx context.Context, h adapter.ResidentHolde
 		return constants.ResidentObservedMatches
 	}
 	return constants.ResidentObservedDiffers
+}
+
+// resolveDeclaredSocket resolves the symlinks of a daemon's declared socket
+// path, as the probe and doctor's `daemon version` half both compare it.
+// absent is true, with a nil error, when the path or the target it links to
+// does not exist; err is any other failure to resolve it.
+func resolveDeclaredSocket(declared string) (resolved string, absent bool, err error) {
+	resolved, err = filepath.EvalSymlinks(declared)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", true, nil
+	}
+	return resolved, false, err
 }
 
 // jsonMember reports whether a raw JSON-RPC member is present and not null.

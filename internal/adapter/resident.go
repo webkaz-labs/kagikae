@@ -22,6 +22,11 @@ type ResidentHolder interface {
 	// daemon's answer to the last request in DaemonProbeRequests. ok is false for
 	// anything it cannot read: missing fields, wrong types, malformed JSON.
 	ParseDaemonAccount(result []byte) (ResidentAccount, bool)
+	// ParseDaemonStatus reads the stdout of DaemonSpec.Status: whether the daemon
+	// reports itself running and, when it does, the socket path it reports. ok is
+	// false for anything it cannot read, a running daemon without an absolute
+	// socket path included.
+	ParseDaemonStatus(output []byte) (running bool, socket string, ok bool)
 	// DesktopApps lists the bundle ids of desktop apps that embed the tool;
 	// empty except on darwin (the platform kae runs on, not Env.GOOS: the apps
 	// are reached through Apple Events, which exist only there).

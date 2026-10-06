@@ -153,6 +153,41 @@ func TestParseDaemonAccountRejectsUnreadableAnswers(t *testing.T) {
 	}
 }
 
+// `codex app-server daemon version` names the daemon's status and socket path
+// (docs/ADAPTERS.md § Resident processes); only those two members are read.
+func daemonRunningAt(sock string) string {
+	return `{"status":"running","socketPath":"` + sock + `"}` + "\n"
+}
+
+func TestParseDaemonStatus(t *testing.T) {
+	const sock = "/home/you/.codex/app-server-control/app-server-control.sock"
+	for _, tc := range []struct {
+		name, output string
+		running, ok  bool
+		socket       string
+	}{
+		{"running", `{"cliVersion":"0.160.0","status":"running","socketPath":"` + sock + `"}` + "\n", true, true, sock},
+		{"not running", `{"status":"stopped"}`, false, true, ""},
+		{"not running with a path", `{"status":"stopped","socketPath":"relative.sock"}`, false, true, ""},
+		{"running without a path", `{"status":"running"}`, false, false, ""},
+		{"running with a relative path", `{"status":"running","socketPath":"app-server-control.sock"}`, false, false, ""},
+		{"running with an empty path", `{"status":"running","socketPath":""}`, false, false, ""},
+		{"path is a number", `{"status":"running","socketPath":1}`, false, false, ""},
+		{"no status", `{"socketPath":"` + sock + `"}`, false, false, ""},
+		{"status is a bool", `{"status":true,"socketPath":"` + sock + `"}`, false, false, ""},
+		{"not JSON", "codex-cli 0.160.0\n", false, false, ""},
+		{"followed by a log line", daemonRunningAt(sock) + "daemon: listening\n{", true, true, sock},
+		{"array", `[{"status":"running"}]`, false, false, ""},
+		{"JSON after a banner", "note\n" + `{"status":"running","socketPath":"` + sock + `"}`, false, false, ""},
+		{"empty", ``, false, false, ""},
+	} {
+		running, socket, ok := Codex{}.ParseDaemonStatus([]byte(tc.output))
+		if running != tc.running || socket != tc.socket || ok != tc.ok {
+			t.Errorf("%s: got (%v, %q, %v), want (%v, %q, %v)", tc.name, running, socket, ok, tc.running, tc.socket, tc.ok)
+		}
+	}
+}
+
 func TestDesktopAppsDarwinOnly(t *testing.T) {
 	got := Codex{}.DesktopApps()
 	if runtime.GOOS == "darwin" {

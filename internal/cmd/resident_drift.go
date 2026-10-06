@@ -10,12 +10,14 @@ import (
 // residentDriftChecks reports a managed daemon of the real tool home that holds
 // another account than the live credential, or whose account kae cannot read
 // (docs/CLI.md § `kae doctor --json`, resident_drift, which owns the contract).
-// It probes the daemon's socket only, through probeResidentDaemon, which only
-// reads. `absent` (no daemon) and `matches` are silent.
+// This is the socket half: it probes the daemon's socket only, through
+// probeResidentDaemon, which only reads. `absent` (no daemon) and `matches` are
+// silent.
 //
-// It does not run `codex app-server daemon version` (DaemonSpec.Status) or any
-// other subprocess of the tool. Reading the live credential may still run the
-// platform's keychain reader (`security` on darwin) under the keyring store.
+// It runs no subprocess of the tool: the `daemon version` half
+// (DaemonSpec.Status, resident_daemon_version.go) runs in doctorProbeRound's
+// round instead. Reading the live credential may still run the platform's
+// keychain reader (`security` on darwin) under the keyring store.
 //
 // The probe looks at the real home, never the one a bound directory exports:
 // doctor run inside a bound directory still answers for the daemon a global

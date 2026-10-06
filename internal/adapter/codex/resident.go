@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
 	"runtime"
@@ -54,6 +55,32 @@ func (Codex) ParseDaemonAccount(result []byte) (adapter.ResidentAccount, bool) {
 		return adapter.ResidentAccount{}, false
 	}
 	return adapter.NewResidentAccount(doc.WorkspaceRouting.ChatGPTAccountID)
+}
+
+// daemonRunning is the `status` `codex app-server daemon version` reports for a
+// running daemon (docs/ADAPTERS.md § Resident processes).
+const daemonRunning = "running"
+
+// ParseDaemonStatus reads the JSON object `codex app-server daemon version`
+// prints first, its `status` and `socketPath` only; whatever follows the object
+// (a log line a daemon it started writes to the same stdout) is not read. Both
+// must be strings; the socket path matters, and must be absolute, only while the
+// daemon is running.
+func (Codex) ParseDaemonStatus(output []byte) (running bool, socket string, ok bool) {
+	var doc struct {
+		Status     *string `json:"status"`
+		SocketPath *string `json:"socketPath"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(output)).Decode(&doc); err != nil || doc.Status == nil {
+		return false, "", false
+	}
+	if *doc.Status != daemonRunning {
+		return false, "", true
+	}
+	if doc.SocketPath == nil || !filepath.IsAbs(*doc.SocketPath) {
+		return false, "", false
+	}
+	return true, *doc.SocketPath, true
 }
 
 // DesktopApps is the ChatGPT app on macOS and nothing elsewhere.

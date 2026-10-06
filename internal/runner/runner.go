@@ -133,7 +133,7 @@ var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, ar
 	case err := <-done:
 		return launchResult(err)
 	case <-ctx.Done():
-		select {
+		select { // a program that exited as ctx ended counts as exited
 		case err := <-done:
 			return launchResult(err)
 		default:

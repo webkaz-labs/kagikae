@@ -423,14 +423,12 @@ func (app *App) reconcileSlot(ctx context.Context, slot *residentSlot) {
 // directory's value cannot select another daemon, and waits for it at most
 // residentRestartLimit. It goes through runner.LaunchWithEnv, which reads no
 // output, so a daemon the command leaves running cannot hold kae past the limit,
-// and which leaves a command still running at the limit running rather than
-// killing it: upstream's restart stops the old daemon before it starts the new
-// one, so a command killed between the two would leave no daemon. That restart is
-// restart_pending and is not probed. Otherwise it re-probes every
-// residentRecheckInterval for at most residentRecheckLimit, each probe bounded by
-// what is left of that, against the live credential as it reads at each attempt —
-// not the switch's target, so a later switch by another kae process does not make
-// this restart look unverified.
+// and which never kills it (docs/CLI.md § kae use Semantics, step 4, says why):
+// its ErrStillRunning is restart_pending, not probed again. Otherwise it re-probes
+// every residentRecheckInterval for at most residentRecheckLimit, each probe
+// bounded by what is left of that, against the live credential as it reads at
+// each attempt — not the switch's target, so a later switch by another kae
+// process does not make this restart look unverified.
 func (app *App) restartDaemon(ctx context.Context, p pendingRestart) string {
 	manual := func() string { return app.residentRestartCommand(p.holder, p.spec) }
 	limit := app.residentRestartLimit()

@@ -176,6 +176,26 @@ func TestLaunchWithEnvLeavesTheProgramRunningPastItsContext(t *testing.T) {
 	}
 }
 
+// A ctx that has already ended starts nothing: LaunchWithEnv returns 1 and ctx's
+// error, not ErrStillRunning, and the program never runs.
+func TestLaunchWithEnvStartsNothingOnAnEndedContext(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	marker := filepath.Join(t.TempDir(), "ran")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code, err := LaunchWithEnv(ctx, nil, sh, "-c", `echo ran > "$1"`, sh, marker)
+	if code != 1 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("on an ended ctx = %d %v, want 1 and context.Canceled", code, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the program ran although ctx had ended before the start")
+	}
+}
+
 // waitForFile polls for path to appear, for at most 5 s, and returns its content.
 func waitForFile(t *testing.T, path string) string {
 	t.Helper()

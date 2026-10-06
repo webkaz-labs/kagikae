@@ -113,8 +113,12 @@ var ErrStillRunning = errors.New("still running")
 // interrupt and hangup of kae's terminal do not reach it, and it is never killed:
 // when ctx ends first, LaunchWithEnv stops waiting and returns -1 and
 // ErrStillRunning, leaving the program running past kae's own exit. A program
-// that has exited by then is reported as exited. Overridable in tests.
+// that has exited by then is reported as exited, and a ctx already ended starts
+// nothing: 1 and ctx's error. Overridable in tests.
 var LaunchWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 1, err
+	}
 	cmd := exec.Command(name, args...) // Stdin, Stdout, Stderr nil: the null device
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	setExtraEnv(cmd, extraEnv)

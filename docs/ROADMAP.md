@@ -238,7 +238,7 @@ alternative exists (`secret-tool`).
   repository contains the temp dir — measured at **292 lines, 146 entries, per suite
   run**, and it accumulates run over run. The defaults on macOS and ubuntu put
   `TMPDIR` outside any repository, which is the only reason this is not already
-  happening — but `mise.toml` reads `TMPDIR` in nine places, so a per-project value
+  happening — but `mise.toml` reads `TMPDIR` in many places, so a per-project value
   would write those lines into kagikae's own `.git/info/exclude`. A denylist that
   exempts git cannot see it; bounding `TMPDIR` for tests is the separate half.
   Third, `runner.Default` is **one of three seams**. `runner.RunInteractive` and

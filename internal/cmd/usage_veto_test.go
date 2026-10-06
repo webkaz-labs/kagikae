@@ -7,9 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
@@ -71,30 +74,136 @@ func writeRollout(t *testing.T, home, creator string) string {
 
 func sharedCodexHome(app *App) string { return filepath.Join(app.Env.Home, ".codex") }
 
+// A listing before the veto existed remembered a reading of the rollout on
+// side, at the rollout's current mtime or at an earlier one. Either way the
+// veto drops it: the creator does not change within a file.
 func TestCodexUsageVetoesAReadingAnotherCapturedAccountCreated(t *testing.T) {
-	app := testApp(t, nil)
-	captured, st := seedVetoCodex(t, app, vetoMainID, vetoSideID)
-	path := writeRollout(t, sharedCodexHome(app), vetoMainID)
-	info, err := os.Stat(path)
+	for name, age := range map[string]time.Duration{"same mtime": 0, "earlier mtime": time.Hour} {
+		t.Run(name, func(t *testing.T) {
+			app := testApp(t, nil)
+			captured, st := seedVetoCodex(t, app, vetoMainID, vetoSideID)
+			path := writeRollout(t, sharedCodexHome(app), vetoMainID)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			remembered := info.ModTime().Add(-age).UnixNano()
+			writeFile(t, app.Paths.UsageCacheFile(), `{"schema_version": 1, "entries": [
+  {"tool": "codex", "account": "side", "origin": "local", "source_path": "`+path+`",
+   "mod_time_unix": `+strconv.FormatInt(remembered, 10)+`, "observed_at": "2026-06-11T00:00:00Z",
+   "windows": [{"id": "five_hour", "used_percent": 42, "resets_at": "2027-01-15T08:00:00Z", "minutes": 300}]}]}`)
+
+			views := app.accountUsages(context.Background(), captured, st)
+			if view, ok := views[toolAccount{constants.ToolCodex, "side"}]; ok {
+				t.Fatalf("side must not take main's reading: %+v", view)
+			}
+			if view, ok := views[toolAccount{constants.ToolCodex, "main"}]; ok {
+				t.Fatalf("a veto must not re-attribute the reading to main: %+v", view)
+			}
+			cache := readFile(t, app.Paths.UsageCacheFile())
+			if strings.Contains(cache, path) || strings.Contains(cache, `"side"`) {
+				t.Fatalf("a vetoed reading must leave the cache:\n%s", cache)
+			}
+		})
+	}
+}
+
+// countSecretReads installs a backend that counts Get calls.
+func countSecretReads(t *testing.T, app *App) *countingBackend {
+	t.Helper()
+	fileBE, err := secret.Resolve(secret.BackendFile, app.Env.GOOS, app.Paths.SecretsDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A listing before the veto existed remembered this file on side.
-	writeFile(t, app.Paths.UsageCacheFile(), `{"schema_version": 1, "entries": [
-  {"tool": "codex", "account": "side", "origin": "local", "source_path": "`+path+`",
-   "mod_time_unix": `+strconv.FormatInt(info.ModTime().UnixNano(), 10)+`, "observed_at": "2026-06-11T00:00:00Z",
-   "windows": [{"id": "five_hour", "used_percent": 42, "resets_at": "2027-01-15T08:00:00Z", "minutes": 300}]}]}`)
+	counter := &countingBackend{Backend: fileBE, gets: map[string]int{}}
+	app.backendForTest = counter
+	return counter
+}
 
+func (c *countingBackend) total() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, v := range c.gets {
+		n += v
+	}
+	return n
+}
+
+// The veto opens the secret store only for a shared home's rollout that names
+// a creator, and only for a tool that records one.
+func TestCodexUsageVetoReadsNoSecretWithoutACreator(t *testing.T) {
+	app := testApp(t, nil)
+	counter := countSecretReads(t, app)
+	captured, st := seedVetoCodex(t, app, vetoMainID, vetoSideID)
+	writeRollout(t, sharedCodexHome(app), "")
+	captured = append(captured, account.Account{
+		Version: 1, Tool: constants.ToolClaude, Name: "main",
+		Artifacts: map[string]account.Artifact{"oauth": {Kind: "keychain", SecretRef: "claude/main/oauth", Present: true}},
+	})
+	st.Active[constants.ToolClaude] = "main"
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", "usage-exact.json"),
+		`{"fiveHour":{"usedPercent":16,"resetsAt":1800000000}}`)
+	counter.reset()
 	views := app.accountUsages(context.Background(), captured, st)
-	if view, ok := views[toolAccount{constants.ToolCodex, "side"}]; ok {
-		t.Fatalf("side must not take main's reading: %+v", view)
+	if len(views) != 2 {
+		t.Fatalf("both readings are kept: %+v", views)
 	}
-	if view, ok := views[toolAccount{constants.ToolCodex, "main"}]; ok {
-		t.Fatalf("a veto must not re-attribute the reading to main: %+v", view)
+	if n := counter.total(); n != 0 {
+		t.Fatalf("secret reads = %d, want 0: %v", n, counter.gets)
 	}
-	cache := readFile(t, app.Paths.UsageCacheFile())
-	if strings.Contains(cache, path) || strings.Contains(cache, `"side"`) {
-		t.Fatalf("a vetoed reading must leave the cache:\n%s", cache)
+}
+
+// A listing reads each captured credential once, whether or not the veto
+// needs the keys: the veto reuses what the freshness column read.
+func TestCodexUsageVetoAddsNoSecretReadToAListing(t *testing.T) {
+	reads := func(creator string) int {
+		chdirTemp(t)
+		app := testApp(t, nil)
+		counter := countSecretReads(t, app)
+		_, st := seedVetoCodex(t, app, vetoMainID, vetoSideID)
+		if err := state.Save(app.Paths.StateFile(), st); err != nil {
+			t.Fatal(err)
+		}
+		if creator != "none" {
+			writeRollout(t, sharedCodexHome(app), creator)
+		}
+		counter.reset()
+		code, out := captureStdout(t, func() int { return runLs(context.Background(), app, commonOpts{Format: formatText, NoColor: true}) })
+		mustExit(t, constants.ExitOK, code, out)
+		return counter.total()
+	}
+	baseline := reads("none")
+	if baseline == 0 {
+		t.Fatal("the listing's freshness column reads no credential; the comparison proves nothing")
+	}
+	for _, creator := range []string{vetoSideID, vetoMainID} {
+		if got := reads(creator); got != baseline {
+			t.Fatalf("secret reads with a creator = %d, without a rollout = %d", got, baseline)
+		}
+	}
+}
+
+// One listing reads a tool's keys once, however many readings ask.
+func TestCodexUsageVetoReadsAToolsKeysOnce(t *testing.T) {
+	app := testApp(t, nil)
+	counter := countSecretReads(t, app)
+	captured, _ := seedVetoCodex(t, app, vetoMainID, vetoSideID)
+	path := writeRollout(t, sharedCodexHome(app), vetoMainID)
+	ad, err := adapter.ForTool(constants.ToolCodex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := &credentialKeys{app: app, captured: captured}
+	reading := usagelimit.Reading{Path: path}
+	counter.reset()
+	for range 3 {
+		if !keys.vetoes(context.Background(), ad, toolAccount{constants.ToolCodex, "side"}, reading) {
+			t.Fatal("the reading is vetoed")
+		}
+	}
+	if n := counter.total(); n != 2 {
+		t.Fatalf("secret reads = %d, want one per captured account: %v", n, counter.gets)
 	}
 }
 

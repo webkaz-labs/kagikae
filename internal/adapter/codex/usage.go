@@ -1,6 +1,8 @@
 package codex
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -20,8 +22,8 @@ import (
 // preferred, and this is only the fill-in when that record is absent.
 const usageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
 
-// sessionHead is how much of a rollout file is read from the start for its
-// session_meta line, which comes first and can carry long instructions.
+// sessionHead caps the rollout's first line, its session_meta, which carries
+// the session's instructions and so can be long. A longer line names no creator.
 const sessionHead = 1 << 20
 
 // sessionTail is how much of a rollout file is read from the end. Rate-limit
@@ -51,30 +53,24 @@ func (Codex) LocalUsage(home string) (usagelimit.Reading, bool) {
 	return usagelimit.Reading{}, false
 }
 
-// UsageCreator reads the first session_meta line's payload.creator_account_id
-// in the rollout's head: the account of the login that created the session, not
-// of each reading in it. Rollouts of 0.154 and earlier have none.
+// UsageCreator reads payload.creator_account_id from the rollout's first line
+// when that line is session_meta: the account of the login that created the
+// session, not of each reading in it. Rollouts of 0.154 and earlier have none.
 func (Codex) UsageCreator(path string) (adapter.ResidentAccount, bool) {
-	data, err := readHead(path, sessionHead)
-	if err != nil {
+	line, ok := firstLine(path, sessionHead)
+	if !ok {
 		return adapter.ResidentAccount{}, false
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.Contains(line, `"session_meta"`) {
-			continue
-		}
-		var doc struct {
-			Type    string `json:"type"`
-			Payload struct {
-				CreatorAccountID string `json:"creator_account_id"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal([]byte(line), &doc) != nil || doc.Type != "session_meta" {
-			continue
-		}
-		return adapter.NewResidentAccount(doc.Payload.CreatorAccountID)
+	var doc struct {
+		Type    string `json:"type"`
+		Payload struct {
+			CreatorAccountID string `json:"creator_account_id"`
+		} `json:"payload"`
 	}
-	return adapter.ResidentAccount{}, false
+	if json.Unmarshal(line, &doc) != nil || doc.Type != "session_meta" {
+		return adapter.ResidentAccount{}, false
+	}
+	return adapter.NewResidentAccount(doc.Payload.CreatorAccountID)
 }
 
 func (Codex) ProbeUsage(payload []byte, now time.Time) (*http.Request, bool) {
@@ -233,13 +229,23 @@ func newestJSONL(dir string, n int) []string {
 	return out
 }
 
-func readHead(path string, n int64) ([]byte, error) {
+// firstLine reads path's first line, without its newline. ok is false when the
+// file cannot be read or the line is longer than limit.
+func firstLine(path string, limit int64) ([]byte, bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, false
 	}
 	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, n))
+	line, err := bufio.NewReader(io.LimitReader(f, limit+1)).ReadBytes('\n')
+	if err != nil && err != io.EOF {
+		return nil, false
+	}
+	line = bytes.TrimRight(line, "\r\n")
+	if int64(len(line)) > limit {
+		return nil, false
+	}
+	return line, true
 }
 
 func readTail(path string, n int64) ([]byte, error) {

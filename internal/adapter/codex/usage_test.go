@@ -3,6 +3,7 @@ package codex
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,10 @@ func TestUsageCreatorReadsTheFirstSessionMeta(t *testing.T) {
 	const creator = "acct-creator-0000"
 	dir := t.TempDir()
 	event := `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":1,"window_minutes":300,"resets_at":1800000000}}}}`
+	// A complete session_meta line one byte longer than sessionHead, so only the
+	// cap, not a truncated parse, refuses it.
+	pre := `{"type":"session_meta","payload":{"creator_account_id":"` + creator + `","pad":"`
+	overCap := pre + strings.Repeat("x", sessionHead+1-len(pre)-len(`"}}`)) + `"}}`
 	for _, tc := range []struct {
 		name, body string
 		want       bool
@@ -67,12 +72,15 @@ func TestUsageCreatorReadsTheFirstSessionMeta(t *testing.T) {
 		{"creator", `{"type":"session_meta","payload":{"id":"t","creator_account_id":"` + creator + `"}}` + "\n" + event, true},
 		{"first session_meta wins", `{"type":"session_meta","payload":{"id":"t"}}` + "\n" + `{"type":"session_meta","payload":{"creator_account_id":"` + creator + `"}}`, false},
 		{"no creator (0.154 and earlier)", `{"type":"session_meta","payload":{"id":"t"}}` + "\n" + event, false},
-		{"no session_meta", event + "\n" + `{"type":"response_item","payload":{"text":"session_meta","creator_account_id":"` + creator + `"}}`, false},
+		{"first line not session_meta", `{"type":"response_item","payload":{"text":"session_meta","creator_account_id":"` + creator + `"}}` + "\n" + event, false},
 		{"empty creator", `{"type":"session_meta","payload":{"creator_account_id":""}}`, false},
+		{"session_meta not first", event + "\n" + `{"type":"session_meta","payload":{"creator_account_id":"` + creator + `"}}`, false},
+		{"first line one byte over the cap", overCap, false},
+		{"first line without newline", `{"type":"session_meta","payload":{"creator_account_id":"` + creator + `"}}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(dir, tc.name+".jsonl")
-			if err := os.WriteFile(path, []byte(tc.body+"\n"), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			got, ok := (Codex{}).UsageCreator(path)

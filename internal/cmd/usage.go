@@ -83,6 +83,14 @@ type usageEntry struct {
 	Windows     []usagelimit.Window `json:"windows"`
 }
 
+// accountReadings is what the inventory listings call: each account's
+// credential state and subscription windows, under one secret read cache so the
+// usage veto reuses the payloads the freshness column read.
+func (app *App) accountReadings(ctx context.Context, captured []account.Account, st *state.State) (map[toolAccount]credentialState, map[toolAccount]usageView) {
+	ctx = secret.WithReadCache(ctx)
+	return app.capturedCredentialStates(ctx, captured), app.accountUsages(ctx, captured, st)
+}
+
 // accountUsages resolves a compact subscription-window reading for every
 // captured account that has one.
 //
@@ -93,7 +101,8 @@ type usageEntry struct {
 // A path that is the account's own home (global isolated, or an isolated pin)
 // is attributed to that account directly. A shared home's reading whose record
 // names another captured account as its creator is vetoed: not shown, not
-// cached, and its remembered copy is dropped (credentialKeys.vetoes).
+// cached, and the account's remembered reading of that file is dropped
+// (credentialKeys.vetoes).
 //
 // Cache second. An account with no current local file keeps the last reading,
 // until every window in it has reset. A file the tool rewrote so that every
@@ -343,19 +352,14 @@ func (app *App) usageHomes(captured []account.Account, st *state.State) map[stri
 	return out
 }
 
-// credentialKeys reads, at most once per listing and account, the account key
-// a captured credential names. Nothing is read until a veto needs it.
+// credentialKeys holds, per tool, the account key each captured credential
+// names, read once per listing and only when a veto needs it. Through
+// secret.Cached under the listing's read cache (accountReadings), a payload
+// the freshness column already read is not read again.
 type credentialKeys struct {
 	app      *App
 	captured []account.Account
-	be       secret.Backend
-	beTried  bool
-	memo     map[toolAccount]credentialKey
-}
-
-type credentialKey struct {
-	key adapter.ResidentAccount
-	ok  bool
+	byTool   map[string]map[string]adapter.ResidentAccount
 }
 
 // vetoes reports whether a shared home's reading, about to be attributed to
@@ -376,45 +380,37 @@ func (k *credentialKeys) vetoes(ctx context.Context, ad adapter.Adapter, owner t
 	if !ok {
 		return false
 	}
-	ownerKey, ok := k.of(ctx, holder, owner)
+	keys := k.forTool(ctx, holder, owner.tool)
+	ownerKey, ok := keys[owner.account]
 	if !ok || ownerKey.Same(creator) {
 		return false
 	}
-	for _, acc := range k.captured {
-		if acc.Tool != owner.tool || acc.Name == owner.account {
-			continue
-		}
-		if other, ok := k.of(ctx, holder, toolAccount{acc.Tool, acc.Name}); ok && other.Same(creator) {
+	for name, key := range keys {
+		if name != owner.account && key.Same(creator) {
 			return true
 		}
 	}
 	return false
 }
 
-func (k *credentialKeys) of(ctx context.Context, holder adapter.ResidentHolder, who toolAccount) (adapter.ResidentAccount, bool) {
-	if got, ok := k.memo[who]; ok {
-		return got.key, got.ok
+// forTool reads the keys of tool's captured accounts on its first call. An
+// account whose credential names no key, or cannot be read, is absent.
+func (k *credentialKeys) forTool(ctx context.Context, holder adapter.ResidentHolder, tool string) map[string]adapter.ResidentAccount {
+	if keys, ok := k.byTool[tool]; ok {
+		return keys
 	}
-	if k.memo == nil {
-		k.memo = map[toolAccount]credentialKey{}
+	keys := map[string]adapter.ResidentAccount{}
+	if k.byTool == nil {
+		k.byTool = map[string]map[string]adapter.ResidentAccount{}
 	}
-	key, ok := k.read(ctx, holder, who)
-	k.memo[who] = credentialKey{key: key, ok: ok}
-	return key, ok
-}
-
-func (k *credentialKeys) read(ctx context.Context, holder adapter.ResidentHolder, who toolAccount) (adapter.ResidentAccount, bool) {
-	if !k.beTried {
-		k.beTried = true
-		if be, err := k.app.secretBackend(); err == nil {
-			k.be = be
-		}
+	k.byTool[tool] = keys
+	be, err := k.app.secretBackend()
+	if err != nil {
+		return keys
 	}
-	if k.be == nil {
-		return adapter.ResidentAccount{}, false
-	}
+	be = secret.Cached(be)
 	for _, acc := range k.captured {
-		if acc.Tool != who.tool || acc.Name != who.account {
+		if acc.Tool != tool {
 			continue
 		}
 		for _, name := range acc.ArtifactNames() {
@@ -422,16 +418,17 @@ func (k *credentialKeys) read(ctx context.Context, holder adapter.ResidentHolder
 			if !art.Present {
 				continue
 			}
-			data, found, err := k.be.Get(ctx, art.SecretRef)
+			data, found, err := be.Get(ctx, art.SecretRef)
 			if err != nil || !found {
 				continue
 			}
 			if key, ok := holder.CredentialAccount(data); ok {
-				return key, true
+				keys[acc.Name] = key
+				break
 			}
 		}
 	}
-	return adapter.ResidentAccount{}, false
+	return keys
 }
 
 func (app *App) probeUsages(ctx context.Context, captured []account.Account, now time.Time) map[toolAccount]usageView {
@@ -439,6 +436,7 @@ func (app *App) probeUsages(ctx context.Context, captured []account.Account, now
 	if err != nil {
 		return nil
 	}
+	be = secret.Cached(be)
 	type result struct {
 		key  toolAccount
 		view usageView
@@ -601,12 +599,11 @@ func (c *usageCache) bySource(path string, mod time.Time) (usageEntry, bool) {
 	return usageEntry{}, false
 }
 
-// forget drops key's entry when it remembers reading's file at the same mtime,
-// so a vetoed reading cached before the veto does not stay on the account.
+// forget drops key's entry when it remembers reading's file at any mtime: the
+// file's creator does not change, so no reading of it belongs to the account.
 func (c *usageCache) forget(key toolAccount, reading usagelimit.Reading) {
 	for i, entry := range c.Entries {
-		if entry.Tool == key.tool && entry.Account == key.account &&
-			entry.SourcePath == reading.Path && entry.ModTimeUnix == reading.ModTime.UnixNano() {
+		if entry.Tool == key.tool && entry.Account == key.account && entry.SourcePath == reading.Path {
 			c.Entries = append(c.Entries[:i], c.Entries[i+1:]...)
 			return
 		}

@@ -106,7 +106,10 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   subprocess: it goes through `App.dialUnix` (default `net.Dialer.DialContext`) into
   `internal/wsrpc`, and tests serve a fake daemon on a real Unix socket so the
   framing is exercised. The daemon restart goes through `runner.LaunchWithEnv`
-  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), and
+  ([SECURITY.md](SECURITY.md) § Subprocesses says why not a capturing seam), which
+  starts the program in a session of its own and, when its context ends first,
+  stops waiting and leaves it running rather than killing it
+  (`runner.ErrStillRunning`), and
   doctor's `daemon version` through `runner.QueryWithEnv`, which reads stdout from a
   file rather than a pipe for the same reason; the app's `osascript` goes through
   `runner.Run` and its relaunch through `runner.Launch`.

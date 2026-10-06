@@ -392,7 +392,7 @@ reaches each one:
 |---|---|
 | managed daemon (`codex app-server --managed-daemon`, controlled by `codex app-server daemon`) | probes the account it holds and restarts it when that differs ([CLI.md](CLI.md) § kae use Semantics) |
 | the codex server embedded in the ChatGPT desktop app (macOS) | quits and relaunches the app with consent; it speaks stdio to the app, so kae cannot ask it which account it holds |
-| a long-running codex session (an open TUI, `codex resume`) that does not go through the daemon | a fixed warning only; kae does not look for one. Which sessions were seen to go through the daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips |
+| a long-running codex session (an open TUI, `codex resume`) that does not go through the daemon | a fixed warning only; kae does not look for one. Which sessions were seen to go through the daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit dialog |
 
 The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 § Adapter Interface) and declares:

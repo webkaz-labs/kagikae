@@ -90,7 +90,8 @@ The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
 § codex resident processes — local acceptance (2026-10-06),
 [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and
 [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit
-dialog, which answer the questions they settled. Before slice 8 can pass, the acceptance still has to settle:
+dialog, which answer the questions they settled. Before slice 8 can pass, the
+acceptance still has to settle:
 
 - what the restart does when the `codex` on `PATH` and the daemon's own copy
   differ in version;
@@ -100,8 +101,10 @@ dialog, which answer the questions they settled. Before slice 8 can pass, the ac
   state it did not; a lead, not an answer, for the moment after a restart: in
   upstream's source, a daemon with no cached routing runs routing discovery
   through its `BackendClient`, which can connect;
-- whether the daemon still restarts after kae's 30 s limit has ended a restart
-  that was waiting for a running task to finish;
+- whether a restart command kae has stopped waiting for at its 30 s limit
+  (`restart_pending`, left running rather than killed) goes on to start the new
+  daemon once the running tasks finish or upstream's shutdown grace ends; upstream's
+  source says the command starts it itself after the stop, which is not measured;
 - what kae does about a resident process still on the old account that refreshes
   that account's token. Whether it writes the token back to `auth.json` is not
   measured; an old session not connected to the daemon is inferred to invalidate

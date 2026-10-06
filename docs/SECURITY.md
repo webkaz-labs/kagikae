@@ -171,8 +171,9 @@ child could rotate the live credential unseen — a cached value would be stale.
   and runs `codex app-server daemon version`, which the local acceptance observed
   to start no daemon when none runs and to answer with IP traffic denied
   ([CLI.md](CLI.md) § `kae doctor --json`). kae makes no network call for it;
-  whether the daemon contacts the network to answer is not established
-  (§ Resident processes). Neither account it compares reaches the output.
+  the daemon was not seen to contact the network to answer in its steady state,
+  and right after a restart that is not measured (§ Resident processes). Neither
+  account it compares reaches the output.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
   **Offline**, no credential in the environment, nothing to redact.
@@ -234,7 +235,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   § Resident processes: the restart through `runner.LaunchWithEnv`, whose stdin,
   stdout and stderr are the null device rather than pipes, because the daemon the
   restart leaves running would inherit a pipe and hold kae past the restart's
-  30 s limit; `daemon version` through `runner.QueryWithEnv`, whose stdout is an
+  30 s limit, and in a session of its own, so a restart kae stops waiting for keeps
+  running; `daemon version` through `runner.QueryWithEnv`, whose stdout is an
   unlinked temporary file rather than a pipe and whose stdin and stderr are the null
   device, for the same reason — a daemon it started would otherwise hold doctor —
   and of whose output kae reads at most 1 MiB; `osascript` through `runner.Run`, and
@@ -367,9 +369,11 @@ part of the contract:
   memory and writes none of the three to stdout, stderr, logs, JSON reports, caches
   or error messages. A finding names the tool, the daemon or app, and the command
   to run.
-- kae makes no network call for the probe. Whether the daemon itself contacts the
-  network to answer `account/read` with `refreshToken: false` has not been
-  measured ([ROADMAP.md](ROADMAP.md) § Current work order).
+- kae makes no network call for the probe. The daemon itself was not seen to
+  contact the network to answer `account/read` with `refreshToken: false` in its
+  steady state ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running
+  tasks and the quit dialog); right after a restart that is not measured
+  ([ROADMAP.md](ROADMAP.md) § Current work order).
 
 **The restart runs outside the per-tool locks.** The locks serialize kae's own
 read-modify-write of the credential store (§ Mutation Safety Rules); restarting the
@@ -377,11 +381,15 @@ daemon is not part of that read-modify-write, and codex does not take kae's lock
 so holding them would only turn the restart's seconds into `lock_busy` for other kae
 commands. The restart therefore follows the transaction, after state is saved and
 the locks are released: a restart before the state save would, if the save failed,
-leave the backup restored on disk while the daemon ran the new account. A restart
-command (kae's own child) still running at its 30 s limit is killed; the daemon it
-started is left alone. A failed restart does not roll the switch back. That is not the mixed-state rule of
-§ Mutation Safety Rules, which governs files kae writes; the daemon's memory is not
-one of them.
+leave the backup restored on disk while the daemon ran the new account. kae never
+kills the restart command (its own child): one still running at its 30 s limit is
+left running and kae stops waiting for it, and it runs in a session of its own, so
+the interrupt or hangup of kae's terminal does not reach it either. Upstream's
+restart stops the old daemon before it starts the new one, and a command killed
+between the two would leave no daemon ([CLI.md](CLI.md) § kae use Semantics,
+step 4). A failed restart does not roll the switch back. That is not the
+mixed-state rule of § Mutation Safety Rules, which governs files kae writes; the
+daemon's memory is not one of them.
 
 ## Isolation Safety
 

@@ -416,14 +416,14 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			// of where it sits: createBackup runs *before* this recapture and before
 			// applySnapshot, so it holds exactly the live copy being declined. `run -s`
 			// has to create one of its own for the same sentence to be true there.
-			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
+			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse, declinedOneAccount)
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.Empty() {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
-				warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
+				warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse, declinedOneAccount)
 				continue
 			}
 			warnSnapshotUnchanged(plan.Tool, active, why)
@@ -431,6 +431,15 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
 			continue // live already matches the snapshot: skip the write
+		}
+		if credentialConflicted(plan.Tool, plan.Specs, values) {
+			// One account's tokens under another's account record: filing it under
+			// active would hand this account a login that is partly another's, and no
+			// account owns it whole. Declined like an unattributable copy, and kept
+			// in this switch's backup for the same reason as above.
+			warnRecaptureDeclined(plan.Tool, active, credentialConflictReason(plan.Tool, active),
+				backupID, declinedByUse, declinedMixed)
+			continue
 		}
 		// Same tool/driver/specs as the target plan; only the account differs
 		// (copy so a future toolPlan field is not silently dropped). Carry the
@@ -456,6 +465,20 @@ const (
 	declinedByUse declinedScope = iota
 	// declinedByRun: `kae run -s` backs up only the tools whose recapture it declined.
 	declinedByRun
+)
+
+// declinedKind says what the declined login is, which decides the remedy
+// warnRecaptureDeclined gives; it is a separate axis from declinedScope.
+type declinedKind int
+
+const (
+	// declinedOneAccount: the login is one account's, kae just cannot tell which
+	// or order it, so keeping it as its own account is a sound remedy.
+	declinedOneAccount declinedKind = iota
+	// declinedMixed: the login carries one account's tokens under another's
+	// account record, so adopting it under any name files a mixed login
+	// (docs/CREDENTIAL-RULES.md); the remedy keeps it and never adds it.
+	declinedMixed
 )
 
 // warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or the
@@ -521,12 +544,19 @@ func warnRecaptureFailed(tool, accountName string, err error) {
 // moment that does not exist inside a single non-interactive command.
 // scope says what restoring backupID puts back besides the login being named, because
 // that differs by caller and the remedy is otherwise over-precise (see declinedScope);
-// each scope has its own constant sentence.
-func warnRecaptureDeclined(tool, accountName string, why message, backupID string, scope declinedScope) {
+// each scope has its own constant sentence. kind picks the remedy: a mixed login
+// is never offered for `kae add`, whatever the scope, so it has one sentence.
+func warnRecaptureDeclined(tool, accountName string, why message, backupID string, scope declinedScope, kind declinedKind) {
 	warnSnapshotUnchanged(tool, accountName, why)
 	if backupID == "" {
 		infof("kae could not preserve the live %s login it declined to adopt; it is lost once the "+
 			"previous state is restored", tool)
+		return
+	}
+	if kind == declinedMixed {
+		infof("the live %s login kae declined to adopt is kept in backup %s, but it mixes two accounts, "+
+			"so do not add it as an account; an account whose login was overwritten may need a fresh %s login",
+			tool, backupID, tool)
 		return
 	}
 	switch scope {

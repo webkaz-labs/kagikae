@@ -503,9 +503,10 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// Recapture: the child may have refreshed OAuth tokens; persist them into
 	// the account snapshots so the next switch applies fresh credentials.
 	//
-	// Through the **same two guards** the switch-away recapture applies and no third
-	// (docs/ROADMAP.md names them, because a third invented here is how the two paths
-	// stop agreeing about what a recapture may overwrite). This used to call
+	// Through the **same guards** the switch-away recapture applies and no other
+	// (keepSnapshotIdentity, recaptureWouldDowngrade and credentialConflicted; a guard
+	// added to one path alone is how the two stop agreeing about what a recapture may
+	// overwrite). This used to call
 	// captureSnapshot directly, so a child that logged in as another account filed that
 	// credential *and* that identity under the target account's name, and a child whose
 	// refresh failed filed the tombstone over a snapshot that still worked. Both
@@ -538,15 +539,14 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// in order, and keying by tool would rely on "at most one plan per tool" without saying
 	// so anywhere.
 	//
-	// The pairing itself is **unobservable today** and that is worth recording rather than
-	// faking a test for: both refusals are claude-only by construction — keepSnapshotIdentity
-	// needs an IdentityOnly artifact and only claude declares one, and the preserve arm of
-	// recaptureWouldDowngrade needs rotatesSingleUse, which is claude alone — so at most one
-	// plan per run can be declined, and a mutation handing every warning the first reason
-	// cannot be killed. It becomes observable the day a second tool declares either.
+	// The pairing is observable since codex declines a mixed login (credentialConflicted)
+	// while claude declines through the two guards above, so one run can decline two
+	// tools with different reasons and remedies; TestRunSharedDeclinesTwoToolsAtOnce
+	// holds each warning to its own plan.
 	type declinedRecapture struct {
 		plan toolPlan
 		why  message
+		kind declinedKind
 	}
 	var declined []declinedRecapture
 	for _, plan := range plans {
@@ -563,7 +563,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {
-			declined = append(declined, declinedRecapture{plan, why})
+			declined = append(declined, declinedRecapture{plan, why, declinedOneAccount})
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {
@@ -571,12 +571,19 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 				// kae cannot order the two copies, so it may neither say the live one is
 				// finished nor let the restore below take it. Same treatment as an
 				// unattributable copy: back it up and name it.
-				declined = append(declined, declinedRecapture{plan, why})
+				declined = append(declined, declinedRecapture{plan, why, declinedOneAccount})
 				continue
 			}
 			// No backup for this one: what it declines is a tombstone or a provably older
 			// credential, so there is nothing to keep.
 			warnSnapshotUnchanged(plan.Tool, plan.Account, why)
+			continue
+		}
+		if credentialConflicted(plan.Tool, plan.Specs, values) {
+			// A refresh wrote one account's tokens under another's account record, the
+			// switch-away recapture's third refusal; kept in the backup below like the
+			// others, never filed under plan.Account.
+			declined = append(declined, declinedRecapture{plan, credentialConflictReason(plan.Tool, plan.Account), declinedMixed})
 			continue
 		}
 		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity
@@ -599,7 +606,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			preID = preMeta.ID
 		}
 		for _, d := range declined {
-			warnRecaptureDeclined(d.plan.Tool, d.plan.Account, d.why, preID, declinedByRun)
+			warnRecaptureDeclined(d.plan.Tool, d.plan.Account, d.why, preID, declinedByRun, d.kind)
 		}
 	}
 

@@ -37,6 +37,10 @@ var jaChecks = map[string]string{
 	"secret item for %s/%s has no snapshot dir; to remove it, run: kae account rm %s %s":                                                                                                    "%s/%s のシークレット項目に対応するスナップショットのディレクトリがありません。削除するには kae account rm %s %s を実行してください。",
 	"snapshot %q declares a stored %s payload the secret backend does not have, so applying it cannot restore that artifact; %s":                                                            "スナップショット %q は %s の保存データを持つと記録していますが、シークレットストアにありません。そのため、このスナップショットを適用しても、その認証要素を復元できません。%s。",
 
+	// credential_conflict.go.
+	"the live %s login carries one account's tokens under another account's id, so kae will not file it under any account; log in to %s again as the account you mean to use": "現在の %s のログインは、あるアカウントのトークンを別のアカウントの ID のもとに持っているため、kae はどのアカウントとしても保存しません。使うつもりのアカウントで %s に改めてログインしてください。",
+	"snapshot %q carries one account's tokens under another account's id; %s":                                                                                                 "スナップショット %q は、あるアカウントのトークンを別のアカウントの ID のもとに持っています。%s。",
+
 	// dircred_checks.go.
 	"the %s credential bound to %s is stale: %s; %s":                             "ディレクトリ %[2]s に固定した %[1]s の認証情報は失効しています: %[3]s。%[4]s。",
 	"the %s credential bound to %s needs an interactive re-login in %s (%s); %s": "ディレクトリ %[2]s に固定した %[1]s の認証情報は、あと %[3]sで対話的な再ログインが必要になります（%[4]s）。%[5]s。",

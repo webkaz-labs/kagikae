@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/jwt"
 )
 
 // desktopAppBundleID is the ChatGPT desktop app, which embeds a codex server.
@@ -40,6 +41,73 @@ func (Codex) CredentialAccount(payload []byte) (adapter.ResidentAccount, bool) {
 		return adapter.ResidentAccount{}, false
 	}
 	return adapter.NewResidentAccount(doc.Tokens.AccountID)
+}
+
+// authModeChatGPT is the `auth_mode` of a ChatGPT login, the one mode whose
+// tokens carry the workspace claim CredentialConflict compares.
+const authModeChatGPT = "chatgpt"
+
+// CredentialConflict compares tokens.account_id, the id_token's
+// chatgpt_account_id claim and the access token's (docs/ADAPTERS.md § Resident
+// processes, Known limitation). It decides only for a ChatGPT login: an
+// `auth_mode` of "chatgpt" or none at all. An empty value and a JWT that does
+// not decode count as absent; with fewer than two values present it cannot
+// tell. Nothing of the payload leaves it but the verdict.
+func (Codex) CredentialConflict(payload []byte) adapter.ConflictVerdict {
+	var doc struct {
+		AuthMode *string `json:"auth_mode"`
+		Tokens   *struct {
+			IDToken     string `json:"id_token"`
+			AccessToken string `json:"access_token"`
+			AccountID   string `json:"account_id"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(payload, &doc); err != nil || doc.Tokens == nil {
+		return adapter.ConflictUnknown
+	}
+	if doc.AuthMode != nil && *doc.AuthMode != authModeChatGPT {
+		return adapter.ConflictUnknown
+	}
+	present := []string{}
+	for _, id := range []string{
+		doc.Tokens.AccountID,
+		workspaceOf(doc.Tokens.IDToken),
+		workspaceOf(doc.Tokens.AccessToken),
+	} {
+		if id != "" {
+			present = append(present, id)
+		}
+	}
+	if len(present) < 2 {
+		return adapter.ConflictUnknown
+	}
+	for _, id := range present[1:] {
+		if id != present[0] {
+			return adapter.ConflictDetected
+		}
+	}
+	return adapter.ConflictConsistent
+}
+
+// workspaceOf reads chatgpt_account_id from the "https://api.openai.com/auth"
+// claim object of a JWT, which upstream reads the workspace id from in the
+// id_token and the access token alike (docs/VALIDATION.md § Upstream Behaviour
+// Assumptions locates it). It is "" when the token does not decode or carries
+// no such string claim.
+func workspaceOf(token string) string {
+	claims, ok := jwt.Payload(token)
+	if !ok {
+		return ""
+	}
+	var doc struct {
+		Auth *struct {
+			AccountID string `json:"chatgpt_account_id"`
+		} `json:"https://api.openai.com/auth"`
+	}
+	if json.Unmarshal(claims, &doc) != nil || doc.Auth == nil {
+		return ""
+	}
+	return doc.Auth.AccountID
 }
 
 // ParseDaemonAccount reads workspaceRouting.chatgptAccountId from an

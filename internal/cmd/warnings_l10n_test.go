@@ -67,7 +67,7 @@ func warningCases() []warningCase {
 		{
 			name: "a continuation line",
 			run: func(t *testing.T) {
-				warnRecaptureDeclined("claude", "main", msgf("its identity names a different account"), "", declinedByUse)
+				warnRecaptureDeclined("claude", "main", msgf("its identity names a different account"), "", declinedByUse, declinedOneAccount)
 			},
 			en: "kae: warning: its identity names a different account; snapshot claude/main left unchanged\n" +
 				"kae: kae could not preserve the live claude login it declined to adopt; it is lost once the previous state is restored\n",

@@ -15,8 +15,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// `run -s`'s own recapture goes through the two guards the switch-away recapture
-// applies, and no third (docs/ROADMAP.md names them). Before v0.17.0 it called
+// `run -s`'s own recapture goes through the guards the switch-away recapture
+// applies, and no other: the two below, and codex's mixed-login check
+// (credential_conflict_test.go). Before v0.17.0 it called
 // captureSnapshot directly, so all three tests below described the shipped
 // behaviour rather than refusing it.
 //
@@ -316,7 +317,7 @@ func TestRunSharedLoggedOutWarningCarriesAdapterWarnings(t *testing.T) {
 // credential being destroyed.
 func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 	_, stderr := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "main", msgf("kae cannot tell"), "", declinedByUse)
+		warnRecaptureDeclined("claude", "main", msgf("kae cannot tell"), "", declinedByUse, declinedOneAccount)
 		return 0
 	})
 	if !strings.Contains(stderr, "could not preserve") || !strings.Contains(stderr, "lost once") {
@@ -326,7 +327,7 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 		t.Errorf("with no backup, kae must not claim the copy survives: %q", stderr)
 	}
 	_, withID := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "main", msgf("kae cannot tell"), "20260101T000000Z", declinedByRun)
+		warnRecaptureDeclined("claude", "main", msgf("kae cannot tell"), "20260101T000000Z", declinedByRun, declinedOneAccount)
 		return 0
 	})
 	if strings.Contains(withID, "could not preserve") {

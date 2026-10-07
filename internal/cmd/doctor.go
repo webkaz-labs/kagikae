@@ -345,11 +345,12 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 // (secretMissingChecks), and a stored key with no snapshot dir behind it
 // (orphanChecks, only where the backend can enumerate).
 //
-// The two snapshot-reading halves are given a coalescing view of the backend,
+// The snapshot-reading halves are given a coalescing view of the backend,
 // because they read the same payloads: accountFreshness reads each datable account's
-// credential to date it, and secretMissingChecks reads it again to ask whether it is
-// there at all. On darwin every such read is a `security` subprocess, so without the
-// cache adding the second check doubled them. orphanChecks keeps the **raw** backend
+// credential to date it, secretMissingChecks reads it again to ask whether it is
+// there at all, and credentialConflictChecks reads it once more for its verdict.
+// On darwin every such read is a `security` subprocess, so without the cache each
+// added check multiplied them. orphanChecks keeps the **raw** backend
 // on purpose — secret.Cached does not forward the Enumerator capability, and passing
 // the wrapper would silently switch orphan detection off wherever it still works.
 func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
@@ -390,6 +391,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 		}
 	}
 	checks = append(checks, app.secretMissingChecks(ctx, cached, toolFilter)...)
+	checks = append(checks, app.credentialConflictChecks(ctx, cached, toolFilter)...)
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 

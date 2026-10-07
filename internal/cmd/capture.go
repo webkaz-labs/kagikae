@@ -114,6 +114,14 @@ func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan too
 		return errf(constants.ExitAuthMissing, "no live %s auth state found; log in with the official CLI first%s",
 			plan.Tool, warningsDetail(plan.Warnings))
 	}
+	if credentialConflicted(plan.Tool, plan.Specs, values) {
+		// Filed under any name, a login that carries one account's tokens under
+		// another's account record is partly another account's (docs/CREDENTIAL-RULES.md).
+		return errf(constants.ExitUnsafeRefused,
+			"the live %s login carries one account's tokens under another account's id, so kae will not capture it as %s/%s; "+
+				"log in to %s again as the account you mean to add",
+			plan.Tool, plan.Tool, plan.Account, plan.Tool)
+	}
 	return app.persistSnapshot(ctx, be, plan, values)
 }
 

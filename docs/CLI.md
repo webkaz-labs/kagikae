@@ -195,10 +195,12 @@ matches.
   because kae has observed a change and not an account), a live credential that
   needs a re-login while the snapshot still holds a usable one, a live credential the
   snapshot **provably supersedes** (for a tool whose refresh token rotates single-use the
-  older copy cannot refresh at all), or one kae cannot **order** against the snapshot
-  because it carries no deadline kae can use.
-  `keepSnapshotIdentity` and `recaptureWouldDowngrade` are normative for the set — read
-  them rather than this list, which was wrong for a release. The freshness guard is
+  older copy cannot refresh at all), one kae cannot **order** against the snapshot
+  because it carries no deadline kae can use, or a codex login that carries one
+  account's tokens under another account's id (the conflict verdict of
+  [ADAPTERS.md](ADAPTERS.md) § Resident processes).
+  `keepSnapshotIdentity`, `recaptureWouldDowngrade` and `credentialConflicted` are
+  normative for the set — read them rather than this list, which was wrong for a release. The freshness guard is
   one-directional: kae never prefers the older value. What it refuses is wider than "a
   dead credential over a working one" — a usable but *older* copy is refused too, and so
   is one kae cannot judge, which is reported as exactly that rather than as dead.
@@ -206,7 +208,11 @@ matches.
   **What a refusal costs, and where the copy goes.** Declining to recapture means the
   live copy is not preserved in the snapshot, and the switch then overwrites the live
   store — so the refusal names the backup this switch already took, which holds that
-  copy, and the two-step that turns it into an account of its own. Only readable
+  copy, and the two-step that turns it into an account of its own. A codex login that
+  mixes two accounts is the exception to the two-step: adopting it under any name files
+  a login that is partly another account's ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md)),
+  so its remedy says only that the backup keeps it and that an account whose login was
+  overwritten may need a fresh codex login. Only readable
   identities that *agree* let the recapture proceed; two payloads kae cannot read that
   are byte-identical are treated as agreement, deliberately, because a login always
   rewrites the identity (see § kae run Semantics for what happens when it does not).
@@ -471,18 +477,19 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   [ARCHITECTURE.md](ARCHITECTURE.md) § Run Transaction owns which upstream behaviour makes
   that reachable and what the restore then reconciles. (This is the former `auth`
   mode.)
-  That recapture applies **the same two guards a shared switch applies to its own**
-  (above), and no third: a child that logged in as another account, or one that changed
+  That recapture applies **the same guards a shared switch applies to its own**
+  (above), and no other: a child that logged in as another account, or one that changed
   the identity cache to something kae cannot read as a record, leaves the snapshot alone
   with a warning rather than filing a foreign credential and identity under the target's
-  name; and a child whose refresh failed leaves the tombstone live rather than over a
-  snapshot that still works. It also keeps the account's **recorded login identity**,
+  name; a child whose refresh failed leaves the tombstone live rather than over a
+  snapshot that still works; and a codex login that mixes two accounts is declined
+  with the remedy the switch gives it. It also keeps the account's **recorded login identity**,
   which is a separate field from the identity payload and was blanked on every `run -s`
   before v0.17.0.
   A refusal here would otherwise **destroy** what it declines, which is the one thing
   this path does not inherit from the switch: its backup was taken before the child, so
   the child's copy lives only in the store the restore is about to overwrite. So when a
-  recapture is refused for unattributability, kae takes a second backup — reason
+  recapture is refused for unattributability or for a mixed codex login, kae takes a second backup — reason
   `run-unattributable` — of the post-child state and names it in the warning, with the
   `kae rollback --to <id>` then `kae add --no-login` pair that turns it into an account.
   A tombstone or a **provably** older copy gets no such backup: there is nothing there to
@@ -634,6 +641,13 @@ account (`~/.gemini/google_accounts.json`) when omitted, like the other tools
 `kae add --no-login <tool> <account>` snapshots the current live auth state
 under the name without launching anything (it supports `--dry-run`; the
 login flow does not, and `--restore` requires the login flow).
+
+**A codex login that mixes two accounts is refused.** When the live codex login's
+conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), both
+forms refuse the capture with exit `10` (`unsafe_refused`), write no snapshot and leave
+the active account as it was; the message names the tool and the account and no id or
+email. The login form's failure then follows its usual path (`--restore` puts the
+previous login back). `--dry-run` reads no credential, so it does not see the conflict.
 
 **codex resident processes.** `kae add codex` reconciles codex's managed daemon and
 the ChatGPT app by the rules of § kae use Semantics, with two differences. The login
@@ -1920,7 +1934,7 @@ best-match candidate is named (no multi-candidate list).
 | `7` | `not_found` | account / profile / backup not found |
 | `8` | `permission` | file permission or access error |
 | `9` | `secret_store` | secret backend unavailable |
-| `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
+| `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, a capture found a codex login that mixes two accounts, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
 | `11` | `auth_unchanged` | login flow exited without changing auth; nothing captured |
 | `64` | `usage` | usage / flag error |
 | `130` | `cancelled` | the picker of `kae open` and `kae cd` was cancelled; nothing was printed |
@@ -2335,7 +2349,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
 `active_orphan`, `credential_unsplit`, `pin_index_incomplete`, `identity_record_invalid`,
-`resident_drift`.
+`resident_drift`, `credential_account_conflict`.
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
@@ -2506,6 +2520,15 @@ Credential-health checks (warn-level):
   belong to `secret_missing`. Do not also report the invalid recorded side as
   `identity_drift`: comparisons need a usable recorded side, and attribution
   continues to refuse an unusable one.
+- `credential_account_conflict`: a login carries one account's tokens under another
+  account's id — the conflict verdict of [ADAPTERS.md](ADAPTERS.md) § Resident
+  processes (codex today). Warn once for the live login of the real home, which a
+  global switch acts on, and once per snapshot that holds one, inactive ones included;
+  honor the tool filter. Offline: it reads the payloads the snapshot checks above have
+  already read, through the same read cache, plus the live credential. The message
+  names the tool, or the snapshot and its relogin remedy, and no id or email. The
+  live finding tells the user to log in again as the account they mean to use; kae
+  repairs neither.
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):

@@ -38,9 +38,11 @@ func TestR6AuthMissingSentenceIsUnchanged(t *testing.T) {
 	}
 }
 
-// Ask 4: can a second tool be declined in one run? Both refusals are claude-only by
-// construction, which is what makes the pairing unobservable. Asserted on the adapters
-// rather than trusted, because the day either becomes false the comment is wrong.
+// Ask 4: can a second tool be declined in one run by these two refusals? Both are
+// claude-only by construction. Asserted on the adapters rather than trusted, because
+// the day either becomes false the comment is wrong. A second tool is declined in one
+// run through codex's mixed-login check instead, which TestRunSharedDeclinesTwoToolsAtOnce
+// pins.
 func TestR6OnlyClaudeCanBeDeclined(t *testing.T) {
 	identityOnly, rotating := []string{}, []string{}
 	for _, tool := range constants.Tools {

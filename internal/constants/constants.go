@@ -254,6 +254,10 @@ const (
 	// account than the live credential, or kae cannot read which one it holds.
 	// A local probe of the daemon's socket, not an offline comparison.
 	CheckResidentDrift = "resident_drift"
+	// CheckCredentialAccountConflict: the live login or a saved snapshot carries
+	// one account's tokens under another account's record (codex today). Offline:
+	// it reads the payload, never the network.
+	CheckCredentialAccountConflict = "credential_account_conflict"
 )
 
 // Credential freshness states, the `credential` field of a `kae ls` /

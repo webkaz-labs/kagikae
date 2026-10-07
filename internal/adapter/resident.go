@@ -20,6 +20,12 @@ type ResidentHolder interface {
 	// CredentialAccount reads the account key from a credential payload, from
 	// either store. ok is false when the payload names no account.
 	CredentialAccount(payload []byte) (ResidentAccount, bool)
+	// CredentialConflict reads whether a credential payload, from either store,
+	// names one account throughout or carries one account's tokens under
+	// another's account record: the shape a refresh by a process of the previous
+	// account writes into the live login after a switch (docs/ADAPTERS.md
+	// § Resident processes). It reports no id, so nothing in it needs redacting.
+	CredentialConflict(payload []byte) ConflictVerdict
 	// ParseDaemonAccount reads what the daemon holds from the `result` member of
 	// its answer to the last request in DaemonProbeRequests. ok is false for
 	// anything it cannot read: missing fields, wrong types, malformed JSON.
@@ -38,6 +44,20 @@ type ResidentHolder interface {
 	// are reached through Apple Events, which exist only there).
 	DesktopApps() []string
 }
+
+// ConflictVerdict is CredentialConflict's answer. The zero value is
+// ConflictUnknown, which changes no decision a caller would otherwise take.
+type ConflictVerdict int
+
+const (
+	// ConflictUnknown: the payload is not a shape the tool can judge, or it holds
+	// fewer than two of the values compared.
+	ConflictUnknown ConflictVerdict = iota
+	// ConflictConsistent: every value compared names the same account.
+	ConflictConsistent
+	// ConflictDetected: two of the values compared name different accounts.
+	ConflictDetected
+)
 
 // DaemonAccount is what a daemon answers that it holds: Account when Held, or
 // no account at all, which the caller compares as another account than any

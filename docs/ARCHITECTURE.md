@@ -235,6 +235,10 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   `ResidentDaemon(env)` returns the daemon's socket path and its restart and
   status argv and environment, `CredentialAccount(payload)`
   reads an opaque account key from a credential payload (file or keyring alike),
+  `CredentialConflict(payload)` answers whether that payload carries one account's
+  tokens under another's account record (Consistent, Conflict or Unknown, no id),
+  which both recaptures, `kae add`'s capture and doctor's
+  `credential_account_conflict` read through `cmd`'s `credentialConflicted`,
   `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer,
   telling a daemon that holds no account apart from an answer it cannot read,
   `ParseDaemonStatus(output)` reads whether the status command reports the daemon
@@ -287,7 +291,9 @@ rationale for the shared mechanism (including what per-dir shared does *not* sym
 4. create one backup covering all tools about to change
 5. recapture: if the currently-active account's live credential diverges from
    its snapshot, rewrite the snapshot first (so a later switch back applies a
-   live token); best-effort, never aborts the switch
+   live token); best-effort, never aborts the switch. A refusal (an unattributable,
+   unorderable or mixed login) leaves the snapshot and names step 4's backup, which
+   holds the declined copy
 6. apply artifacts per tool (atomic writes / keychain updates)
 7. on any failure: restore the backup for already-applied tools, report
 8. update state.json (under the state lock, re-reading the file); prune old

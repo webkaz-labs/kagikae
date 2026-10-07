@@ -2350,7 +2350,7 @@ not hypothetical: grepping `feature_configs.rs` for `secret_auth_storage` return
 at both tags, which is why the table above names the file rather than the crate. Verifying an assumption always means launching a **fresh** tool process
 — a still-running session and a byte-compared payload both prove nothing.
 
-### claude (verified on 2.1.284)
+### claude (verified on 2.1.288)
 
 **The heading is not evidence that every row under it was re-run on that version, and
 here it is not true of most of them.** A row re-measured this pass says so in its own
@@ -2409,6 +2409,27 @@ there was no bundle-pair comparison. Three literal counts moved from their recor
 values (`CLAUDE_CONFIG_DIR` 80 → 78, `claudeAiOauth` 28 → 29, `oauthAccount`
 79 → 81). The offset reads above are what those moves were checked against, and
 § Upstream Literal Fingerprints records the new counts as measured on 2.1.284.
+
+Re-measured 2026-10-07 on 2.1.288: a temp-HOME `security` shim reached both service
+families for the default store, the config-dir hash, a trailing slash, an empty
+secure-storage directory, a separate secure-storage directory, a decomposed
+non-ASCII directory, a relative value from two working directories, and the
+invalid-USER fallback to `claude-code-user`; every suffix matched a hash computed
+outside kae. `CLAUDE_CODE_CUSTOM_OAUTH_URL` set to an unapproved endpoint threw
+before any keychain call. Offset reads found the suffix function returning
+`-custom-oauth` before the channel switch, the second suffix function, the service
+assembly with its `CLAUDE_SECURESTORAGE_CONFIG_DIR` and NFC rule, the
+`.claude<suffix>.json` identity path, the account-attribute character class, and
+`profileFetchedAt` compared as `Date.now()-v<h$` with `h$` equal to `86400000`.
+The host-managed credential-file checks were not re-read on this build; that row
+keeps the provenance stated in the 2.1.284 paragraph above.
+`SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was not re-run. The rows a login, refresh,
+real account or switch gates keep the provenance written on them; none was re-run
+on 2.1.288. No 2.1.284 bundle remained installed, so there was no bundle-pair
+comparison. Two literal counts moved from their recorded values
+(`CLAUDE_CONFIG_DIR` 78 → 80, `CLAUDE_CODE_CUSTOM_OAUTH_URL` 14 → 15).
+§ Upstream Literal Fingerprints still records 2.1.284, so the audit refuses claude
+until those counts are reviewed and re-recorded.
 
 Re-recorded from the same 2026-09-04 pass, because it is a **negative** result and
 nothing else would keep it: `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` does **not** move the

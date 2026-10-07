@@ -18,14 +18,14 @@ import (
 	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
-// Claude 2.1.284, measured 2026-10-05. A temp-HOME security shim logged
+// Claude 2.1.288, measured 2026-10-07. A temp-HOME security shim logged
 // find-generic-password for both service families, including the config-dir
 // hash, a trailing slash, an empty secure-storage dir, a separate secure-storage
 // dir, a decomposed non-ASCII dir, a relative value from two working
 // directories, and the invalid-USER fallback. Before a digest update,
 // re-establish that reachability under upstream-auth-drift's
 // references/measuring.md. A version string cannot authorize new bytes.
-const reviewedSHA256 = "50a14c2f50f56668380fdda490167f1d3630d5cc18fb8aed3073c2c7ea7314fe"
+const reviewedSHA256 = "bbe93063f7a0879a1021b2891e5c9354e5b3b98433e32efe6750f7710afed750"
 
 func copyFile(source, target string) error {
 	f, err := os.Open(source)

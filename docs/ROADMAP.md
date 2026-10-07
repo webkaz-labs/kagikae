@@ -58,7 +58,7 @@ that adds or rewords a message updates its Japanese string, the smoke assertions
 the documents that quote it in the same commit.
 
 **codex resident processes**, requested by the operator on 2026-10-06, are
-implemented and accepted; no release ships them yet. codex's managed daemon, the
+implemented and accepted. codex's managed daemon, the
 ChatGPT desktop app and long-running codex sessions keep the account they started
 with after a switch ([ADAPTERS.md](ADAPTERS.md) § Resident processes). The contract
 is [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),

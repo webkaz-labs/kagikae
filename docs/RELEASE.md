@@ -1,15 +1,19 @@
 # Release Process
 
-## Current release — kae v0.23.0
+## Current release — kae v0.24.0
 
-Minor release. Human output is localized: kae writes Japanese when `KAE_LANG`,
-`LC_ALL`, `LC_MESSAGES` or `LANG` selects it, and English otherwise. Reports,
-errors, warnings, prompts, the picker, `kae help` and the usage and flag text are
-covered; JSON, machine lines and the `kae:` prefixes stay English
-([CLI.md](CLI.md) § Localization). The claude adapter's verified version moves to
-2.1.284 with its reviewed naming digest. The release is the tag `v0.23.0` and its
-GitHub release once published; [ACCEPTANCE.md](ACCEPTANCE.md) § v0.23.0 candidate
-records the checks and the publication result.
+Minor release. `kae use`, `kae add` and `kae rollback` restart codex's managed
+daemon when it is not using the account they leave live, and on macOS offer to quit
+and relaunch the ChatGPT desktop app after changing codex's account, so resident
+processes do not keep the previous account; `--no-restart` warns instead.
+`kae doctor` reports a daemon on another account as `resident_drift`, and usage
+drops a codex reading whose rollout another captured account created
+([CLI.md](CLI.md) § kae use Semantics, **Resident processes (codex)**). The codex
+adapter's verified version moves to 0.160.1 and the claude adapter's to 2.1.288.
+Release binaries are no longer built for Intel macOS (darwin/amd64). The release is
+the tag `v0.24.0` and its GitHub release once published;
+[ACCEPTANCE.md](ACCEPTANCE.md) § v0.24.0 candidate records the checks and the
+publication result.
 
 ## Release procedure
 

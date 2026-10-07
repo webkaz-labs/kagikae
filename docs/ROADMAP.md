@@ -1051,19 +1051,60 @@ alternative exists (`secret-tool`).
   these server-side questions.
 
 - **A codex login file can carry one account's tokens under another's account id**
-  (recorded 2026-10-07; not implemented). A codex process on main whose token refresh
-  is in flight when kae switches the live login to side writes main's rotated tokens
-  into side's `auth.json`, keeping side's `tokens.account_id`
-  ([ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
-  token, the race). kae does not notice: the switch-away recapture files that file
-  under side, and kae's identity read (the id_token's email) and its resident
-  comparison (`tokens.account_id`) name different accounts in it. The candidate
-  detection is the disagreement itself: the id_token's `chatgpt_account_id` claim
-  (upstream parses it: rust-v0.160.1 `codex-rs/login/src/token_data.rs` line 38, read
-  2026-10-07) against `tokens.account_id`. Done when the codex recapture declines such
-  a file with the warning and backup that a declined recapture gives, `kae doctor`
-  warns when the live codex login is one, and both are tested with a fixture built
-  like the race's file.
+  (recorded 2026-10-07; specified by the operator 2026-10-07, not implemented). A codex
+  process on main whose token refresh is in flight when kae switches the live login to
+  side writes main's rotated tokens into side's `auth.json`, keeping side's
+  `tokens.account_id` ([ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account
+  process refreshing its token, the race). kae does not notice today: the switch-away
+  recapture files that file under side, and kae's identity read (the id_token's email)
+  and its resident comparison (`tokens.account_id`) name different accounts in it.
+  Upstream codex (rust-v0.160.1, `codex-rs/login/src/token_data.rs`) reads the
+  workspace id from the claim `"https://api.openai.com/auth".chatgpt_account_id` in
+  the id_token (line 77 and 96) and the same claim in the access token as the selected
+  workspace (`parse_chatgpt_account_user_id`, 152-172); a login writes
+  `tokens.account_id` from that claim (`server.rs` 849-853), and a refresh never
+  rewrites `account_id` and rewrites the id_token only when the response carries one
+  (`auth/manager.rs` 1599-1622), so a race leaves either the id_token or only the
+  access token disagreeing with `account_id`.
+
+  The specification:
+  - **The verdict.** The codex adapter decides only when `auth_mode` is `"chatgpt"` or
+    absent; any other mode is Unknown. It collects three values — `tokens.account_id`,
+    the id_token's claim and the access token's claim — and counts an empty string or a
+    JWT it cannot parse as absent. Fewer than two present is Unknown; any two that
+    differ is a Conflict; all equal is Consistent. The verdict carries no id, so there
+    is nothing to redact. The hook is one method on the resident-holder interface;
+    `CredentialAccount` keeps its meaning. Unknown changes nothing.
+  - **Recapture.** Both recaptures — `kae use`'s switch-away and `kae run -s` — decline
+    a Conflict file the way a declined recapture already does: the warning names only
+    the tool and the account, and the file is kept in the switch's own backup (for
+    `run -s`, the `run-unattributable` backup). The remedy says the backup was kept and
+    that the overwritten account may need a fresh codex login. It does not suggest
+    rollback and `kae add`: that would adopt the mixed file, which
+    [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) forbids.
+  - **`kae doctor`** warns with a tool-agnostic code for the live codex login and for
+    every saved codex snapshot, read through the read cache doctor already keeps, so
+    no snapshot is read twice; the message is redacted and localized.
+  - **`kae add` and capture** of a Conflict live file refuse with their own error code
+    and write nothing; the file is never filed under the token's account.
+  - **Out of scope**: repairing the file, and the attribution guard below.
+
+  Done when both recaptures decline such a file with that warning and backup, doctor
+  flags the live login and a saved snapshot, `kae add` refuses one, and each is tested
+  with two fixtures built like the race's file — one where the id_token, access token
+  and refresh token are main's under side's `account_id`, one where only the access and
+  refresh tokens are main's — while the Unknown shapes and a Consistent file keep
+  today's behaviour.
+
+- **codex's switch-away recapture has no attribution guard** (recorded 2026-10-07; not
+  scheduled). An outside `codex login` as another account while side is active is
+  filed under side on the next switch away: codex has no counterpart of
+  `TestSwitchAwaySkipsRecaptureAfterOutsideLogin`, because `keepSnapshotIdentity`
+  compares an identity-only artifact and only claude declares one. The candidate is to
+  compare the live `tokens.account_id` against the snapshot's, and the id_token's email
+  against the recorded identity. Neither catches every case: two emails in one
+  workspace share one workspace id, so the account-id comparison cannot tell them
+  apart, and the conflict check in the entry above cannot either.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

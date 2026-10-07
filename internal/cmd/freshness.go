@@ -655,12 +655,8 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		}
 		live := values[i]
 		values[i] = artifact.Value{}
-		art, ok := acc.Artifacts[sp.Name]
-		if !ok || !art.Present {
-			continue
-		}
-		data, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found {
+		data, ok := storedPayload(ctx, be, acc, sp.Name)
+		if !ok {
 			continue
 		}
 		values[i] = artifact.Value{Data: data, Present: true}

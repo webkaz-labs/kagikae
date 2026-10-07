@@ -64,12 +64,8 @@ func liveOwnerDiffers(ctx context.Context, be secret.Backend, tool string, specs
 		if sp.IdentityOnly || !values[i].Present {
 			continue
 		}
-		art, ok := acc.Artifacts[sp.Name]
-		if !ok || !art.Present {
-			continue
-		}
-		recorded, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found {
+		recorded, ok := storedPayload(ctx, be, acc, sp.Name)
+		if !ok {
 			continue
 		}
 		if oc.CompareOwner(recorded, values[i].Data) == adapter.OwnerDifferent {
@@ -162,12 +158,8 @@ func snapshotConflicted(ctx context.Context, be secret.Backend, acc account.Acco
 		return false
 	}
 	for _, name := range acc.ArtifactNames() {
-		art := acc.Artifacts[name]
-		if !art.Present {
-			continue
-		}
-		data, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found {
+		data, ok := storedPayload(ctx, be, acc, name)
+		if !ok {
 			continue
 		}
 		if h.CredentialConflict(data) == adapter.ConflictDetected {
@@ -175,4 +167,22 @@ func snapshotConflicted(ctx context.Context, be secret.Backend, acc account.Acco
 		}
 	}
 	return false
+}
+
+// storedPayload reads the payload acc's snapshot holds for artifact name. ok is
+// false when the snapshot has no such artifact, records it absent, or its
+// payload is missing from or unreadable in be — callers that read a snapshot
+// only as evidence treat all of those alike. accountFreshness (which reports a
+// read error) and snapshotArtifactDiffers (which compares presence and returns
+// the error) need the distinction and read the backend themselves.
+func storedPayload(ctx context.Context, be secret.Backend, acc account.Account, name string) ([]byte, bool) {
+	art, ok := acc.Artifacts[name]
+	if !ok || !art.Present {
+		return nil, false
+	}
+	data, found, err := be.Get(ctx, art.SecretRef)
+	if err != nil || !found {
+		return nil, false
+	}
+	return data, true
 }

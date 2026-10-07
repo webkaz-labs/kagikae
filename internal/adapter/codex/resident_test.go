@@ -253,24 +253,25 @@ func TestDesktopAppsDarwinOnly(t *testing.T) {
 // workspaceJWT is a JWT whose "https://api.openai.com/auth" claim names
 // account as the workspace; "" leaves the claim out.
 func workspaceJWT(account string) string {
-	if account == "" {
-		return makeJWT(`{"email":"you@example.com"}`)
+	return ownerClaims{workspace: account, email: "you@example.com"}.jwt()
+}
+
+// chatgptLoginJSON renders a codex login holding the two tokens under
+// accountID; mode "" leaves auth_mode out.
+func chatgptLoginJSON(mode, idToken, access, accountID string) []byte {
+	modeField := ""
+	if mode != "" {
+		modeField = `"auth_mode":"` + mode + `",`
 	}
-	return makeJWT(`{"email":"you@example.com","https://api.openai.com/auth":{"chatgpt_account_id":"` + account + `"}}`)
+	return []byte(`{` + modeField + `"tokens":{"id_token":"` + idToken + `","access_token":"` + access +
+		`","refresh_token":"r","account_id":"` + accountID + `"}}`)
 }
 
 // CredentialConflict compares three values and decides only for a ChatGPT login.
 // The two Conflict shapes are the race's (docs/ACCEPTANCE.md § Fifth part): a
 // refresh that rewrote every token, and one that rewrote only the access token.
 func TestCredentialConflictVerdicts(t *testing.T) {
-	login := func(mode, idToken, access, accountID string) []byte {
-		modeField := ""
-		if mode != "" {
-			modeField = `"auth_mode":"` + mode + `",`
-		}
-		return []byte(`{` + modeField + `"tokens":{"id_token":"` + idToken + `","access_token":"` + access +
-			`","refresh_token":"r","account_id":"` + accountID + `"}}`)
-	}
+	login := chatgptLoginJSON
 	main, side := fixtureAccount, otherAccount
 	for name, tc := range map[string]struct {
 		payload []byte

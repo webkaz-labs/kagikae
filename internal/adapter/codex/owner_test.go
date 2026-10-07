@@ -7,7 +7,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 )
 
-// ownerClaims are the id_token claims ownerLogin writes; "" leaves a claim out.
+// ownerClaims are the claims of a fixture JWT (workspaceJWT and ownerLogin
+// build theirs from it); "" leaves a claim out.
 type ownerClaims struct {
 	workspace, user, legacyUser, email, profileEmail string
 }
@@ -38,17 +39,7 @@ func (c ownerClaims) jwt() string {
 // ownerLogin renders a ChatGPT login whose id_token carries c, whose access token
 // names the same workspace and whose tokens.account_id is accountID.
 func ownerLogin(mode string, c ownerClaims, accountID string) []byte {
-	doc := map[string]any{"tokens": map[string]any{
-		"id_token":      c.jwt(),
-		"access_token":  ownerClaims{workspace: c.workspace}.jwt(),
-		"refresh_token": "r",
-		"account_id":    accountID,
-	}}
-	if mode != "" {
-		doc["auth_mode"] = mode
-	}
-	body, _ := json.Marshal(doc)
-	return body
+	return chatgptLoginJSON(mode, c.jwt(), ownerClaims{workspace: c.workspace}.jwt(), accountID)
 }
 
 // CompareOwner's verdict table (docs/ADAPTERS.md § Recapture attribution).
@@ -119,6 +110,13 @@ func TestCompareOwnerVerdicts(t *testing.T) {
 			login(same), ownerLogin(chatgpt, ownerClaims{workspace: wsOther, user: userOther}, ws), adapter.OwnerUnknown,
 		},
 		"not JSON": {login(same), []byte("not json"), adapter.OwnerUnknown},
+		"a claim of the wrong type voids the id_token's claims": {
+			login(same),
+			chatgptLoginJSON(chatgpt,
+				makeJWT(`{"email":7,"https://api.openai.com/auth":{"chatgpt_user_id":"`+userOther+`"}}`),
+				ownerClaims{workspace: ws}.jwt(), ws),
+			adapter.OwnerUnknown,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := (Codex{}).CompareOwner(tc.recorded, tc.live); got != tc.want {

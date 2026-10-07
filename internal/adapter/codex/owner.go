@@ -1,11 +1,10 @@
 package codex
 
 import (
-	"encoding/json"
+	"cmp"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
-	"github.com/webkaz-labs/kagikae/internal/jwt"
 )
 
 // loginOwner is what one ChatGPT login says about whose it is; "" is a value
@@ -22,12 +21,12 @@ type loginOwner struct {
 // ChatGPT logins that each name one account throughout (CredentialConflict is
 // not Detected); a value counts only when both sides carry it. A different
 // workspace is a different account even for the same user.
-func (c Codex) CompareOwner(recorded, live []byte) adapter.OwnerVerdict {
-	a, ok := c.ownerOf(recorded)
+func (Codex) CompareOwner(recorded, live []byte) adapter.OwnerVerdict {
+	a, ok := ownerOf(recorded)
 	if !ok {
 		return adapter.OwnerUnknown
 	}
-	b, ok := c.ownerOf(live)
+	b, ok := ownerOf(live)
 	if !ok {
 		return adapter.OwnerUnknown
 	}
@@ -50,30 +49,15 @@ func (c Codex) CompareOwner(recorded, live []byte) adapter.OwnerVerdict {
 }
 
 // ownerOf reads a ChatGPT login's owner. ok is false for a payload that is not
-// one (any auth_mode but "chatgpt" or none, as CredentialConflict decides) and
-// for one that mixes two accounts, which has no single owner to compare; the
-// conflict verdict handles that one.
-func (c Codex) ownerOf(payload []byte) (loginOwner, bool) {
-	var doc struct {
-		AuthMode *string `json:"auth_mode"`
-		Tokens   *struct {
-			IDToken   string `json:"id_token"`
-			AccountID string `json:"account_id"`
-		} `json:"tokens"`
-	}
-	if err := json.Unmarshal(payload, &doc); err != nil || doc.Tokens == nil {
+// one (chatGPTLogin) and for one that mixes two accounts, which has no single
+// owner to compare; the conflict verdict handles that one.
+func ownerOf(payload []byte) (loginOwner, bool) {
+	tokens, ok := chatGPTLogin(payload)
+	if !ok || tokens.conflict() == adapter.ConflictDetected {
 		return loginOwner{}, false
 	}
-	if doc.AuthMode != nil && *doc.AuthMode != authModeChatGPT {
-		return loginOwner{}, false
-	}
-	if c.CredentialConflict(payload) == adapter.ConflictDetected {
-		return loginOwner{}, false
-	}
-	owner := idTokenOwner(doc.Tokens.IDToken)
-	if doc.Tokens.AccountID != "" {
-		owner.workspace = doc.Tokens.AccountID
-	}
+	owner := idTokenOwner(tokens.IDToken)
+	owner.workspace = cmp.Or(tokens.AccountID, owner.workspace)
 	return owner, true
 }
 
@@ -82,36 +66,25 @@ func (c Codex) ownerOf(payload []byte) (loginOwner, bool) {
 // top-level email, else the "https://api.openai.com/profile" one. A token that
 // does not decode, or claims of the wrong type, carry nothing.
 func idTokenOwner(token string) loginOwner {
-	claims, ok := jwt.Payload(token)
-	if !ok {
-		return loginOwner{}
-	}
 	var doc struct {
 		Email string `json:"email"`
-		Auth  *struct {
+		Auth  struct {
 			AccountID     string `json:"chatgpt_account_id"`
 			ChatGPTUserID string `json:"chatgpt_user_id"`
 			UserID        string `json:"user_id"`
 		} `json:"https://api.openai.com/auth"`
-		Profile *struct {
+		Profile struct {
 			Email string `json:"email"`
 		} `json:"https://api.openai.com/profile"`
 	}
-	if json.Unmarshal(claims, &doc) != nil {
+	if !jwtClaims(token, &doc) {
 		return loginOwner{}
 	}
-	owner := loginOwner{email: doc.Email}
-	if owner.email == "" && doc.Profile != nil {
-		owner.email = doc.Profile.Email
+	return loginOwner{
+		workspace: doc.Auth.AccountID,
+		user:      cmp.Or(doc.Auth.ChatGPTUserID, doc.Auth.UserID),
+		email:     cmp.Or(doc.Email, doc.Profile.Email),
 	}
-	if doc.Auth != nil {
-		owner.workspace = doc.Auth.AccountID
-		owner.user = doc.Auth.ChatGPTUserID
-		if owner.user == "" {
-			owner.user = doc.Auth.UserID
-		}
-	}
-	return owner
 }
 
 var _ adapter.OwnerComparer = Codex{}

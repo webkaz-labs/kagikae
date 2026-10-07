@@ -1,5 +1,5 @@
 // Command packslipverify exercises mise only inside the canonical smoke HOME.
-// Fixture trust and fresh-release exceptions never change the operator's config.
+// Fixture trust and the fresh-release (zero-age) policy never change the operator's config.
 package main
 
 import (

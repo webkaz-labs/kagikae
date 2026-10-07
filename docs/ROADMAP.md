@@ -57,39 +57,21 @@ catalog test fails on every finding outside its two permanent allowlists. A chan
 that adds or rewords a message updates its Japanese string, the smoke assertions and
 the documents that quote it in the same commit.
 
-In progress: **codex resident processes**, requested by the operator on
-2026-10-06. codex's managed daemon, the ChatGPT desktop app and long-running codex
-sessions keep the account they started with after a switch
-([ADAPTERS.md](ADAPTERS.md) § Resident processes). The contract is
-[CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
+**codex resident processes**, requested by the operator on 2026-10-06, are
+implemented and accepted; no release ships them yet. codex's managed daemon, the
+ChatGPT desktop app and long-running codex sessions keep the account they started
+with after a switch ([ADAPTERS.md](ADAPTERS.md) § Resident processes). The contract
+is [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**),
 [SECURITY.md](SECURITY.md) § Resident processes and
-[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction. Slices 1 to 7 — the
-WebSocket client (`internal/wsrpc`), the codex adapter's `ResidentHolder` with the
-daemon probe, the reconcile in `kae use`, the same reconcile in `kae add` and
-`kae rollback`, the ChatGPT app's confirmation, quit and relaunch in those three
-commands, `doctor resident_drift`, and the codex
-usage veto ([CLI.md](CLI.md) § Subscription windows in listings) — are on main, and
-git log records them; no release ships them yet. Slice 8, the acceptance, is
-recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names. What remains is
-raising codex's `VerifiedVersion()` to the version it ran against (0.160.1), a slice
-of its own; until then it stays where it is.
-
-The operator's decisions, which the slices do not reopen, are the behaviour
-[CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
-
-The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident
-processes — local acceptance (2026-10-06) on. The question the earlier parts left
-open, what a process still on the old account does about its token, is answered in
-[ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
-token; the contract is [ADAPTERS.md](ADAPTERS.md) § Resident processes. What
+[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction, and the operator's
+decisions it specifies are not reopened. The acceptance is recorded in
+[ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident processes — local acceptance
+(2026-10-06) on, and codex's `VerifiedVersion()` is the version it ran against. What
 invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
-part: switch round trips is still not established, and the known limitation the
-answer leaves, a refresh in flight across a switch, is **A codex login file can
-carry one account's tokens under another's account id** in § Hardening backlog —
-daily-use robustness.
-
-Done when codex's `VerifiedVersion()` is raised to the version the acceptance ran
-against.
+part: switch round trips is not established, and the known limitation the acceptance
+leaves, a refresh in flight across a switch, is **A codex login file can carry one
+account's tokens under another's account id** in § Hardening backlog — daily-use
+robustness.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under

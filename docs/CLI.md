@@ -2171,9 +2171,9 @@ Where the number comes from, in order:
      resumed under another account can have correct readings vetoed (shown as
      `-`), and a held-over process writing into a session the new account
      created is not caught. That `creator_account_id` and the credential's
-     `tokens.account_id` are one namespace is not yet verified
-     ([ROADMAP.md](ROADMAP.md) § Current work order); if they are not, no
-     creator matches and nothing is vetoed.
+     `tokens.account_id` are one namespace rests on rollouts whose creator equalled
+     the live `tokens.account_id` ([ACCEPTANCE.md](ACCEPTANCE.md) § codex resident
+     processes — local acceptance (2026-10-06)).
 2. **The usage cache** (`usage-cache.json` next to `state.json`;
    [DATA-MODEL.md](DATA-MODEL.md) § State). A local reading is remembered so the
    account still shows it after the shared home moves on. A remembered local

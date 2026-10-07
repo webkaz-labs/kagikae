@@ -42,7 +42,7 @@ against a malicious process with the same user's write access.
 - Secret values never enter stdout, stderr, logs, JSON reports, error
   messages, or metadata files. Reports reference artifacts by name, kind,
   target path, and pointer only.
-- A parse diagnostic for a credential-bearing or user document (JSON, JSONC,
+- A parse diagnostic for a document a tool or the user writes (JSON, JSONC,
   TOML) never quotes its content: it names the location and a fixed reason, at
   most a line number (`patch.RedactParseError`, `patch.RedactTOMLError`).
 - **One documented exception** to the stdout rule: the hidden

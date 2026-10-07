@@ -32,7 +32,7 @@ kagikae/
     paths/                # XDG resolution for config/data/state/locks
     secret/               # secret backend interface + keychain/libsecret/file
                           #   (incl. a per-command read cache, WithReadCache + Cached)
-    patch/                # JSON Pointer get/set + atomic file writes
+    patch/                # JSON Pointer get/set + atomic file writes + parse-error redaction
     lock/                 # per-tool advisory file locks
     installation/         # direct binary replacement, receipts, kernel image identity
     integration/          # content and inode rechecks for owned integration files

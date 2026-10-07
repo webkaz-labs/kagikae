@@ -456,7 +456,7 @@ var jaErrors = map[string]string{
 	"parse json: %w":                                 "JSON を解析できません: %w",
 	"parse jsonc: %w":                                "JSONC を解析できません: %w",
 	"the document has a syntax error":                "ドキュメントに構文エラーがあります",
-	"the document has an invalid value or syntax":    "ドキュメントに不正な値か構文があります",
+	"the document has an invalid value or syntax":    "ドキュメントの値または構文が不正です",
 	"the document has a syntax error at line %d":     "ドキュメントの %d 行目に構文エラーがあります",
 	"the document ends before its value is complete": "ドキュメントが値の途中で終わっています",
 	"unexpected value after top-level value":         "最上位の値の後に余分な値があります",

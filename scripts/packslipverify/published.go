@@ -14,10 +14,10 @@ func releaseIdentity(tag string) string {
 func (s *scenario) published(tag string) (any, error) {
 	fresh := os.Getenv("KAE_RELEASE_VERIFY_FRESH") == "1"
 	settings := ""
-	age := "default policy"
+	age := "default release-age policy"
 	if fresh {
 		settings = "[settings]\nminimum_release_age = \"0\"\n"
-		age = "explicit isolated zero-age exception"
+		age = "isolated zero-age release policy"
 	}
 	request := func(identity string) string {
 		return settings + "[tools]\n" + quote(tool) + " = { version = " + quote(tag[1:]) + ", identity = " + quote(identity) + ", issuer = \"https://token.actions.githubusercontent.com\" }\n"

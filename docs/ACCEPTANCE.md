@@ -925,7 +925,7 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       answers `account/read` (after `initialize` and `initialized`) with the first
       account's email — the verbatim keyring round-trip restored it. `codex login
       status` prints only the login mode (`Logged in using ChatGPT`; rust-v0.160.1
-      `codex-rs/cli/src/login.rs` lines 443 to 488, read 2026-10-07), so it shows
+      `codex-rs/cli/src/login.rs` lines 475 to 478, read 2026-10-07), so it shows
       only that a login is present. The item's account attribute is unchanged
       (`security find-generic-password -s "Codex Auth"`, attributes only): one
       codex home has one item whichever account is logged into it.

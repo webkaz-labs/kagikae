@@ -35,8 +35,9 @@ re-executor reaches it.
 | Which sessions use the daemon | An existing `codex resume` TUI process was not connected to the daemon's socket. | Whether a newly started TUI connects, which the second part below answers. |
 
 Also not measured in this first part: whether a resident process still on the old
-account writes a refreshed token back to `auth.json`; the second part below records
-what a round trip of switches did to the account left behind.
+account writes a refreshed token back to `auth.json`, which the fifth part below
+answers; the second part below records what a round trip of switches did to the
+account left behind.
 
 ### Second part: switch round trips
 
@@ -47,7 +48,7 @@ is bounded to what was inspected; an inference is marked as one.
 
 | Question | Observed | Not measured |
 |---|---|---|
-| What happens to the account a switch leaves | Over round trips between main and side, upstream invalidated the refresh token of the account a switch had left: the daemon's log showed `token_revoked` / `refresh_token_invalidated`, while kae's credential for that account still matched its account id and its access token had not expired. With the daemon, the ChatGPT app and a `codex resume` TUI running since 2026-09-30 and not connected to the daemon all resident, it happened twice in 3 round trips. With the daemon alone it did not happen in 4 round trips, nor with the daemon and the app quit and relaunched by `--yes` each time in 4. Inferred, not measured: the old session not connected to the daemon refreshed the left account's token itself, the rotation invalidated the token in kae's snapshot, and the session did not write it back because the disk held the other account. Logging in again with `kae add --restore codex <account>` (or `kae add codex <account>` while it is live), which updates the snapshot, recovered the account. | When the old TUI refreshed. |
+| What happens to the account a switch leaves | Over round trips between main and side, upstream invalidated the refresh token of the account a switch had left: the daemon's log showed `token_revoked` / `refresh_token_invalidated`, while kae's credential for that account still matched its account id and its access token had not expired. With the daemon, the ChatGPT app and a `codex resume` TUI running since 2026-09-30 and not connected to the daemon all resident, it happened twice in 3 round trips. With the daemon alone it did not happen in 4 round trips, nor with the daemon and the app quit and relaunched by `--yes` each time in 4. What invalidated it is not established: the fifth part below shows that a process holding an account does not refresh its token while the disk holds another account and writes back when it does refresh; its race, a refresh in flight across a switch, is one mechanism that would leave the snapshot superseded, but it was not shown to be the one. Logging in again with `kae add --restore codex <account>` (or `kae add codex <account>` while it is live), which updates the snapshot, recovered the account. | What invalidated the token. |
 | Does a newly started TUI use the daemon | A `codex` TUI started with this version was connected to the daemon: the peer of the socket the daemon had accepted was the TUI's socket. After a switch restarted the daemon, the TUI's `/status` showed the new account and it still answered. | |
 | What `--no-restart` leaves running | After a switch with `--no-restart` the daemon still used the previous account 0, 20, 40 and 60 s later: it did not load the new `auth.json`. A TUI connected to it showed the previous account meanwhile. | |
 | Does the ChatGPT app follow a switch without a relaunch | After one switch without a relaunch the app showed and used the account on disk; after the next it created a new task on the previous account (the new rollout's creator did not match the live credential). It does not follow a switch reliably. | |
@@ -79,7 +80,7 @@ Measured by the operator and the operator's agent on 2026-10-06 on macOS with co
 main and side; the last three in an isolated codex home, described below. It
 answers what the first three parts and [ROADMAP.md](ROADMAP.md) § Current work
 order left open, except whether a resident process still on the old account writes
-a refreshed token back. Each row is bounded to what was inspected; a source reading
+a refreshed token back, which the fifth part below answers. Each row is bounded to what was inspected; a source reading
 and an inference are marked as such. Source readings are of rust-v0.160.1, with
 paths relative to `codex-rs/`, read 2026-10-06.
 
@@ -100,6 +101,78 @@ updater did not run because of the socket path's length.
 | Does `account/read` contact the network right after a restart | In the isolated home, after a restart and once the daemon's start-up traffic had stopped, the outbound attempts per window were 0 with no client (the control), 1 after `initialize` alone and 2 after `initialize` and `account/read` with `refreshToken: false`, the same in each of 3 runs. While those attempts failed, `account/read` answered in about 6 ms with the JSON-RPC error `-32603` `workspace routing discovery failed`, not with a null `account`. With `chatgpt_base_url` pointed at the proxy the request was `GET /backend-api/wham/accounts/check`, and the daemon sent it itself right after it started, with no client connected. Read in upstream's source: `read_account` in `app-server/src/request_processors/account_processor/workspace_routing.rs` answers from a cache (lines 278 to 288), otherwise calls `BackendClient::get_accounts_check` (lines 295 to 301; `backend-client/src/client.rs` lines 398 to 408), caches only a success (lines 357 to 371) and turns a failure into `DiscoveryFailed` (lines 320 to 325); `connection_initialized` in `app-server/src/message_processor.rs` (declared at line 811, the call at lines 816 to 817) calls `notify_workspace_routing_to_connection` (lines 131 to 155 of the same `workspace_routing.rs`), so `initialize` alone runs the discovery. The daemon spawns a `read_account` of its own when it starts (`app-server/src/request_processors/account_processor.rs` lines 136 to 139), and discoveries for the same key share one request (`workspace_routing.rs` lines 259 to 277 and 374). The cache key includes the daemon's auth generation (lines 253 to 258, compared at line 286, and a discovery that recovered from a 401 takes the new generation at lines 309 to 313; the cache is cleared at line 377 when there is no ChatGPT account to route), so after the daemon's own auth changes the cache no longer answers. On a 401 the discovery runs the daemon's unauthorized recovery and retries (lines 303 to 319): it reloads its stored login (`auth.json` or the keyring item) only when that names the account the daemon holds, and otherwise stops without refreshing; a 401 after that reload refreshes the token (`login/src/auth/manager.rs` lines 1976 to 2017, with the account check in `reload_if_account_id_matches`). The cache is held only in the process's memory. So the daemon's own discovery at start-up fills the cache when it succeeds, and a later `account/read` then makes no connection, as the third part saw in a steady state; when that discovery has not succeeded — offline, for example — or the daemon's auth has changed since, even `initialize` makes the daemon connect, and a failing discovery makes `account/read` answer with the error. Read in kae's source: kae makes no connection itself, and `askResidentDaemon` in `internal/cmd/resident_probe.go` reads an error answer as `unknown`, on which kae does not restart. | Whether the start-up discovery succeeds on a real network. |
 | Which client name the daemon's threads carry | In the isolated home, right after a restart, a client named `first_client` initialized and closed, then `second_client` sent `thread/start` and `turn/start`: the rollout's `session_meta.payload.originator` and the `threads` table of codex's state named `first_client`. With the order reversed they named `second_client`; with one client alone, `solo_client`. The `userAgent` that `initialize` answered to the second client also began with the first client's name. The rollout was written on `turn/start`, not on `thread/start` alone. Read in upstream's source: the originator is set once per process (`login/src/auth/default_client.rs` line 54 and lines 85 to 98); `app-server/src/request_processors/initialize_processor.rs` sets it from the first client's `clientInfo.name` (lines 130 to 132 and 165 to 180), except that the reserved names `codex_app_server_daemon` and `codex-backend` (line 19) leave it unchanged; threads take it in `core/src/thread_manager.rs` (lines 372 to 384). The first originating client also settles the legacy automatic login: unless it asks for explicit gateway OAuth, it allows automatic login, and a later client that asks for explicit login overrides that (`initialize_processor.rs` lines 153 to 164). | What allowing automatic login changes in practice. |
 | What a restart does when the `codex` on `PATH` and the daemon's copy differ in version | Read in upstream's source: `restart_with_settings` in `app-server-daemon/src/lib.rs` (lines 459 to 506) calls `prepare_install::prepare` with `InstallMode::Missing`, which does nothing when a daemon is running or a `current` package exists (`prepare_install.rs` lines 104 to 117 and 136 to 138); the crate's README (lines 127 to 128) says "lifecycle commands use the selected daemon package, regardless of the invoking CLI version; they do not implicitly replace an existing package". With no managed copy it copies the invoking CLI's package rather than downloading one (`prepare_install.rs` lines 146 to 262). Replacing the package is the explicit `daemon update --from-cli`; fetching the newest is `daemon update` and the updater (`update_loop.rs` lines 63 to 66, `https://chatgpt.com/codex/install.sh`). Observed in the isolated home: the first `daemon start` copied the 0.160.1 CLI's package to `releases/0.160.1-…`, with no outbound attempt from the CLI. With `current` pointed at a wrapper that answered `--version` with 0.159.9 and ran the real 0.160.1 otherwise, `restart` printed `managedCodexVersion` 0.159.9 and `cliVersion` 0.160.1 and started the app-server through the wrapper; `current` and `releases` were unchanged, and the CLI made no outbound attempt. | A real other version; what the updater does. |
+
+### Fifth part: an old-account process refreshing its token
+
+Measured by the operator's agent on 2026-10-07 on macOS with the installed codex-cli
+0.160.1, in isolated codex homes, while main was at `4a18a5c`; no real credential or
+account took part, and kae did not run. It answers what the first four parts left
+open: what a resident process still on the old account does about that account's
+token. Each row is bounded to what was inspected; a source reading and an inference
+are marked as such. Source readings are of rust-v0.160.1, with paths relative to
+`codex-rs/`, read 2026-10-07; without a path, the file is
+`login/src/auth/manager.rs`. No re-executor reaches it.
+
+**The isolated codex homes.** Each case ran in a temporary directory of its own,
+which `HOME`, `CODEX_HOME`, the XDG roots and `TMPDIR` all pointed to, under a minimal
+allow-listed environment, with `cli_auth_credentials_store = "file"`: the login was
+`auth.json` and nothing else (`login/src/auth/storage.rs` lines 517 to 518). Its
+tokens were made up — unsigned JWTs and made-up refresh tokens for main, side and
+alt, alt with main's account id and another email. `CODEX_REFRESH_TOKEN_URL_OVERRIDE`
+(line 214, read at lines 1726 to 1729) and `chatgpt_base_url` pointed to a local mock
+that recorded each refresh request and answered with a new access token and a new
+refresh token, after a delay when a case asked for one. `HTTP_PROXY`, `HTTPS_PROXY`
+and `ALL_PROXY` pointed to a local proxy that recorded each `CONNECT` and answered
+403. A client drove `codex app-server --listen stdio://` over JSON-RPC (`initialize`,
+`account/read`, then the case's steps) and replaced `auth.json` as kae does, by
+renaming a temporary file over it. No model request was sent. `lsof` on the codex
+process every 0.2 s saw no connection other than loopback in any case; the proxy
+refused 4 or 5 `CONNECT chatgpt.com:443` at start-up in each case, before any TLS.
+Each case recorded the sha256, inode and mtime of `auth.json`, the mock's requests
+and codex's log.
+
+| Question | Observed | Not measured |
+|---|---|---|
+| Does a process on main refresh and write back while the disk still holds main (the control) | `account/read` with `refreshToken: true` sent main's refresh token to the mock once, and `auth.json` then held the rotated tokens and a new `last_refresh`, written in place (same inode). With main's access token inside its 5-minute window, a request that needs the token (`account/rateLimits/read`) did the same. | |
+| Does it refresh once the disk holds side | No. After the rename to side, `account/read` with `refreshToken: true`, and `account/rateLimits/read` inside the 5-minute window, sent nothing to the mock, and `auth.json` kept its sha256 and mtime. codex logged `Skipping auth reload due to account id mismatch` and, on the second path, `ERROR Failed to refresh token: Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.` The rate-limit request went out with main's old access token. `account/read` still answered success naming main (`workspaceRouting.chatgptAccountId` main's): the mismatch appears only in the log. Read in upstream's source: `refresh_token` (lines 2848 to 2884) first re-reads the stored login through `reload_if_account_id_matches` (lines 2487 to 2520), which compares the account id on disk (`tokens.account_id`, `get_account_id` at line 624) with the one the process holds; on a mismatch it returns the mismatch error (line 211) without a network request or a write, and keeps the cached login. `auth()` logs that error and goes on with the old login (lines 2393 to 2406); `refresh_token_if_requested` in `app-server/src/request_processors/account_processor.rs` (lines 1025 to 1038) drops it from `account/read`'s answer. A refresh is due when the access token's `exp` is within 5 minutes (`should_refresh_proactively`, lines 3004 to 3026), or only when there is no `exp`, when `last_refresh` is over 8 days old; it is checked when a request needs the token, with no timer. So the process keeps main's access token until it expires, and then fails. | The 401 path, read only: its first step, `UnauthorizedRecovery::next` (lines 1976 to 2010), applies the same account check and stops on a mismatch; only after a match does it refresh with the token it holds (lines 2012 to 2017). |
+| Does it adopt another login of the same account | Yes, silently. With alt's file (main's account id, alt's tokens and email) renamed in, `account/read` with `refreshToken: true` sent nothing to the mock and wrote nothing; codex logged `Skipping token refresh because auth changed after guarded reload`, and from then on answered alt's email and sent alt's access token. | |
+| What a refresh in flight across a switch writes (the race) | With the mock answering 5 s late, side was renamed in 1 s after main's refresh request reached it. When the answer came, codex wrote main's rotated tokens into side's file in place (side's inode): `tokens.account_id` stayed side's, while the id_token (email you@example.com), the access token and the refresh token were main's. It then adopted that file: `account/read` named you@example.com with `workspaceRouting.chatgptAccountId` side's, and its next backend request carried main's new access token with side's account id. side's refresh token was no longer on disk, and main's new refresh token was only in that file. Read in upstream's source: the account check precedes the network round trip, and `persist_tokens` (lines 1599 to 1621) re-reads the stored login, replaces only the three tokens and `last_refresh`, and saves it, after which `reload()` (line 2481) adopts it without a check (`refresh_and_persist_chatgpt_token`, lines 3092 to 3108). The window is that round trip. | How often the window is met on a real network. |
+| What switching back to the old account does | With main's original file renamed back in, byte for byte what the process held, `account/read` with `refreshToken: true` refreshed (one request with main's refresh token) and wrote the rotated tokens to `auth.json`. A copy of main's login taken before that refresh then holds the superseded refresh token. | |
+
+What kae does with these, read in kae's source at `4a18a5c` and not run:
+
+- **A refresh after a switch back is kept.** kae's global switch recaptures the
+  account it switches away from: when the live `auth.json` differs from that
+  account's snapshot, it rewrites the snapshot from it first
+  (`recaptureActiveBeforeSwitch` in `internal/cmd/freshness.go`;
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Transaction, step 5). So a rotation
+  the old process wrote while main was live reaches main's snapshot on the next
+  switch away, unless the refresh is still in flight then. The harvest of
+  [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Harvesting before a write or a delete
+  is not that path: it covers per-directory stores and is claude-only
+  (`rotatesSingleUse` in `internal/cmd/dircred_harvest.go`).
+- **A mixed file is filed under the active account.** For codex the recapture
+  compares bytes and attributes nothing: codex declares no identity-only artifact,
+  so `keepSnapshotIdentity` has nothing to check, and `recaptureWouldDowngrade`
+  orders copies for claude only. Switching away from side with the race's file live
+  therefore rewrites side's snapshot with main's tokens and side's account id, under
+  side's recorded identity, and the switch to main applies main's snapshot, whose
+  refresh token the race superseded. kae reads the two halves of that file
+  differently: `Identity` in `internal/adapter/codex/codex.go`, which names the
+  account `kae add codex` captures when no name is given, takes the id_token's email
+  (main's), while `CredentialAccount` in `internal/adapter/codex/resident.go`, which
+  the daemon probe and the account-change check compare, takes `tokens.account_id`
+  (side's). Nothing in kae detects the file;
+  [ROADMAP.md](ROADMAP.md) § Hardening backlog — daily-use robustness carries that.
+
+Inferred, not measured: that the real token server rotates the refresh token on
+each refresh and rejects the superseded one — the mock did, and upstream's source
+has an error for a reused refresh token (`refresh_token_reused`, line 1687, message at
+line 207) and replaces the stored refresh token when an answer carries one
+(lines 1614 to 1616); and that the ChatGPT desktop app's embedded codex and a TUI
+refresh through this same `AuthManager` as the app-server measured here. Not
+established: whether the ChatGPT app gives its codex externally managed tokens,
+which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 1146).
 
 ## v0.23.0 candidate
 

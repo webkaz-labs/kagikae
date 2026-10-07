@@ -44,7 +44,8 @@ against a malicious process with the same user's write access.
   target path, and pointer only.
 - A parse diagnostic for a document a tool or the user writes (JSON, JSONC,
   TOML) never quotes its content: it names the location and a fixed reason, at
-  most a line number (`patch.RedactParseError`, `patch.RedactTOMLError`).
+  most a line and column number (`patch.RedactParseError`,
+  `patch.RedactTOMLError`, `patch.RedactTOMLEditError`).
 - **One documented exception** to the stdout rule: the hidden
   `kae __companion-token <profile> <id> <knob>` credential helper prints a
   single companion token to stdout. It is a git-credential-helper-style seam

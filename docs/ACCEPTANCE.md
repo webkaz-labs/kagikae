@@ -204,6 +204,30 @@ recorded 1.0.88), cursor (artifact not readable) and opencode (1.18.34, recorded
 claude's naming, codex's resident processes and the codex 0.160.1 re-verification
 is therefore carried by earlier evidence and not re-measured here.
 
+### v0.24.0 publication result
+
+On 2026-10-07 (JST), main CI succeeded at tag source
+`4b62f9250abbe330c721800075e6ac8f8b7649c3`, and the release workflow succeeded for
+tag `v0.24.0`, including the job that signed the published archives with the
+Packslip 1.6.0 Action. The release holds darwin/arm64 and linux amd64/arm64
+archives, `checksums.txt` and `packslip.sigstore.json`, and no darwin/amd64
+archive.
+
+`mise run release-verify -- v0.24.0` returned `status: success` with
+`KAE_RELEASE_VERIFY_FRESH=1`, by the operator's explicit approval for this run, and
+its `toolchain` field recorded Packslip 1.6.0 and mise 2026.10.2. Packslip was
+fetched into a temporary directory after its GitHub attestation verified; the
+machine's own mise ran the consumer. Signature checks stayed enabled. This is an
+isolated zero-age exception, not a pass under the default age policy. The first
+run returned `unavailable` because no `packslip` was on `PATH`. No live login was
+part of this check.
+
+The direct local installation used the published v0.24.0 archive and checksum
+through `scripts/install.sh --version v0.24.0`, after `gh attestation verify` passed
+for the darwin/arm64 archive. PATH resolved `~/.local/bin/kae`, which reported
+`kae v0.24.0`. `config.toml` and `state.json` compared byte-identical before and
+after. No credential migration was performed.
+
 ## v0.23.0 candidate
 
 Assessed on 2026-10-05 (JST). Application commits since published v0.22.1 include

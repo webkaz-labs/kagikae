@@ -80,10 +80,10 @@ var jaErrors = map[string]string{
 	"regenerate global mise fragment (previous state restored): %w":                 "グローバル mise のフラグメントを作り直せません（以前の状態は復元しました）: %w",
 
 	// capture.go.
-	"no live %s auth state found; log in with the official CLI first%s":                                                                                                 "%s の現在の認証状態が見つかりません。先に公式の CLI でログインしてください%s",
-	"the live %s login carries one account's tokens under another account's id, so kae will not capture it as %s/%s; log in to %s again as the account you mean to add": "現在の %[1]s のログインは、あるアカウントのトークンを別のアカウントの ID のもとに持っているため、kae は %[2]s/%[3]s として取り込みません。登録するつもりのアカウントで %[4]s に改めてログインしてください",
-	"store captured payload: %w": "登録する保存データをシークレットストアに書き込めません: %w",
-	"clear stale payload: %w":    "古い保存データを消去できません: %w",
+	"%s, so kae will not capture it as %s/%s; %s":                       "%[1]s。そのため kae は %[2]s/%[3]s として取り込みません。%[4]s",
+	"no live %s auth state found; log in with the official CLI first%s": "%s の現在の認証状態が見つかりません。先に公式の CLI でログインしてください%s",
+	"store captured payload: %w":                                        "登録する保存データをシークレットストアに書き込めません: %w",
+	"clear stale payload: %w":                                           "古い保存データを消去できません: %w",
 
 	// init.go and edit.go.
 	"inspect config: %w":        "設定ファイルを確認できません: %w",

@@ -237,8 +237,8 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   reads an opaque account key from a credential payload (file or keyring alike),
   `CredentialConflict(payload)` answers whether that payload carries one account's
   tokens under another's account record (Consistent, Conflict or Unknown, no id),
-  which both recaptures, `kae add`'s capture and doctor's
-  `credential_account_conflict` read through `cmd`'s `credentialConflicted`,
+  which both recaptures and `kae add`'s capture read through `cmd`'s
+  `credentialConflicted` and doctor's `credential_account_conflict` asks directly,
   `ParseDaemonAccount(result)` reads one from the daemon's `account/read` answer,
   telling a daemon that holds no account apart from an answer it cannot read,
   `ParseDaemonStatus(output)` reads whether the status command reports the daemon

@@ -326,19 +326,103 @@ func TestDoctorConflictMessagesInJapanese(t *testing.T) {
 	mixed := mixedCodexLogins["every token main's"]
 	writeSnapshotPayload(t, app, "codex", "main", mixed)
 	writeFile(t, codexAuthFile(app), mixed)
+	ctx := context.Background()
 	be := testBackend(t, app)
-	rows := app.credentialConflictChecks(context.Background(), be, constants.ToolCodex)
+	accounts, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := append(app.credentialConflictLiveChecks(ctx, constants.ToolCodex),
+		credentialConflictSnapshotChecks(ctx, be, accounts, constants.ToolCodex)...)
 	if len(rows) != 2 {
 		t.Fatalf("rows = %+v", rows)
 	}
+	captureErr := errCredentialConflict("codex", "side")
+	reason := credentialConflictReason("codex", "side")
 	l10ntest.UseJapanese(t)
-	want := "現在の codex のログインは、あるアカウントのトークンを別のアカウントの ID のもとに持っているため、" +
-		"kae はどのアカウントとしても保存しません。使うつもりのアカウントで codex に改めてログインしてください。"
+	const fact = "あるアカウントのトークンを別のアカウントの ID のもとに持っています。"
+	want := "現在の codex のログインは、" + fact +
+		"そのため kae はどのアカウントとしても保存しません。使うつもりのアカウントで codex に改めてログインしてください。"
 	if got := l10n.Render(rows[0].Message); got != want {
 		t.Errorf("Render = %q, want %q", got, want)
 	}
-	if got := l10n.Render(rows[1].Message); !strings.HasPrefix(got, `スナップショット "main" は、あるアカウントのトークンを別のアカウントの ID のもとに持っています。`) {
+	if got := l10n.Render(rows[1].Message); !strings.HasPrefix(got, `スナップショット "main" は、`+fact+
+		"そのため、このスナップショットに切り替えると、一部が別のアカウントのものであるログインが適用されます。") {
 		t.Errorf("Render = %q", got)
+	}
+	if got := l10n.Render(reason); got != "現在の codex のログインは、"+fact+"そのため kae は codex/side として保存できません" {
+		t.Errorf("Render(reason) = %q", got)
+	}
+	if got := l10n.Render(captureErr); !strings.HasPrefix(got, "現在の codex のログインは、"+fact+"そのため kae は codex/side として取り込みません。") {
+		t.Errorf("Render(capture) = %q", got)
+	}
+}
+
+// A run whose child changed nothing over a snapshot that is already mixed has
+// nothing to recapture: no warning and no backup beyond the run's own.
+func TestRunSharedLeavesAnUnchangedMixedSnapshotAlone(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	seedCodexAccounts(t, app)
+	mixed := mixedCodexLogins["every token main's"]
+	writeSnapshotPayload(t, app, "codex", "side", mixed)
+
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 0, nil })
+	for range 2 {
+		code, out, stderr := captureBoth(t, func() int {
+			return runRun(ctx, app, opts, runModeShared, "codex", "side", []string{"codex"})
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if strings.Contains(stderr, "carries one account's tokens") {
+			t.Errorf("a no-op run warned about the snapshot's own login: %q", stderr)
+		}
+	}
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, meta := range metas {
+		if meta.Reason == constants.BackupReasonRunUnattributable {
+			t.Errorf("a no-op run took a declined-copy backup: %+v", meta)
+		}
+	}
+}
+
+// doctor's snapshot conflict check reads through credentialHealthChecks' read
+// cache: each snapshot payload reaches the backend once for all its checks.
+func TestDoctorConflictReadsEachSnapshotOnce(t *testing.T) {
+	app := testApp(t, nil)
+	seedCodexAccounts(t, app)
+	writeSnapshotPayload(t, app, "codex", "main", mixedCodexLogins["every token main's"])
+	counter := &countingBackend{Backend: testBackend(t, app), gets: map[string]int{}}
+
+	checks := app.credentialHealthChecks(context.Background(), counter, constants.ToolCodex)
+	conflicts := 0
+	for _, c := range checks {
+		if c.Code == constants.CheckCredentialAccountConflict {
+			conflicts++
+		}
+	}
+	if conflicts != 1 {
+		t.Fatalf("want the snapshot finding, got %+v", checks)
+	}
+	for _, name := range []string{"main", "side"} {
+		ref := account.SecretRef("codex", name, "auth")
+		if got := counter.gets[ref]; got != 1 {
+			t.Errorf("%s read %d times, want 1 (gets: %v)", ref, got, counter.gets)
+		}
+	}
+}
+
+// The live finding needs no secret backend, so an unavailable one does not hide it.
+func TestDoctorFlagsAMixedLiveLoginWithoutABackend(t *testing.T) {
+	app := testApp(t, nil)
+	writeFile(t, codexAuthFile(app), mixedCodexLogins["every token main's"])
+	app.Config.Security.SecretBackend = "unavailable-for-test"
+	rows := doctorConflictRows(t, app)
+	if len(rows) != 1 || !strings.HasPrefix(rows[0].Message, "the live codex login carries") {
+		t.Fatalf("want the live finding, got %+v", rows)
 	}
 }
 

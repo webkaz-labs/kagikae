@@ -482,16 +482,19 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   the identity cache to something kae cannot read as a record, leaves the snapshot alone
   with a warning rather than filing a foreign credential and identity under the target's
   name; a child whose refresh failed leaves the tombstone live rather than over a
-  snapshot that still works; and a codex login that mixes two accounts is declined
-  with the remedy the switch gives it. It also keeps the account's **recorded login identity**,
+  snapshot that still works; and a codex login the child changed into one that mixes
+  two accounts is declined with the remedy the switch gives it (a live login still
+  byte-equal to its snapshot has nothing to recapture, as on the switch). It also keeps the account's **recorded login identity**,
   which is a separate field from the identity payload and was blanked on every `run -s`
   before v0.17.0.
   A refusal here would otherwise **destroy** what it declines, which is the one thing
   this path does not inherit from the switch: its backup was taken before the child, so
   the child's copy lives only in the store the restore is about to overwrite. So when a
-  recapture is refused for unattributability or for a mixed codex login, kae takes a second backup — reason
-  `run-unattributable` — of the post-child state and names it in the warning, with the
-  `kae rollback --to <id>` then `kae add --no-login` pair that turns it into an account.
+  recapture is refused for unattributability or for a mixed codex login, kae takes a
+  second backup — reason `run-unattributable` — of the post-child state and names it in
+  the warning. For an unattributable copy the warning adds the `kae rollback --to <id>`
+  then `kae add --no-login` pair that turns it into an account; for a mixed codex login
+  it gives no `kae add` (§ kae use Semantics).
   A tombstone or a **provably** older copy gets no such backup: there is nothing there to
   keep. A copy kae cannot *order* is a third case and takes the backup — `supersedes`
   lets an undated copy lose to anything, which is right for deciding an overwrite and
@@ -647,7 +650,8 @@ conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes
 forms refuse the capture with exit `10` (`unsafe_refused`), write no snapshot and leave
 the active account as it was; the message names the tool and the account and no id or
 email. The login form's failure then follows its usual path (`--restore` puts the
-previous login back). `--dry-run` reads no credential, so it does not see the conflict.
+previous login back). `--dry-run` does not run the check, so it does not report the
+conflict.
 
 **codex resident processes.** `kae add codex` reconciles codex's managed daemon and
 the ChatGPT app by the rules of § kae use Semantics, with two differences. The login
@@ -2524,11 +2528,12 @@ Credential-health checks (warn-level):
   account's id — the conflict verdict of [ADAPTERS.md](ADAPTERS.md) § Resident
   processes (codex today). Warn once for the live login of the real home, which a
   global switch acts on, and once per snapshot that holds one, inactive ones included;
-  honor the tool filter. Offline: it reads the payloads the snapshot checks above have
-  already read, through the same read cache, plus the live credential. The message
-  names the tool, or the snapshot and its relogin remedy, and no id or email. The
-  live finding tells the user to log in again as the account they mean to use; kae
-  repairs neither.
+  honor the tool filter. Offline. The snapshot half runs with the other snapshot checks
+  and, like them, needs the secret backend (`credentialHealthChecks` says how their
+  reads are shared); the live half needs none, so an unavailable backend does not hide
+  it. The message names the tool, or the snapshot and its relogin remedy, and no id or
+  email. The live finding tells the user to log in again as the account they mean to
+  use; kae repairs neither.
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):

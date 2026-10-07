@@ -539,10 +539,9 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// in order, and keying by tool would rely on "at most one plan per tool" without saying
 	// so anywhere.
 	//
-	// The pairing is observable since codex declines a mixed login (credentialConflicted)
-	// while claude declines through the two guards above, so one run can decline two
-	// tools with different reasons and remedies; TestRunSharedDeclinesTwoToolsAtOnce
-	// holds each warning to its own plan.
+	// One run can decline two tools with different reasons and remedies (claude through
+	// the two guards above, codex through credentialConflicted), so each warning is kept
+	// with its own plan; TestRunSharedDeclinesTwoToolsAtOnce holds that.
 	type declinedRecapture struct {
 		plan toolPlan
 		why  message
@@ -582,7 +581,13 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		if credentialConflicted(plan.Tool, plan.Specs, values) {
 			// A refresh wrote one account's tokens under another's account record, the
 			// switch-away recapture's third refusal; kept in the backup below like the
-			// others, never filed under plan.Account.
+			// others, never filed under plan.Account. Like the switch, it declines only
+			// what the child changed: a live login still byte-equal to the snapshot
+			// (already mixed, which doctor reports) has nothing to recapture, and
+			// declining it would add a backup and a warning to every run.
+			if !valuesDiverge(ctx, be, plan.Specs, plan.Meta, values) {
+				continue
+			}
 			declined = append(declined, declinedRecapture{plan, credentialConflictReason(plan.Tool, plan.Account), declinedMixed})
 			continue
 		}

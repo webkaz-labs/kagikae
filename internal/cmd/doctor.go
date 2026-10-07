@@ -224,6 +224,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 	// unavailable backend is exactly when a user is diagnosing and least wants a
 	// check to vanish.
 	report.Checks = append(report.Checks, app.activeOrphanChecks(toolFilter)...)
+	// A live login that mixes two accounts: its snapshot half runs with the credential
+	// health checks below, but the live read needs no backend, so it stays out here.
+	report.Checks = append(report.Checks, app.credentialConflictLiveChecks(ctx, toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.
@@ -348,7 +351,7 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 // The snapshot-reading halves are given a coalescing view of the backend,
 // because they read the same payloads: accountFreshness reads each datable account's
 // credential to date it, secretMissingChecks reads it again to ask whether it is
-// there at all, and credentialConflictChecks reads it once more for its verdict.
+// there at all, and credentialConflictSnapshotChecks reads it once more for its verdict.
 // On darwin every such read is a `security` subprocess, so without the cache each
 // added check multiplied them. orphanChecks keeps the **raw** backend
 // on purpose — secret.Cached does not forward the Enumerator capability, and passing
@@ -391,7 +394,9 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 		}
 	}
 	checks = append(checks, app.secretMissingChecks(ctx, cached, toolFilter)...)
-	checks = append(checks, app.credentialConflictChecks(ctx, cached, toolFilter)...)
+	if err == nil {
+		checks = append(checks, credentialConflictSnapshotChecks(ctx, cached, accounts, toolFilter)...)
+	}
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 

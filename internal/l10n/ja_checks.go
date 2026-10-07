@@ -38,8 +38,11 @@ var jaChecks = map[string]string{
 	"snapshot %q declares a stored %s payload the secret backend does not have, so applying it cannot restore that artifact; %s":                                                            "スナップショット %q は %s の保存データを持つと記録していますが、シークレットストアにありません。そのため、このスナップショットを適用しても、その認証要素を復元できません。%s。",
 
 	// credential_conflict.go.
-	"the live %s login carries one account's tokens under another account's id, so kae will not file it under any account; log in to %s again as the account you mean to use": "現在の %s のログインは、あるアカウントのトークンを別のアカウントの ID のもとに持っているため、kae はどのアカウントとしても保存しません。使うつもりのアカウントで %s に改めてログインしてください。",
-	"snapshot %q carries one account's tokens under another account's id; %s":                                                                                                 "スナップショット %q は、あるアカウントのトークンを別のアカウントの ID のもとに持っています。%s。",
+	"%s, so kae will not file it under any account; %s":                           "%[1]s。そのため kae はどのアカウントとしても保存しません。%[2]s。",
+	"log in to %s again as the account you mean to use":                           "使うつもりのアカウントで %s に改めてログインしてください",
+	"%s, so switching to it applies a login that is partly another account's; %s": "%[1]s。そのため、このスナップショットに切り替えると、一部が別のアカウントのものであるログインが適用されます。%[2]s。",
+	// The trailing space keeps the quoted name apart from the particle the fact appends.
+	"snapshot %q": "スナップショット %q ",
 
 	// dircred_checks.go.
 	"the %s credential bound to %s is stale: %s; %s":                             "ディレクトリ %[2]s に固定した %[1]s の認証情報は失効しています: %[3]s。%[4]s。",

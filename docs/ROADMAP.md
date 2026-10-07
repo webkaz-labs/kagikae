@@ -68,9 +68,10 @@ decisions it specifies are not reopened. The acceptance is recorded in
 (2026-10-06) on, and codex's `VerifiedVersion()` is the version it ran against. What
 invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
 part: switch round trips is not established. The login a refresh in flight across a
-switch leaves is handled under [ADAPTERS.md](ADAPTERS.md) § Resident processes; what
-stays open around it is **codex's switch-away recapture has no attribution guard** in
-§ Hardening backlog — daily-use robustness.
+switch leaves is handled under [ADAPTERS.md](ADAPTERS.md) § Resident processes, and an
+outside login as another account under [ADAPTERS.md](ADAPTERS.md) § Recapture attribution;
+what stays open around them is **A codex process left on the previous account is
+declined as an outside login** in § Hardening backlog — daily-use robustness.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -1050,16 +1051,14 @@ alternative exists (`secret-tool`).
   token measured codex's client against a mock token endpoint, so it settles none of
   these server-side questions.
 
-- **codex's switch-away recapture has no attribution guard** (recorded 2026-10-07; not
-  scheduled). An outside `codex login` as another account while side is active is
-  filed under side on the next switch away: codex has no counterpart of
-  `TestSwitchAwaySkipsRecaptureAfterOutsideLogin`, because `keepSnapshotIdentity`
-  compares an identity-only artifact and only claude declares one. The candidate is to
-  compare the live `tokens.account_id` against the snapshot's, and the id_token's email
-  against the recorded identity. Neither catches every case: two emails in one
-  workspace share one workspace id, so the account-id comparison cannot tell them
-  apart, and the conflict verdict that declines a login mixing two accounts
-  ([ADAPTERS.md](ADAPTERS.md) § Resident processes) cannot either.
+- **A codex process left on the previous account is declined as an outside login**
+  (not scheduled). A long-running codex process still on main that writes a consistent
+  main login into the live store while side is active is declined by the owner
+  comparison ([ADAPTERS.md](ADAPTERS.md) § Recapture attribution) as Different, which
+  keeps it out of side. But the reason says codex was logged in again outside kae and
+  the remedy offers to keep the login as an account of its own, while it is main's own
+  rotated token, and main's snapshot may hold a refresh token the rotation has already
+  invalidated. Done when that decline names the case and handles main's snapshot.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

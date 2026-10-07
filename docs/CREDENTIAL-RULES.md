@@ -293,7 +293,8 @@ not.** The attribution and ordering guards read the same predicates on both side
 seam whose consequences invert. `dirIdentityConfirms` and `liveLoginMatchesBackup`
 decline to *overwrite* or *delete*, so refusing keeps what exists. The two recaptures
 (`kae use`'s switch-away and `kae run -s`'s post-child pass, through
-`keepSnapshotIdentity`, `recaptureWouldDowngrade` and `credentialConflicted`) decline
+`keepSnapshotIdentity`, `liveOwnerDiffers`, `recaptureWouldDowngrade` and
+`credentialConflicted`) decline
 to *preserve*, and their caller then overwrites
 the live store — so refusing **destroys** the copy unless a backup holds it. `kae use`
 gets that for free (`createBackup` runs before its recapture); `kae run -s` does not (its
@@ -348,7 +349,8 @@ are, so every consumer owes an attribution guard, and **which record it compares
 is not interchangeable**: `run -s` reads the **backup**, never the account snapshot,
 because its own recapture has already rewritten that snapshot with what the child left
 live. That recapture is itself guarded now — the same guards the switch-away recapture
-applies and no other, so a foreign login, a tombstone or a mixed codex login is refused
+applies and no other, so a foreign login (claude's identity record, codex's owner
+comparison), a tombstone or a mixed codex login is refused
 rather than filed —
 which narrows what the snapshot can be wrong about without making it a record of the
 pre-child state, so the backup stays the right side to read.

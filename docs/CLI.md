@@ -192,18 +192,22 @@ matches.
   account (someone ran the tool's own login outside kae), a live identity that
   **differs** from the recorded one where kae cannot read either as an account record
   (so it cannot tell whose login is live — worded weaker than the previous case,
-  because kae has observed a change and not an account), a live credential that
+  because kae has observed a change and not an account), a codex login the owner
+  comparison of [ADAPTERS.md](ADAPTERS.md) § Recapture attribution finds to be another
+  account's than the snapshot it would overwrite (declined and worded like the login
+  outside kae above; codex's identity is inside the credential), a live credential that
   needs a re-login while the snapshot still holds a usable one, a live credential the
   snapshot **provably supersedes** (for a tool whose refresh token rotates single-use the
   older copy cannot refresh at all), one kae cannot **order** against the snapshot
   because it carries no deadline kae can use, or a codex login that carries one
   account's tokens under another account's id (the conflict verdict of
   [ADAPTERS.md](ADAPTERS.md) § Resident processes).
-  `keepSnapshotIdentity`, `recaptureWouldDowngrade` and `credentialConflicted` are
-  normative for the set — read them rather than this list. The freshness guard is
-  one-directional: kae never prefers the older value. What it refuses is wider than "a
-  dead credential over a working one" — a usable but *older* copy is refused too, and so
-  is one kae cannot judge, which is reported as exactly that rather than as dead.
+  `keepSnapshotIdentity`, `liveOwnerDiffers`, `recaptureWouldDowngrade` and
+  `credentialConflicted` are normative for the set — read them rather than this list.
+  The freshness guard is one-directional: kae never prefers the older value. What it
+  refuses is wider than "a dead credential over a working one" — a usable but *older*
+  copy is refused too, and so is one kae cannot judge, which is reported as exactly that
+  rather than as dead.
 
   **What a refusal costs, and where the copy goes.** Declining to recapture means the
   live copy is not preserved in the snapshot, and the switch then overwrites the live
@@ -216,6 +220,9 @@ matches.
   identities that *agree* let the recapture proceed; two payloads kae cannot read that
   are byte-identical are treated as agreement, deliberately, because a login always
   rewrites the identity (see § kae run Semantics for what happens when it does not).
+  codex's owner comparison is the other way round: it declines only on a value it reads
+  on both sides and finds different, so a login it cannot judge goes on to the guards
+  that follow it.
 
   If the account being switched **to** needs a re-login (expired with no usable
   refresh token, or emptied by the tool), kae warns and still proceeds; a snapshot
@@ -478,7 +485,8 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   that reachable and what the restore then reconciles. (This is the former `auth`
   mode.)
   That recapture applies **the same guards a shared switch applies to its own**
-  (above), and no other: a child that logged in as another account, or one that changed
+  (above), and no other: a child that logged in as another account (for codex, as the
+  owner comparison reads the login itself), or one that changed
   the identity cache to something kae cannot read as a record, leaves the snapshot alone
   with a warning rather than filing a foreign credential and identity under the target's
   name; a child whose refresh failed leaves the tombstone live rather than over a

@@ -150,19 +150,18 @@ What kae does with these, read in kae's source at `4a18a5c` and not run:
   switch away, unless the refresh is still in flight then (the
   [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Harvesting before a write or a delete
   harvest does not apply; it is per-directory and claude-only).
-- **A mixed file is filed under the active account.** For codex the recapture
-  compares bytes and attributes nothing: codex declares no identity-only artifact,
-  so `keepSnapshotIdentity` has nothing to check, and `recaptureWouldDowngrade`
-  orders copies for claude only. Switching away from side with the race's file live
-  therefore rewrites side's snapshot with main's tokens and side's account id, under
-  side's recorded identity, and the switch to main applies main's snapshot, whose
-  refresh token the race superseded. kae reads the two halves of that file
-  differently: `Identity` in `internal/adapter/codex/codex.go`, which names the
-  account `kae add codex` captures when no name is given, takes the id_token's email
-  (main's), while `CredentialAccount` in `internal/adapter/codex/resident.go`, which
-  the daemon probe and the account-change check compare, takes `tokens.account_id`
-  (side's). Nothing in kae detects the file;
-  [ROADMAP.md](ROADMAP.md) § Hardening backlog — daily-use robustness carries that.
+- **A mixed file is declined, not filed** — since the conflict verdict, not at
+  `4a18a5c`. kae reads the file's conflict verdict
+  ([ADAPTERS.md](ADAPTERS.md) § Resident processes) and never files a Conflict under an
+  account ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead
+  of preserving). That is tested with fixtures built like the race's file
+  (`internal/cmd/credential_conflict_test.go`), not against codex. The switch to main
+  still applies main's snapshot, whose refresh token the race superseded. kae's other
+  two reads of the file still disagree: `Identity` in
+  `internal/adapter/codex/codex.go`, which names the account `kae add codex` captures
+  when no name is given, takes the id_token's email (main's), while
+  `CredentialAccount` in `internal/adapter/codex/resident.go`, which the daemon probe
+  and the account-change check compare, takes `tokens.account_id` (side's).
 
 Inferred, not measured: that the real token server rotates the refresh token on
 each refresh and rejects the superseded one — the mock did, and upstream's source

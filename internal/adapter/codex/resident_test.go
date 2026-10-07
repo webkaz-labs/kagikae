@@ -249,3 +249,77 @@ func TestDesktopAppsDarwinOnly(t *testing.T) {
 		t.Errorf("DesktopApps = %q on %s, want none", got, runtime.GOOS)
 	}
 }
+
+// workspaceJWT is a JWT whose "https://api.openai.com/auth" claim names
+// account as the workspace; "" leaves the claim out.
+func workspaceJWT(account string) string {
+	if account == "" {
+		return makeJWT(`{"email":"you@example.com"}`)
+	}
+	return makeJWT(`{"email":"you@example.com","https://api.openai.com/auth":{"chatgpt_account_id":"` + account + `"}}`)
+}
+
+// CredentialConflict compares three values and decides only for a ChatGPT login.
+// The two Conflict shapes are the race's (docs/ACCEPTANCE.md § Fifth part): a
+// refresh that rewrote every token, and one that rewrote only the access token.
+func TestCredentialConflictVerdicts(t *testing.T) {
+	login := func(mode, idToken, access, accountID string) []byte {
+		modeField := ""
+		if mode != "" {
+			modeField = `"auth_mode":"` + mode + `",`
+		}
+		return []byte(`{` + modeField + `"tokens":{"id_token":"` + idToken + `","access_token":"` + access +
+			`","refresh_token":"r","account_id":"` + accountID + `"}}`)
+	}
+	main, side := fixtureAccount, otherAccount
+	for name, tc := range map[string]struct {
+		payload []byte
+		want    adapter.ConflictVerdict
+	}{
+		"every token is main's, account id side": {
+			login("chatgpt", workspaceJWT(main), workspaceJWT(main), side), adapter.ConflictDetected,
+		},
+		"only the access token is main's": {
+			login("chatgpt", workspaceJWT(side), workspaceJWT(main), side), adapter.ConflictDetected,
+		},
+		"tokens disagree, account id absent": {
+			login("chatgpt", workspaceJWT(main), workspaceJWT(side), ""), adapter.ConflictDetected,
+		},
+		"auth_mode absent still decides": {
+			login("", workspaceJWT(main), workspaceJWT(main), side), adapter.ConflictDetected,
+		},
+		"all three equal": {
+			login("chatgpt", workspaceJWT(side), workspaceJWT(side), side), adapter.ConflictConsistent,
+		},
+		"two equal, id_token claim absent": {
+			login("chatgpt", workspaceJWT(""), workspaceJWT(side), side), adapter.ConflictConsistent,
+		},
+		"claims absent from both tokens": {
+			login("chatgpt", workspaceJWT(""), workspaceJWT(""), side), adapter.ConflictUnknown,
+		},
+		"broken JWTs": {
+			login("chatgpt", "not-a-jwt", "a.!!.c", side), adapter.ConflictUnknown,
+		},
+		"no account id and one claim": {
+			login("chatgpt", workspaceJWT(main), "opaque", ""), adapter.ConflictUnknown,
+		},
+		"external token mode": {
+			login("chatgptAuthTokens", workspaceJWT(main), workspaceJWT(main), side), adapter.ConflictUnknown,
+		},
+		"api key login": {
+			[]byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-x"}`), adapter.ConflictUnknown,
+		},
+		"no tokens object": {[]byte(`{"OPENAI_API_KEY":"sk-x"}`), adapter.ConflictUnknown},
+		"not JSON":         {[]byte(`not json`), adapter.ConflictUnknown},
+		"claim of the wrong type counts as absent": {
+			login("chatgpt", makeJWT(`{"https://api.openai.com/auth":{"chatgpt_account_id":7}}`), workspaceJWT(main), side),
+			adapter.ConflictDetected,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := (Codex{}).CredentialConflict(tc.payload); got != tc.want {
+				t.Fatalf("CredentialConflict = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

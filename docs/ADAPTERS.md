@@ -400,10 +400,11 @@ app-server; a TUI and the ChatGPT app's embedded codex are inferred to behave al
 and whether the app gives its codex externally managed tokens, which are never
 written to the login, is not established. **Known limitation:** a refresh already in
 flight when kae switches writes the old account's rotated tokens into the new
-account's login, which keeps that account's `tokens.account_id`. kae does not detect
-such a file, and its switch-away recapture files it under the snapshot of the
-account that was active. The measurement, the source reading and what kae's code
-does with each case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an
+account's login, which keeps that account's `tokens.account_id`. kae cannot prevent
+that write; it detects the file by the conflict verdict below and never files it
+under an account ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys
+instead of preserving; the commands' behavior is in [CLI.md](CLI.md)). The measurement, the source reading and what
+kae's code does with each case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an
 old-account process refreshing its token.
 
 The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
@@ -478,6 +479,16 @@ The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 - **account key** the credential's account id, `tokens.account_id` in either
   store (`CredentialAccount`), compared with the daemon's. The key is opaque and never
   printed.
+- **conflict verdict** (`CredentialConflict`) whether one payload names one account
+  throughout. It decides only for a ChatGPT login, an `auth_mode` of `chatgpt` or none;
+  any other mode, `chatgptAuthTokens` included, is Unknown. It compares
+  `tokens.account_id`, the id_token's `"https://api.openai.com/auth".chatgpt_account_id`
+  claim and the access token's, an empty value or a JWT that does not decode counting as
+  absent: fewer than two present is Unknown, any two that differ is a Conflict, all
+  equal is Consistent. Why a login codex wrote has them equal is a row of
+  [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions. Unknown changes no
+  decision. The verdict carries no id. Two emails in one workspace share one workspace
+  id, so a file mixing those two is Consistent.
 - **restart** `codex app-server daemon restart` with `CODEX_HOME` set to the
   switched home. In upstream's source it stops the old daemon, starts the new one,
   waits until the new one answers, and only then prints one JSON object and exits 0;
@@ -1465,7 +1476,7 @@ at 64); an explicit name always wins. The per-tool source:
 | Tool | Identity source |
 |------|-----------------|
 | claude | `~/.claude.json` `oauthAccount.emailAddress` — also a switched artifact, so it names the account kae last applied, not the one that logged in last |
-| codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id` |
+| codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id`. A login whose conflict verdict is a Conflict (§ Resident processes) is refused at capture, whatever account name its email would give |
 | opencode | the `/openai` access token's `https://api.openai.com/profile` email claim (JWT), else `/openai` `accountId` (an opaque UUID; v0.8.8 prefers the email) |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
 | agy | `~/.gemini/google_accounts.json` `.active` — the active Google account email the Antigravity login writes (v0.8.7; the keychain token itself is opaque) |

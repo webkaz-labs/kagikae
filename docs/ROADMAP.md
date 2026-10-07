@@ -67,10 +67,10 @@ decisions it specifies are not reopened. The acceptance is recorded in
 [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident processes — local acceptance
 (2026-10-06) on, and codex's `VerifiedVersion()` is the version it ran against. What
 invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
-part: switch round trips is not established, and the known limitation the acceptance
-leaves, a refresh in flight across a switch, is **A codex login file can carry one
-account's tokens under another's account id** in § Hardening backlog — daily-use
-robustness.
+part: switch round trips is not established. The login a refresh in flight across a
+switch leaves is handled under [ADAPTERS.md](ADAPTERS.md) § Resident processes; what
+stays open around it is **codex's switch-away recapture has no attribution guard** in
+§ Hardening backlog — daily-use robustness.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -603,7 +603,7 @@ alternative exists (`secret-tool`).
   `captureSnapshot` directly, so a child that logged in as another account filed that
   credential *and* that identity under the target account's name, and a child whose
   refresh failed filed the tombstone; it now applies `keepSnapshotIdentity` and
-  `recaptureWouldDowngrade`, **those two and no third**.
+  `recaptureWouldDowngrade` among the switch-away recapture's guards, and no guard of its own.
   **And the prescription this entry used to carry for the second half was wrong — it is
   withdrawn, measured.** It said `keepSnapshotIdentity` should "route that comparison
   through `identityComparable` too", adding a refusal to `kae use`. Built that way, the
@@ -1050,20 +1050,16 @@ alternative exists (`secret-tool`).
   token measured codex's client against a mock token endpoint, so it settles none of
   these server-side questions.
 
-- **A codex login file can carry one account's tokens under another's account id**
-  (recorded 2026-10-07; not implemented). A codex process on main whose token refresh
-  is in flight when kae switches the live login to side writes main's rotated tokens
-  into side's `auth.json`, keeping side's `tokens.account_id`
-  ([ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
-  token, the race). kae does not notice: the switch-away recapture files that file
-  under side, and kae's identity read (the id_token's email) and its resident
-  comparison (`tokens.account_id`) name different accounts in it. The candidate
-  detection is the disagreement itself: the id_token's `chatgpt_account_id` claim
-  (upstream parses it: rust-v0.160.1 `codex-rs/login/src/token_data.rs` line 38, read
-  2026-10-07) against `tokens.account_id`. Done when the codex recapture declines such
-  a file with the warning and backup that a declined recapture gives, `kae doctor`
-  warns when the live codex login is one, and both are tested with a fixture built
-  like the race's file.
+- **codex's switch-away recapture has no attribution guard** (recorded 2026-10-07; not
+  scheduled). An outside `codex login` as another account while side is active is
+  filed under side on the next switch away: codex has no counterpart of
+  `TestSwitchAwaySkipsRecaptureAfterOutsideLogin`, because `keepSnapshotIdentity`
+  compares an identity-only artifact and only claude declares one. The candidate is to
+  compare the live `tokens.account_id` against the snapshot's, and the id_token's email
+  against the recorded identity. Neither catches every case: two emails in one
+  workspace share one workspace id, so the account-id comparison cannot tell them
+  apart, and the conflict verdict that declines a login mixing two accounts
+  ([ADAPTERS.md](ADAPTERS.md) § Resident processes) cannot either.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

@@ -128,6 +128,14 @@ var jaWarnings = map[string]string{
 
 	"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which of the two can still refresh": "現在の %s の認証情報とスナップショット %s/%s の新旧を kae が決められず、どちらがまだリフレッシュできるか判断できません",
 
+	// credential_conflict.go: the sentence every message about a mixed login starts from, the
+	// reason both recaptures give for one, and its remedy (freshness.go).
+	"%s carries one account's tokens under another account's id": "%sは、あるアカウントのトークンを別のアカウントの ID のもとに持っています",
+	"the live %s login":                  "現在の %s のログイン",
+	"%s, so kae cannot file it as %s/%s": "%[1]s。そのため kae は %[2]s/%[3]s として保存できません",
+
+	"the live %s login kae declined to adopt is kept in backup %s, but it mixes two accounts, so do not add it as an account; an account whose login was overwritten may need a fresh %s login": "kae が取り込みを見送った現在の %[1]s のログインはバックアップ %[2]s に残しましたが、2 つのアカウントが混ざっているため、アカウントとして登録しないでください。ログインを上書きされたアカウントは、%[3]s に改めてログインする必要があるかもしれません。",
+
 	"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token rotates single-use, so the live copy can no longer refresh": "スナップショット %[1]s/%[2]s には現在のストアより新しい %[3]s の認証情報があり、%[4]s のリフレッシュトークンは 1 回限りで更新されるため、現在のコピーはもうリフレッシュできません",
 
 	// identity.go.

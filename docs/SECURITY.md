@@ -198,6 +198,13 @@ child could rotate the live credential unseen — a cached value would be stale.
   **identity cache** of the ones that read that store, plus every globally isolated home
   of that account on disk — files carrying an account label, not a token. Nothing from
   them is printed.
+- The `credential_account_conflict` doctor check, and the recapture and capture
+  refusals that share its verdict, decode the JWT claims of the live codex login and
+  of each codex snapshot to compare workspace ids with `tokens.account_id`.
+  **Offline**, no network, no signature check: kae only reads claims of payloads it
+  already holds. The adapter returns a verdict with no id in it, and the messages name
+  only the tool, the account or snapshot, and a suggested command — never an id, an
+  email or a token.
 
   Two payload sources, and one of them reads live. The account-snapshot half reads
   kae's own secret store; the **bound-directory** half reads the per-directory

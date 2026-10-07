@@ -292,8 +292,9 @@ un-`Revoked` and undated at once.
 not.** The attribution and ordering guards read the same predicates on both sides of a
 seam whose consequences invert. `dirIdentityConfirms` and `liveLoginMatchesBackup`
 decline to *overwrite* or *delete*, so refusing keeps what exists. The two recaptures
-(`keepSnapshotIdentity` and `recaptureWouldDowngrade`, via `kae use`'s switch-away and
-`kae run -s`'s post-child pass) decline to *preserve*, and their caller then overwrites
+(`kae use`'s switch-away and `kae run -s`'s post-child pass, through
+`keepSnapshotIdentity`, `recaptureWouldDowngrade` and `credentialConflicted`) decline
+to *preserve*, and their caller then overwrites
 the live store — so refusing **destroys** the copy unless a backup holds it. `kae use`
 gets that for free (`createBackup` runs before its recapture); `kae run -s` does not (its
 backup predates the child) and creates a second one, reason `run-unattributable`, whose
@@ -305,6 +306,13 @@ second instance actually was, so a rule keyed on "new" would have read as not ap
 `kae rollback` must not target it (`latestRestorable`). Ported without re-asking the
 question, this shipped the logout twice in one branch — once on attribution, once on
 ordering.
+**A login that mixes two accounts is kept and never adopted.** A codex login whose
+conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes) holds
+one account's tokens under another's account id, so no account owns it whole: filing it
+under the active account, under the account its tokens name, or under a new name all
+record a login that is partly another account's. The recaptures decline it into the
+backup like any other refusal, `kae add` refuses it, and the remedy a refusal gives
+never pairs that backup with `kae add` the way the other refusals do.
 **Which side to keep is forced, not chosen**, and the fact that forces it is worth
 knowing before re-deriving it: **nothing backs up an account snapshot.** `createBackup`
 records live artifacts only (`artifact.ReadLive`), and no command archives a snapshot,
@@ -339,8 +347,9 @@ reports one and restores anyway. Ordering never establishes *whose* login two co
 are, so every consumer owes an attribution guard, and **which record it compares against
 is not interchangeable**: `run -s` reads the **backup**, never the account snapshot,
 because its own recapture has already rewritten that snapshot with what the child left
-live. That recapture is itself guarded now — the same two the switch-away recapture
-applies and no third, so a foreign login or a tombstone is refused rather than filed —
+live. That recapture is itself guarded now — the same guards the switch-away recapture
+applies and no other, so a foreign login, a tombstone or a mixed codex login is refused
+rather than filed —
 which narrows what the snapshot can be wrong about without making it a record of the
 pre-child state, so the backup stays the right side to read.
 Two deliberate asymmetries to leave alone. `run -s` also requires the target

@@ -4,16 +4,18 @@
 
 Minor release. `kae use`, `kae add` and `kae rollback` restart codex's managed
 daemon when it is not using the account they leave live, and on macOS offer to quit
-and relaunch the ChatGPT desktop app after changing codex's account, so resident
-processes do not keep the previous account; `--no-restart` warns instead.
-`kae doctor` reports a daemon on another account as `resident_drift`, and usage
-drops a codex reading whose rollout another captured account created
-([CLI.md](CLI.md) § kae use Semantics, **Resident processes (codex)**). The codex
-adapter's verified version moves to 0.160.1 and the claude adapter's to 2.1.288.
-Release binaries are no longer built for Intel macOS (darwin/amd64). The release is
-the tag `v0.24.0` and its GitHub release once published;
-[ACCEPTANCE.md](ACCEPTANCE.md) § v0.24.0 candidate records the checks and the
-publication result.
+and relaunch the ChatGPT desktop app after changing codex's account, so neither
+keeps the previous account; long-running codex sessions get a warning to restart
+them by hand, and `--no-restart` warns instead of restarting. `kae doctor --yes`
+reports a daemon on another account as `resident_drift`, and usage drops a codex
+reading whose rollout another captured account created ([CLI.md](CLI.md) § kae use
+Semantics, **Resident processes (codex)**). `--full` shows each Limit reading's
+age. The codex adapter's verified version moves to 0.160.1, the claude adapter's
+to 2.1.288 and the agy adapter's to 1.2.12. Release binaries are no longer built
+for Intel macOS (darwin/amd64), and the published archives are the first signed by
+the Packslip 1.6.0 Action. The release is the tag `v0.24.0` and its GitHub release
+once published; [ACCEPTANCE.md](ACCEPTANCE.md) § v0.24.0 candidate records the
+checks and the publication result.
 
 ## Release procedure
 

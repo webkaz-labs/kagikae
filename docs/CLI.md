@@ -292,12 +292,13 @@ them as follows; tools without resident processes are unaffected.
    be read or names another socket — kae does not check which account the daemon
    then holds, in either case — `restart_failed` when the command cannot be started
    or exits non-zero, and `restart_pending` when it has not finished within 30 s.
-   kae then stops waiting and leaves the command running, never killing it. The command runs in a session
-   of its own, so the interrupt (Ctrl-C) and hangup of kae's terminal do not reach
-   it: one that ends kae while it waits, which then reports nothing, leaves the
-   command running too. Upstream's restart stops the old daemon, waiting up to its
-   `shutdownGraceSeconds` (60 s by default, 0 to 300 s) for running tasks before it
-   forces the daemon down, and then starts the new daemon itself
+   kae then stops waiting and leaves the command running, never killing it. The
+   command runs in a session of its own, so the interrupt (Ctrl-C) and hangup of
+   kae's terminal do not reach it: one that ends kae while it waits, which then
+   reports nothing, leaves the command running too. Upstream's restart stops the old
+   daemon, waiting up to its `shutdownGraceSeconds` (60 s by default, 0 to 300 s)
+   for running tasks before it forces the daemon down, and then starts the new
+   daemon itself
    ([ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the
    quit dialog), so a command killed midway could leave no daemon running. A
    command kae left running was seen to go on and start the new daemon after kae
@@ -431,13 +432,13 @@ except the success, which sits under the command's result line:
 not suppress them, and they never change the exit code. With `--json`, each result
 carries them in `residents` (§ `kae use ... --json` (the switch report)), and no
 prompt is shown. The warning that kae became the daemon's first client is the
-exception: it goes to stderr only, and nothing in the JSON report carries it. Only the global, real-home codex daemon is concerned: `use -i`,
-`run -i` and `pin -i` run codex under their own `CODEX_HOME`, which has its own
-daemon socket, and kae neither probes nor restarts those. `kae run -s` writes the
-real codex home for the child's lifetime and is outside this reconcile: its child
-runs under the real `CODEX_HOME`, so a codex session it starts reaches the global
-daemon if it uses the daemon at all. Whether a session in a `pin -s` directory
-reaches the global daemon is not measured
+exception: it goes to stderr only, and nothing in the JSON report carries it. Only
+the global, real-home codex daemon is concerned: `use -i`, `run -i` and `pin -i` run
+codex under their own `CODEX_HOME`, which has its own daemon socket, and kae neither
+probes nor restarts those. `kae run -s` writes the real codex home for the child's
+lifetime and is outside this reconcile: its child runs under the real `CODEX_HOME`,
+so a codex session it starts reaches the global daemon if it uses the daemon at all.
+Whether a session in a `pin -s` directory reaches the global daemon is not measured
 ([ROADMAP.md](ROADMAP.md) § Hardening backlog — daily-use robustness).
 
 ## kae run Semantics
@@ -2778,8 +2779,8 @@ sessions', is present under the same condition when the app reads `running` or
 `profile` is `null` for the tool+account form. `kae add --no-login --json`
 uses the same shape with `"captured": true` instead of `"applied"` and no
 `backup_id`. Its `residents` is always `[]`: it changes no login and does not
-connect to the daemon (§ kae add Semantics). With `--dry-run`, `ok` reflects whether the plan is valid and
-`actions` lists what would change.
+connect to the daemon (§ kae add Semantics). With `--dry-run`, `ok` reflects whether
+the plan is valid and `actions` lists what would change.
 
 ### Bare `kae use --json` (the idempotent apply report)
 

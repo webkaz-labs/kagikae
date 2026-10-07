@@ -111,12 +111,13 @@ cutoff") and `mise ls-remote` hid it. On such a mise, a default-policy pass for 
 fresh tag therefore does not show that users of a fuzzy or `latest` request can
 install it yet. An older mise may refuse a fresh tag even when its signature
 verifies; the identity control then fails closed because the refusal is not an
-identity mismatch. Wait for that policy's cutoff, or, only with explicit operator
-approval for the isolated check, run
-`KAE_RELEASE_VERIFY_FRESH=1 mise run release-verify -- vX.Y.Z`. This sets the
-temporary consumer configuration's minimum age to zero; it changes neither the
-operator's configuration nor the signature requirements. Record the exception
-in the acceptance result; it is not a default-policy pass.
+identity mismatch. The operator's post-publication check is the publisher
+verifying their own release, so it runs
+`KAE_RELEASE_VERIFY_FRESH=1 mise run release-verify -- vX.Y.Z` as the standard
+step instead of waiting for the cutoff. This sets the temporary consumer
+configuration's minimum age to zero; it changes neither the operator's
+configuration nor the signature requirements. Record in the acceptance result
+that the check ran with zero minimum age; it is not a default-policy pass.
 
 If archives exist but the Packslip job fails, the release is incomplete. Retry
 only the failed signing job against the same published bytes, then rerun the

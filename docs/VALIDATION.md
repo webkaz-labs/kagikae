@@ -306,8 +306,9 @@ Linux run failed on that until it did. The signing test
 does not run the Action's shell wrapper or OIDC signing. The fixture runner
 builds temporary application versions and uses ephemeral key/unlogged trust only inside
 the smoke HOME. Its HTTP server does not forward requests. This checks the
-actual mise backend; production publication also needs
-`mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.
+actual mise backend; production publication also needs the post-publication
+`release-verify` run in [RELEASE.md](RELEASE.md) § Release procedure, with the
+GitHub OIDC signature.
 
 ```bash
 go run ./scripts/packslipverify fixture

@@ -70,8 +70,8 @@ invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
 part: switch round trips is not established. The login a refresh in flight across a
 switch leaves is handled under [ADAPTERS.md](ADAPTERS.md) § Resident processes, and an
 outside login as another account under [ADAPTERS.md](ADAPTERS.md) § Recapture attribution;
-what stays open around them is **A codex process left on the previous account is
-declined as an outside login** in § Hardening backlog — daily-use robustness.
+what stays open around them is **A codex process left on the previous account, when
+both accounts share one workspace** in § Hardening backlog — daily-use robustness.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -1051,14 +1051,18 @@ alternative exists (`secret-tool`).
   token measured codex's client against a mock token endpoint, so it settles none of
   these server-side questions.
 
-- **A codex process left on the previous account is declined as an outside login**
-  (not scheduled). A long-running codex process still on main that writes a consistent
-  main login into the live store while side is active is declined by the owner
-  comparison ([ADAPTERS.md](ADAPTERS.md) § Recapture attribution) as Different, which
-  keeps it out of side. But the reason says codex was logged in again outside kae and
-  the remedy offers to keep the login as an account of its own, while it is main's own
-  rotated token, and main's snapshot may hold a refresh token the rotation has already
-  invalidated. Done when that decline names the case and handles main's snapshot.
+- **A codex process left on the previous account, when both accounts share one
+  workspace** (not scheduled). A codex process still on main does not write while side's
+  login is on disk when the two have different workspaces: it compares the account id on
+  disk with its own and skips the refresh ([ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part:
+  an old-account process refreshing its token); only a refresh in flight across the
+  switch writes, and that file is a mixed login. That check compares
+  `tokens.account_id`, the workspace, so two users of one workspace pass it, and what
+  such a process then writes into side's file is not measured. Done when a measurement
+  in a scratch codex home with two users of one workspace records what lands on disk;
+  if it is main's tokens under side's workspace, the owner comparison
+  ([ADAPTERS.md](ADAPTERS.md) § Recapture attribution) declines it as Different with the
+  outside-login reason and remedy, which do not fit, and fixing that becomes the work.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

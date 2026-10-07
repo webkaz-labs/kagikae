@@ -328,10 +328,10 @@ from refreshing tokens concurrently. Therefore:
   best-effort and divergence-gated — a logged-out account is left untouched
   with a warning. It cannot track a refresh-token rotation that happens entirely
   outside kae; that case surfaces as the `credential_stale` warning, not a
-  silent repair. For codex it attributes nothing, so a login that a codex refresh
-  in flight across a switch left with one account's tokens under another's account
-  id is filed under the active account ([ADAPTERS.md](ADAPTERS.md) § Resident
-  processes).
+  silent repair. For codex it declines a login that a codex refresh in flight
+  across a switch left with one account's tokens under another's account id
+  ([ADAPTERS.md](ADAPTERS.md) § Resident processes) and a login that names another
+  owner ([ADAPTERS.md](ADAPTERS.md) § Recapture attribution).
 
 `kae run -i` operates in the global isolated home (`isolation/global/<tool>/<account>/`)
 with no live-store tool lock and no live mutation. It is safe to run concurrently

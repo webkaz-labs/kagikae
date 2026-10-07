@@ -166,7 +166,7 @@ func TestLoadCauseErrorsKeepTheirCause(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected a parse error")
 		}
-		l10ntest.ErrorText(t, "editor", err, "parse config for editing: the document has an invalid value or syntax", "編集する設定ファイルを解析できません: ドキュメントの値または構文が不正です", false)
+		l10ntest.ErrorText(t, "editor", err, "parse config for editing: the document has a syntax error at line 1, column 10", "編集する設定ファイルを解析できません: ドキュメントの 1 行目 10 列目に構文エラーがあります", false)
 	})
 }
 

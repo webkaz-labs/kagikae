@@ -473,6 +473,8 @@ var jaErrors = map[string]string{
 	"pointer %s traverses a non-object":              "ポインター %s がオブジェクトでない値をたどっています",
 	"patch json pointer %s: %w":                      "JSON ポインター %s を書き換えられません: %w",
 
+	"the document has a syntax error at line %d, column %d": "ドキュメントの %d 行目 %d 列目に構文エラーがあります",
+
 	// internal/picker.
 	"picker: %w":                      "ピッカー: %w",
 	"picker: unexpected final model":  "ピッカー: 終了時のモデルが想定外です",

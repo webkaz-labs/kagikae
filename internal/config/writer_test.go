@@ -136,3 +136,19 @@ func TestEditorSetAndClearDefaultProfile(t *testing.T) {
 		t.Fatalf("default not added: %q", cfg.DefaultProfile)
 	}
 }
+
+// A config the editor cannot parse names the position of the error, never the
+// content tomledit's message quotes.
+func TestNewEditorParseErrorDoesNotQuoteContent(t *testing.T) {
+	const placeholder = "sk-placeholder"
+	_, err := NewEditor([]byte("version = 1\ntoken = \"" + placeholder + "\n"))
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	if want := "parse config for editing: the document has a syntax error at line 2, column 24"; err.Error() != want {
+		t.Errorf("got %q, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), placeholder) {
+		t.Errorf("parse error quotes the config: %q", err)
+	}
+}

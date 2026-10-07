@@ -28,7 +28,7 @@ type Editor struct {
 func NewEditor(data []byte) (*Editor, error) {
 	doc, err := tomledit.Parse(bytes.NewReader(data))
 	if err != nil {
-		return nil, l10n.Errorf("parse config for editing: %w", patch.RedactTOMLError(err))
+		return nil, l10n.Errorf("parse config for editing: %w", patch.RedactTOMLEditError(err, data))
 	}
 	return &Editor{doc: doc}, nil
 }

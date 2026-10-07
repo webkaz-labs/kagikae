@@ -537,10 +537,9 @@ read-only requests and issuing no login, logout, refresh or daemon command:
   `/Applications/ChatGPT.app`.
 
 The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) (from § codex resident
-processes — local acceptance (2026-10-06) on); raising `VerifiedVersion()` is tracked
-in [ROADMAP.md](ROADMAP.md) § Current work order. No
-re-executor reaches these observations yet, so they are not in
-[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions.
+processes — local acceptance (2026-10-06) on). No re-executor reaches these
+observations yet, so they are not in [VALIDATION.md](VALIDATION.md) § Upstream
+Behaviour Assumptions.
 
 ### Preserved
 

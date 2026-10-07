@@ -97,8 +97,8 @@ func tomleditErrorOffset(msg string, data []byte) (int, bool) {
 		if err != nil || end < 1 || end > len(data) {
 			return 0, false
 		}
-		// The offset is where the scanner stopped: the end of the token it
-		// rejected, or the end of input when the input ends inside a token.
+		// The offset is where the scanner stopped: just past the rune it
+		// rejected, the end of a word-like token, or the end of input.
 		// Either way, name the last rune before it.
 		_, size := utf8.DecodeLastRune(data[:end])
 		return end - size, true

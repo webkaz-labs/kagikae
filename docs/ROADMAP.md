@@ -78,10 +78,13 @@ The operator's decisions, which the slices do not reopen, are the behaviour
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
 The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident
-processes — local acceptance (2026-10-06) on. The questions it raised are answered
-in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing
-its token; the contract is [ADAPTERS.md](ADAPTERS.md) § Resident processes, and the
-one gap it leaves, a refresh in flight across a switch, is **A codex login file can
+processes — local acceptance (2026-10-06) on. The question the earlier parts left
+open, what a process still on the old account does about its token, is answered in
+[ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
+token; the contract is [ADAPTERS.md](ADAPTERS.md) § Resident processes. What
+invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
+part: switch round trips is still not established, and the known limitation the
+answer leaves, a refresh in flight across a switch, is **A codex login file can
 carry one account's tokens under another's account id** in § Hardening backlog —
 daily-use robustness.
 

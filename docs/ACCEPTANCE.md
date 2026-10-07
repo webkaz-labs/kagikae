@@ -48,7 +48,7 @@ is bounded to what was inspected; an inference is marked as one.
 
 | Question | Observed | Not measured |
 |---|---|---|
-| What happens to the account a switch leaves | Over round trips between main and side, upstream invalidated the refresh token of the account a switch had left: the daemon's log showed `token_revoked` / `refresh_token_invalidated`, while kae's credential for that account still matched its account id and its access token had not expired. With the daemon, the ChatGPT app and a `codex resume` TUI running since 2026-09-30 and not connected to the daemon all resident, it happened twice in 3 round trips. With the daemon alone it did not happen in 4 round trips, nor with the daemon and the app quit and relaunched by `--yes` each time in 4. What invalidated it is not established: the fifth part below shows that a process on the old account neither refreshes nor writes while the disk holds another account; a refresh in flight across a switch is one mechanism that would supersede the snapshot, but it was not shown to be the one. Logging in again with `kae add --restore codex <account>` (or `kae add codex <account>` while it is live), which updates the snapshot, recovered the account. | What invalidated the token. |
+| What happens to the account a switch leaves | Over round trips between main and side, upstream invalidated the refresh token of the account a switch had left: the daemon's log showed `token_revoked` / `refresh_token_invalidated`, while kae's credential for that account still matched its account id and its access token had not expired. With the daemon, the ChatGPT app and a `codex resume` TUI running since 2026-09-30 and not connected to the daemon all resident, it happened twice in 3 round trips. With the daemon alone it did not happen in 4 round trips, nor with the daemon and the app quit and relaunched by `--yes` each time in 4. What invalidated it is not established: the fifth part below shows that a process on the old account neither refreshes nor writes while the disk holds another account (measured on the app-server; a TUI is inferred to behave alike); a refresh in flight across a switch is one mechanism that would supersede the snapshot, but it was not shown to be the one. Logging in again with `kae add --restore codex <account>` (or `kae add codex <account>` while it is live), which updates the snapshot, recovered the account. | What invalidated the token. |
 | Does a newly started TUI use the daemon | A `codex` TUI started with this version was connected to the daemon: the peer of the socket the daemon had accepted was the TUI's socket. After a switch restarted the daemon, the TUI's `/status` showed the new account and it still answered. | |
 | What `--no-restart` leaves running | After a switch with `--no-restart` the daemon still used the previous account 0, 20, 40 and 60 s later: it did not load the new `auth.json`. A TUI connected to it showed the previous account meanwhile. | |
 | Does the ChatGPT app follow a switch without a relaunch | After one switch without a relaunch the app showed and used the account on disk; after the next it created a new task on the previous account (the new rollout's creator did not match the live credential). It does not follow a switch reliably. | |
@@ -76,12 +76,13 @@ inference are marked as such.
 
 Measured by the operator and the operator's agent on 2026-10-06 on macOS with codex
 0.160.1, while main was at `52750d2`. The first three rows ran the `kae` at
-`~/.local/bin/kae`, built from main at `52750d2`, on the same machine, switching between
-main and side; the last three in an isolated codex home, described below. It
-answers what the first three parts and [ROADMAP.md](ROADMAP.md) § Current work
-order left open, except whether a resident process still on the old account writes
-a refreshed token back. Each row is bounded to what was inspected; a source reading and an inference are marked as such. Source
-readings are of rust-v0.160.1, with paths relative to `codex-rs/`, read 2026-10-06.
+`~/.local/bin/kae`, built from main at `52750d2`, on the same machine, switching
+between main and side; the last three in an isolated codex home, described below. It
+answers what the first three parts and [ROADMAP.md](ROADMAP.md) § Current work order
+left open, except whether a resident process still on the old account writes a
+refreshed token back. Each row is bounded to what was inspected; a source reading
+and an inference are marked as such. Source readings are of rust-v0.160.1, with
+paths relative to `codex-rs/`, read 2026-10-06.
 
 **The isolated codex home.** Under `env -i`, `CODEX_HOME` and `HOME` pointed to a
 temporary directory holding a made-up ChatGPT-shaped `auth.json` (an unsigned JWT
@@ -919,13 +920,13 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       (`cli|` + 16 hex) is observable on the item itself:
       `security find-generic-password -s "Codex Auth"`, attributes only.
 - [ ] Log in as a second account; `kae add codex` it.
-- [ ] `kae use codex <first>`: a fresh `codex app-server --listen stdio://`
-      answers `account/read` (after `initialize` and `initialized`) with the first
-      account's email — the verbatim keyring round-trip restored it. `codex login
-      status` prints only the login mode (rust-v0.160.1 `codex-rs/cli/src/login.rs`
-      lines 475 to 478), so it cannot show which account. The item's account attribute is unchanged
-      (`security find-generic-password -s "Codex Auth"`, attributes only): one
-      codex home has one item whichever account is logged into it.
+- [ ] `kae use codex <first>`: a fresh `codex app-server --listen stdio://` answers
+      `account/read` (after `initialize` and `initialized`) with the first account's
+      email — the verbatim keyring round-trip restored it. `codex login status`
+      prints only the login mode (rust-v0.160.1 `codex-rs/cli/src/login.rs` lines
+      475 to 478), so it cannot show which account. The item's account attribute is
+      unchanged (`security find-generic-password -s "Codex Auth"`, attributes only):
+      one codex home has one item whichever account is logged into it.
 - [ ] A **second `CODEX_HOME`** logged in at the same time still is afterwards:
       `account/read` on a fresh `CODEX_HOME=<other> codex app-server --listen
       stdio://` reports its own account (not `codex login status`, which shows only

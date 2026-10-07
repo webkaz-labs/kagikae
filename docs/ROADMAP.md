@@ -77,20 +77,13 @@ of its own; until then it stays where it is.
 The operator's decisions, which the slices do not reopen, are the behaviour
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
-The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) § codex resident
-processes — local acceptance (2026-10-06), [ACCEPTANCE.md](ACCEPTANCE.md) § Second
-part: switch round trips, [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads,
-running tasks and the quit dialog, [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a
-restart past kae's limit, the app's n and an isolated daemon and
-[ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
-token. A resident process still on the old account neither refreshes nor writes
-while codex's login names another account, and keeps its old access token until it
-expires (measured on codex's app-server; a TUI and the ChatGPT app's embedded codex
-are inferred to behave alike); a refresh already in flight when kae switches can
-write the old account's tokens into the new account's file, a known limitation
-([ADAPTERS.md](ADAPTERS.md) § Resident processes) whose detection is **A codex login
-file can carry one account's tokens under another's account id** in § Hardening
-backlog — daily-use robustness.
+The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident
+processes — local acceptance (2026-10-06) on. The questions it raised are answered
+in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing
+its token; the contract is [ADAPTERS.md](ADAPTERS.md) § Resident processes, and the
+one gap it leaves, a refresh in flight across a switch, is **A codex login file can
+carry one account's tokens under another's account id** in § Hardening backlog —
+daily-use robustness.
 
 Done when codex's `VerifiedVersion()` is raised to the version the acceptance ran
 against.

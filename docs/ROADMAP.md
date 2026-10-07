@@ -37,12 +37,11 @@ Global mise tasks are excluded from priority work; direct `kae` commands and
 completion serve the agreed usage.
 
 The offline recovery assessment is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Offline recovery and validation assessment. The remaining recovery work is
-raw-artifact preservation when an adapter cannot read its declared unit: decide
-whether a separate explicit rescue can retain a malformed containing document
-without enabling whole-document writes or account adoption. Existing relogin and
-original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
-Do not widen those mutation paths without affected acceptance.
+§ Offline recovery and validation assessment, which also records why kae has no
+raw rescue for a credential it cannot read and the condition that reopens it.
+Existing relogin and original-store restore are described in [CLI.md](CLI.md)
+§ kae preservation Semantics. Do not widen those mutation paths without affected
+acceptance.
 
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)

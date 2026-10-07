@@ -477,7 +477,7 @@ login health. No additional real login or live credential investigation was used
 
 | Candidate | Verdict and evidence |
 |---|---|
-| Unknown-format preservation and explicit recovery | Accepted command regressions and recovery documentation. `TestPreservationUnknownFormatInterruptedLoginAndRecovery` covers unfamiliar objects and missing/nonnumeric deadlines, interrupted retries, displaced-copy retention, unchanged snapshots and redaction. `TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow` separates malformed containing JSON from readable unknown members and unreadable files. Whole-document rescue remains deferred: the file driver's declared unit is a JSON pointer, and bypassing that read would change the restoration contract. |
+| Unknown-format preservation and explicit recovery | Accepted command regressions and recovery documentation. `TestPreservationUnknownFormatInterruptedLoginAndRecovery` covers unfamiliar objects and missing/nonnumeric deadlines, interrupted retries, displaced-copy retention, unchanged snapshots and redaction. `TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow` separates malformed containing JSON from readable unknown members and unreadable files. Whole-document rescue is not built (operator decision, 2026-10-07); the refusal names the unreadable location and leaves it unchanged instead (see below). |
 | Failure and retry safety | Accepted `TestReloginPreservationWriteFailureAndExplicitRetry`, covering backend write failure, visible pending metadata, refused automatic retry, explicit removal and retried flow with source intact. Existing capacity, protected-source, concurrent credential/mapping changes and interrupted-storage controls were included in the focused run. No automatic incomplete-record repair was added. |
 | State-specific diagnostics | Accepted the observation/recovery table in CLI and the Cursor verification-boundary message. Existing `unsafe_refused`, `auth_unchanged`, metadata diagnostics and preservation states remain the contract; no new JSON tokens or validity claims were added. |
 | Numeric zero versus unknown deadline | Accepted conservative characterization in `TestClaudeFreshnessDeadlineUncertaintyDoesNotRevokeTokens`: missing, null, nonnumeric, zero, negative and positive deadlines with populated tokens. Representation change deferred because preservation admission uses artifact bytes, not deadline ordering; a separate field currently has no accepted new consumer. Revocation/deletion changes need separate tool evidence. |
@@ -486,6 +486,31 @@ login health. No additional real login or live credential investigation was used
 | Codex per-directory keyring preparation | Accepted a teardown continuation in `TestKeychainCodexHomesCoexist`: removing the selected item leaves the other home's bytes intact. Existing canonical-path addressing and capability-refusal controls were rerun. The per-directory capability remains disabled pending the optional live capability check below. |
 | Cursor Linux preparation | Accepted `TestCursorLinuxFixtureDoesNotEnableCredentialAccess`, with access/refresh/API-key and preserved Bedrock fields at the documented XDG path. Adapter artifacts remain unsupported and the fixture remains untouched. Linux enablement is deferred pending the actual file-store round trip; synthetic storage is not upstream compatibility evidence. |
 | CI placement and delivery | Accepted reuse of the existing `go test ./...` step for the new regressions. No workflow steps or cache policy were added; additional CI admission still requires the Linux cost and distinct-control evidence in ROADMAP. |
+
+**Raw rescue is not built.** A separate command that keeps the raw bytes of a unit
+kae cannot read was considered and declined on 2026-10-07. kae never writes a unit
+it cannot read, and the unreadable cases split four ways:
+
+1. A malformed `~/.claude.json`. Claude Code copies a corrupted config aside as
+   `<name>.corrupted.<timestamp>` and continues with defaults. This is a static
+   read of the installed claude 2.1.288 binary (its `Config file corrupted:` and
+   `Could not back up corrupted config` strings), not an executed check. kae
+   already declares that file's identity artifact safe to lose
+   (`oauthAccountSpec` in `internal/adapter/claude/claude.go`).
+2. A non-JSON `.credentials.json` (claude's file driver on Linux and Windows). The
+   same static read shows upstream's plaintext store returning no login when the
+   file does not parse, so those bytes are not a working login upstream either.
+3. A keychain item. kae writes only payloads that pass its keychain shape guard,
+   and a malformed item is left unchanged.
+4. Valid JSON without the declared pointer. That is upstream schema drift, handled
+   through the [upstream-auth-drift](../.claude/skills/upstream-auth-drift/SKILL.md)
+   skill, not a rescue.
+
+`kae relogin` refuses such a unit before the login flow, names its location and
+says kae left it unchanged ([CLI.md](CLI.md) § kae preservation Semantics). Reopen
+the rescue only on a reported case where a unit kae could not read held a
+recoverable login that the tool's own login then overwrote, or on an upstream
+release that drops the corrupted-config copy.
 
 The focused Go JSON report contained passing test events and no failed or skipped
 test events for preservation/relogin, capability, addressing, deadline and alias

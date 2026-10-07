@@ -42,6 +42,43 @@ func credentialConflicted(tool string, specs []artifact.Spec, values []artifact.
 	return false
 }
 
+// liveOwnerDiffers reports whether a live credential among values, read for
+// specs, provably belongs to another account than the payload acc's snapshot
+// holds for it (adapter.OwnerComparer's OwnerDifferent): the attribution guard of
+// a tool whose identity lives inside the credential, which keepSnapshotIdentity
+// cannot compare. Only positive evidence counts — a tool without the comparison,
+// an absent live value, a snapshot payload kae cannot read and an Unknown verdict
+// all decline nothing, as before the guard existed.
+func liveOwnerDiffers(ctx context.Context, be secret.Backend, tool string, specs []artifact.Spec,
+	acc account.Account, values []artifact.Value,
+) bool {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return false
+	}
+	oc, ok := ad.(adapter.OwnerComparer)
+	if !ok {
+		return false
+	}
+	for i, sp := range specs {
+		if sp.IdentityOnly || !values[i].Present {
+			continue
+		}
+		art, ok := acc.Artifacts[sp.Name]
+		if !ok || !art.Present {
+			continue
+		}
+		recorded, found, err := be.Get(ctx, art.SecretRef)
+		if err != nil || !found {
+			continue
+		}
+		if oc.CompareOwner(recorded, values[i].Data) == adapter.OwnerDifferent {
+			return true
+		}
+	}
+	return false
+}
+
 // mixedLoginFact is the one sentence every message about a Conflict starts from:
 // subject names the login (the live one, or a snapshot) and nothing of its
 // contents — the ids that disagree are personal data, and the verdict carries

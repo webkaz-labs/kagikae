@@ -32,12 +32,37 @@ const (
 )
 
 // workspaceToken is a JWT whose "https://api.openai.com/auth" claim names
-// account as the workspace; "" leaves the claim out. Every token carries the
-// email, which must never reach output.
+// account as the workspace and conflictUser(account) as the user; "" leaves the
+// claim out. Every token carries the email, which must never reach output.
 func workspaceToken(account string) string {
-	claims := map[string]any{"email": conflictEmail}
-	if account != "" {
-		claims["https://api.openai.com/auth"] = map[string]any{"chatgpt_account_id": account}
+	if account == "" {
+		return ownerToken("", "", conflictEmail)
+	}
+	return ownerToken(account, conflictUser(account), conflictEmail)
+}
+
+// conflictUser is the fixture user id of workspace account: one user per
+// workspace unless a fixture says otherwise. It contains account, so
+// assertNoConflictPII catches it too.
+func conflictUser(account string) string { return "user-" + account }
+
+// ownerToken is a JWT naming workspace and user in the
+// "https://api.openai.com/auth" claim and email at the top level; "" leaves that
+// value out.
+func ownerToken(workspace, user, email string) string {
+	claims := map[string]any{}
+	if email != "" {
+		claims["email"] = email
+	}
+	auth := map[string]any{}
+	if workspace != "" {
+		auth["chatgpt_account_id"] = workspace
+	}
+	if user != "" {
+		auth["chatgpt_user_id"] = user
+	}
+	if len(auth) > 0 {
+		claims["https://api.openai.com/auth"] = auth
 	}
 	body, _ := json.Marshal(claims)
 	seg := func(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }

@@ -144,7 +144,7 @@ func (c Copilot) Identity(_ context.Context, env adapter.Env) (string, error) {
 		Login string `json:"login"`
 	}
 	if err := json.Unmarshal(raw, &user); err != nil {
-		return "", l10n.Errorf("parse %s%s: %w", path, lastUserPointer, err)
+		return "", l10n.Errorf("parse %s%s: %w", path, lastUserPointer, patch.RedactParseError(err))
 	}
 	if user.Login == "" {
 		return "", l10n.Errorf("no %s/login in %s", lastUserPointer, path)

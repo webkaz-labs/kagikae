@@ -21,6 +21,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/jwt"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 // KeychainService is the macOS Keychain item service Codex uses when the
@@ -161,7 +162,7 @@ func configuredStore(env adapter.Env) (string, error) {
 	}
 	var cfg codexConfig
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		return "", l10n.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, patch.RedactTOMLError(err))
 	}
 	store := cfg.Store
 	if store == "" {
@@ -367,7 +368,7 @@ func (Codex) Identity(ctx context.Context, env adapter.Env) (string, error) {
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", l10n.Errorf("parse %s: %w", source, err)
+		return "", l10n.Errorf("parse %s: %w", source, patch.RedactParseError(err))
 	}
 	if email := jwtEmailClaim(doc.Tokens.IDToken); email != "" {
 		return email, nil

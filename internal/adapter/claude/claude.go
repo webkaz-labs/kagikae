@@ -35,6 +35,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 // KeychainService is the base of Claude Code's macOS Keychain item service
@@ -437,7 +438,7 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 		} `json:"oauthAccount"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", l10n.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, patch.RedactParseError(err))
 	}
 	if doc.OAuthAccount.EmailAddress == "" {
 		return "", l10n.Errorf("no oauthAccount.emailAddress in %s", path)

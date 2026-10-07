@@ -17,6 +17,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/jwt"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
@@ -130,7 +131,7 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 		} `json:"openai"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", l10n.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, patch.RedactParseError(err))
 	}
 	if email := openaiProfileEmail(doc.Openai.Access); email != "" {
 		return email, nil

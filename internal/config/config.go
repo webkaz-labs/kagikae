@@ -13,6 +13,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -117,7 +118,7 @@ func Load(path string) (*Config, []l10n.Msg, error) {
 	cfg := Default()
 	meta, err := toml.Decode(string(data), cfg)
 	if err != nil {
-		return nil, nil, l10n.Errorf("parse config: %w", err)
+		return nil, nil, l10n.Errorf("parse config: %w", patch.RedactTOMLError(err))
 	}
 	var warnings []l10n.Msg
 	for _, key := range meta.Undecoded() {

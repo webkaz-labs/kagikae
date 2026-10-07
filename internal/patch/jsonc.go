@@ -81,7 +81,7 @@ func DeletePointerJSONC(doc []byte, pointer string) ([]byte, error) {
 func parseJSONC(doc []byte) (*hujson.Value, any, error) {
 	parsed, err := hujson.Parse(doc)
 	if err != nil {
-		return nil, nil, l10n.Errorf("parse jsonc: %w", err)
+		return nil, nil, l10n.Errorf("parse jsonc: %w", RedactParseError(err))
 	}
 	// Standardize only the clone: decodeDoc then supplies strict semantic
 	// validation (including duplicate-member rejection), while parsed retains

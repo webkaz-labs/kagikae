@@ -80,9 +80,9 @@ Measured by the operator and the operator's agent on 2026-10-06 on macOS with co
 main and side; the last three in an isolated codex home, described below. It
 answers what the first three parts and [ROADMAP.md](ROADMAP.md) § Current work
 order left open, except whether a resident process still on the old account writes
-a refreshed token back, which the fifth part below answers. Each row is bounded to what was inspected; a source reading
-and an inference are marked as such. Source readings are of rust-v0.160.1, with
-paths relative to `codex-rs/`, read 2026-10-06.
+a refreshed token back, which the fifth part below answers. Each row is bounded to
+what was inspected; a source reading and an inference are marked as such. Source
+readings are of rust-v0.160.1, with paths relative to `codex-rs/`, read 2026-10-06.
 
 **The isolated codex home.** Under `env -i`, `CODEX_HOME` and `HOME` pointed to a
 temporary directory holding a made-up ChatGPT-shaped `auth.json` (an unsigned JWT
@@ -134,9 +134,9 @@ and codex's log.
 | Question | Observed | Not measured |
 |---|---|---|
 | Does a process on main refresh and write back while the disk still holds main (the control) | `account/read` with `refreshToken: true` sent main's refresh token to the mock once, and `auth.json` then held the rotated tokens and a new `last_refresh`, written in place (same inode). With main's access token inside its 5-minute window, a request that needs the token (`account/rateLimits/read`) did the same. | |
-| Does it refresh once the disk holds side | No. After the rename to side, `account/read` with `refreshToken: true`, and `account/rateLimits/read` inside the 5-minute window, sent nothing to the mock, and `auth.json` kept its sha256 and mtime. codex logged `Skipping auth reload due to account id mismatch` and, on the second path, `ERROR Failed to refresh token: Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.` The rate-limit request went out with main's old access token. `account/read` still answered success naming main (`workspaceRouting.chatgptAccountId` main's): the mismatch appears only in the log. Read in upstream's source: `refresh_token` (lines 2848 to 2884) first re-reads the stored login through `reload_if_account_id_matches` (lines 2487 to 2520), which compares the account id on disk (`tokens.account_id`, `get_account_id` at line 624) with the one the process holds; on a mismatch it returns the mismatch error (line 211) without a network request or a write, and keeps the cached login. `auth()` logs that error and goes on with the old login (lines 2393 to 2406); `refresh_token_if_requested` in `app-server/src/request_processors/account_processor.rs` (lines 1025 to 1038) drops it from `account/read`'s answer. A refresh is due when the access token's `exp` is within 5 minutes (`should_refresh_proactively`, lines 3004 to 3026), or only when there is no `exp`, when `last_refresh` is over 8 days old; it is checked when a request needs the token, with no timer. So the process keeps main's access token until it expires, and then fails. | The 401 path, read only: its first step, `UnauthorizedRecovery::next` (lines 1976 to 2010), applies the same account check and stops on a mismatch; only after a match does it refresh with the token it holds (lines 2012 to 2017). |
-| Does it adopt another login of the same account | Yes, silently. With alt's file (main's account id, alt's tokens and email) renamed in, `account/read` with `refreshToken: true` sent nothing to the mock and wrote nothing; codex logged `Skipping token refresh because auth changed after guarded reload`, and from then on answered alt's email and sent alt's access token. | |
-| What a refresh in flight across a switch writes (the race) | With the mock answering 5 s late, side was renamed in 1 s after main's refresh request reached it. When the answer came, codex wrote main's rotated tokens into side's file in place (side's inode): `tokens.account_id` stayed side's, while the id_token (email you@example.com), the access token and the refresh token were main's. It then adopted that file: `account/read` named you@example.com with `workspaceRouting.chatgptAccountId` side's, and its next backend request carried main's new access token with side's account id. side's refresh token was no longer on disk, and main's new refresh token was only in that file. Read in upstream's source: the account check precedes the network round trip, and `persist_tokens` (lines 1599 to 1621) re-reads the stored login, replaces only the three tokens and `last_refresh`, and saves it, after which `reload()` (line 2481) adopts it without a check (`refresh_and_persist_chatgpt_token`, lines 3092 to 3108). The window is that round trip. | How often the window is met on a real network. |
+| Does it refresh once the disk holds side | No. After the rename to side, `account/read` with `refreshToken: true`, and `account/rateLimits/read` inside the 5-minute window, sent no refresh request to the mock, and `auth.json` kept its sha256 and mtime. codex logged `Skipping auth reload due to account id mismatch` and, on the second path, `ERROR Failed to refresh token: Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.` The rate-limit request went out with main's old access token. `account/read` still answered success naming main (`workspaceRouting.chatgptAccountId` main's): the mismatch appears only in the log. Read in upstream's source: `refresh_token` (lines 2848 to 2882) first re-reads the stored login through `reload_if_account_id_matches` (lines 2487 to 2520), which compares the account id on disk (`tokens.account_id` for a ChatGPT login: `get_account_id`, lines 614 to 626, its fallback arm at line 624) with the one the process holds; on a mismatch it returns the mismatch error (line 211) without a network request or a write, and keeps the cached login. `auth()` logs that error and goes on with the old login (lines 2393 to 2406); `refresh_token_if_requested` in `app-server/src/request_processors/account_processor.rs` (lines 1026 to 1039) drops it from `account/read`'s answer. A refresh is due when the access token's `exp` is within 5 minutes (`should_refresh_proactively`, lines 3004 to 3026), or only when there is no `exp`, when `last_refresh` is over 8 days old; it is checked when a request needs the token, with no timer. So the process keeps main's access token until it expires, and then fails. | The 401 path, read only: its first step, `UnauthorizedRecovery::next` (lines 1976 to 2010), applies the same account check and stops on a mismatch; only after a match does it refresh with the token it holds (lines 2012 to 2017). |
+| Does it adopt another login of the same account | Yes, silently. With alt's file (main's account id, alt's tokens and email) renamed in, `account/read` with `refreshToken: true` sent no refresh request to the mock and wrote nothing; codex logged `Skipping token refresh because auth changed after guarded reload`, and from then on answered alt's email and sent alt's access token. | |
+| What a refresh in flight across a switch writes (the race) | With the mock answering 5 s late, side was renamed in 1 s after main's refresh request reached it. When the answer came, codex wrote main's rotated tokens into side's file in place (side's inode): `tokens.account_id` stayed side's, while the id_token (email you@example.com), the access token and the refresh token were main's. It then adopted that file: `account/read` named you@example.com with `workspaceRouting.chatgptAccountId` side's, and its next backend request carried main's new access token with side's account id. side's refresh token was no longer on disk, and main's new refresh token was only in that file. Read in upstream's source: the account check precedes the network round trip, and `persist_tokens` (lines 1599 to 1622) re-reads the stored login, replaces only the three tokens and `last_refresh`, and saves it, after which `reload()` (line 2481) adopts it without a check (`refresh_and_persist_chatgpt_token`, lines 3092 to 3108). The window is that round trip. | How often the window is met on a real network. |
 | What switching back to the old account does | With main's original file renamed back in, byte for byte what the process held, `account/read` with `refreshToken: true` refreshed (one request with main's refresh token) and wrote the rotated tokens to `auth.json`. A copy of main's login taken before that refresh then holds the superseded refresh token. | |
 
 What kae does with these, read in kae's source at `4a18a5c` and not run:
@@ -169,7 +169,7 @@ Inferred, not measured: that the real token server rotates the refresh token on
 each refresh and rejects the superseded one — the mock did, and upstream's source
 has an error for a reused refresh token (`refresh_token_reused`, line 1687, message at
 line 207) and replaces the stored refresh token when an answer carries one
-(lines 1614 to 1616); and that the ChatGPT desktop app's embedded codex and a TUI
+(lines 1616 to 1618); and that the ChatGPT desktop app's embedded codex and a TUI
 refresh through this same `AuthManager` as the app-server measured here. Not
 established: whether the ChatGPT app gives its codex externally managed tokens,
 which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 1146).
@@ -921,13 +921,17 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       (`cli|` + 16 hex) is observable on the item itself:
       `security find-generic-password -s "Codex Auth"`, attributes only.
 - [ ] Log in as a second account; `kae add codex` it.
-- [ ] `kae use codex <first>`: a fresh-process `codex login status` (or a
-      `codex` run) reports logged in as the first account — the verbatim keyring
-      round-trip restored it. The item's account attribute is unchanged
+- [ ] `kae use codex <first>`: a fresh `codex app-server --listen stdio://`
+      answers `account/read` (after `initialize` and `initialized`) with the first
+      account's email — the verbatim keyring round-trip restored it. `codex login
+      status` prints only the login mode (`Logged in using ChatGPT`; rust-v0.160.1
+      `codex-rs/cli/src/login.rs` lines 443 to 488, read 2026-10-07), so it shows
+      only that a login is present. The item's account attribute is unchanged
       (`security find-generic-password -s "Codex Auth"`, attributes only): one
       codex home has one item whichever account is logged into it.
 - [ ] A **second `CODEX_HOME`** logged in at the same time still is afterwards:
-      `CODEX_HOME=<other> codex login status` reports its own account. This is the
+      `account/read` on a fresh `CODEX_HOME=<other> codex app-server --listen
+      stdio://` reports its own account. This is the
       regression that shipped through v0.12.0 (a switch deleted the service's item
       by service name alone). The login-free half is covered by
       `TestKeychainCodexHomesCoexist`; this checks the real keychain.
@@ -988,8 +992,9 @@ codex does not look up from that directory:
       `security find-generic-password -s "Codex Auth" -a "cli|<16 hex of sha256 of
       the realpath of the pin config dir>"` (attributes only, hash computed with
       `shasum` outside kae) finds the item.
-- [ ] In that directory, with mise active, a fresh `codex login status` names the
-      bound account — the check that kae's account and codex's agree.
+- [ ] In that directory, with mise active, `account/read` on a fresh
+      `codex app-server --listen stdio://` names the bound account — the check
+      that kae's account and codex's agree.
 - [ ] The **global** `Codex Auth` item is untouched: its account attribute still
       resolves from `~/.codex` and its login still works outside the directory.
 - [ ] `kae pin -s <profile>` in the same directory: the isolated store's item is

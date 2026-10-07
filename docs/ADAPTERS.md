@@ -398,15 +398,19 @@ A process still on the old account does not refresh that account's token while
 codex's login names another account, and writes nothing: it keeps its old access
 token until that expires, and `account/read` with `refreshToken: true` still answers
 success. A login of the same account id with other tokens it adopts without a word.
-When a switch back restores the very login it holds, it refreshes and writes the
-rotated tokens to the login, which kae's next switch-away recapture keeps once that
-write has landed. **Known limitation:** a refresh
-already in flight when kae switches writes the old account's rotated tokens into the
-new account's login, which keeps that account's `tokens.account_id`, and the process
-adopts the result. kae does not detect such a file, and its switch-away recapture
-files it under the account that was active. The measurement, the source reading and
-what kae's code does with each case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth
-part: an old-account process refreshing its token.
+When a switch back restores the very login it holds, it refreshes when a refresh is
+next due (within 5 minutes of the access token's expiry) or is requested, and writes
+the rotated tokens to the login, which kae's next switch-away recapture keeps once
+that write has landed. **Known limitation:** a refresh already in flight when kae
+switches writes the old account's rotated tokens into the new account's login,
+which keeps that account's `tokens.account_id`, and the process adopts the result.
+kae does not detect such a file, and its switch-away recapture files it under the
+account that was active. This was measured on codex's app-server; a TUI and the
+ChatGPT app's embedded codex are inferred to behave alike, and whether the app gives
+its codex externally managed tokens, which are never written to the login, is not
+established. The measurement, the source reading and what kae's code does with each
+case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process
+refreshing its token.
 
 The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 § Adapter Interface) and declares:

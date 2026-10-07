@@ -85,7 +85,9 @@ dialog, [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
 limit, the app's n and an isolated daemon and [ACCEPTANCE.md](ACCEPTANCE.md)
 § Fifth part: an old-account process refreshing its token. A resident process still
 on the old account neither refreshes nor writes while codex's login names another
-account, and keeps its old access token until it expires; a refresh already in
+account, and keeps its old access token until it expires (measured on codex's
+app-server; a TUI and the ChatGPT app's embedded codex are inferred to behave
+alike); a refresh already in
 flight when kae switches can write the old account's tokens into the new account's
 file, a known limitation ([ADAPTERS.md](ADAPTERS.md) § Resident processes) whose
 detection is **A codex login file can carry one account's tokens under another's
@@ -1082,10 +1084,10 @@ alternative exists (`secret-tool`).
   comparison (`tokens.account_id`) name different accounts in it. The candidate
   detection is the disagreement itself: the id_token's `chatgpt_account_id` claim
   (upstream parses it: rust-v0.160.1 `codex-rs/login/src/token_data.rs` line 38, read
-  2026-10-07) against `tokens.account_id`. Done when the codex recapture declines such a file
-  with the warning and backup that a declined recapture gives, `kae doctor` warns
-  when the live codex login is one, and both are tested with a fixture built like
-  the race's file.
+  2026-10-07) against `tokens.account_id`. Done when the codex recapture declines such
+  a file with the warning and backup that a declined recapture gives, `kae doctor`
+  warns when the live codex login is one, and both are tested with a fixture built
+  like the race's file.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

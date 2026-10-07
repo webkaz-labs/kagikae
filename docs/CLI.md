@@ -339,7 +339,8 @@ them as follows; tools without resident processes are unaffected.
    not refresh the previous account's token while codex's login names another
    account; one whose refresh is already in flight at the switch can write the
    previous account's tokens into the new login, which kae does not detect
-   ([ADAPTERS.md](ADAPTERS.md) § Resident processes).
+   ([ADAPTERS.md](ADAPTERS.md) § Resident processes; measured on codex's app-server,
+   and a TUI and the ChatGPT app's embedded codex are inferred to behave alike).
 
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 

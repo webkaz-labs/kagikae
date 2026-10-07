@@ -2354,62 +2354,15 @@ at both tags, which is why the table above names the file rather than the crate.
 ### claude (verified on 2.1.288)
 
 **The heading is not evidence that every row under it was re-run on that version, and
-here it is not true of most of them.** A row re-measured this pass says so in its own
-text, and any partial remeasurement says which *half* was re-measured. Everything
-else carries whatever provenance it already had, which is **not** uniform and is
-worth knowing before reading a row's silence as a date: some name a measurement and
-a build, and several — the rows a real login gates, plus the mixed-state one — name
-only a procedure, so for those nothing here records when they were last true. An
-earlier draft of this paragraph got both halves wrong, stating the split as a rule
-("every login-free row", which the host-managed provider row falsifies) and then
-claiming the rest carry a dated `Measured … on 2.1.220`, which several do not — grep
-the claude rows for a date and the ones with none are the set.
-
-Re-measured 2026-09-06 on 2.1.261: the login-free `security` shim confirmed the
-credential-service hash, secure-storage precedence (including empty), trailing slash,
-NFC normalization, relative values from two working directories, and invalid non-empty
-`USER` fallback. `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` alone and alongside
-`CLAUDE_CONFIG_DIR` again left credential selection following the latter rule. Both
-service families were observed. Offset reads re-established the raw config resolver,
-custom OAuth suffix and identity path, and host-managed credential-file validation
-and environment injection. The earlier 2.1.260 artifact was unavailable in the installed
-Caskroom, so this pass makes no bundle-pair comparison. Login/refresh-gated rows retain
-their recorded provenance; the separate real-machine switch/rollback/bind results are
-in [ACCEPTANCE.md](ACCEPTANCE.md).
-
-Re-measured 2026-09-29 on 2.1.282: a temp-HOME `security` shim reached both service
-families for the config-dir hash, a trailing slash, an empty secure-storage
-directory, a separate secure-storage directory, a relative value from two working
-directories, and the invalid-USER fallback to `claude-code-user`.
-`CLAUDE_CODE_CUSTOM_OAUTH_URL` set to an unapproved endpoint threw before any
-keychain call. The bundle still appends `-custom-oauth` when that variable is
-set, both in the suffix function that returns `"prod"` and in a second function
-that returns the same suffix or an empty string. `profileFetchedAt` is still
-compared as `Date.now()-v<RF` with `RF` equal to `86400000` (24h). A host-managed
-credential file is still checked for size, mode, uid, pid and process start.
-Login, refresh, tombstone, rotation, shared-store and mixed-state rows keep the
-provenance already written on those rows. `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR`
-was not re-run.
-
-Re-measured 2026-10-05 on 2.1.284: a temp-HOME `security` shim reached both service
-families for the default store, the config-dir hash, a trailing slash, an empty
-secure-storage directory, a separate secure-storage directory, a decomposed
-non-ASCII directory, a relative value from two working directories, and the
-invalid-USER fallback to `claude-code-user`; every suffix matched a hash computed
-outside kae. `CLAUDE_CODE_CUSTOM_OAUTH_URL` set to an unapproved endpoint threw
-before any keychain call. Offset reads found the suffix function returning
-`-custom-oauth` before the channel switch, the second suffix function, the service
-assembly with its `CLAUDE_SECURESTORAGE_CONFIG_DIR` and NFC rule, the
-`.claude<suffix>.json` identity path, the account-attribute character class, and
-`profileFetchedAt` compared as `Date.now()-v<$U` with `$U` equal to `86400000`.
-The host-managed credential-file checks were not re-read on this build; that row
-keeps its earlier provenance: the row's 2.1.260 reading, re-established on 2.1.261 and partly re-read on 2.1.282 above. `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was not re-run.
-The rows a login, refresh, real account or switch gates keep the provenance written
-on them; none was re-run on 2.1.282 or 2.1.284. No 2.1.282 bundle remained installed, so
-there was no bundle-pair comparison. Three literal counts moved from their recorded
-values (`CLAUDE_CONFIG_DIR` 80 → 78, `claudeAiOauth` 28 → 29, `oauthAccount`
-79 → 81). The offset reads above are what those moves were checked against, and
-§ Upstream Literal Fingerprints records the new counts as measured on 2.1.284.
+here it is not true of most of them.** The paragraphs below record what the latest
+pass re-measured and what it did not, and say which *half* of a row a partial
+remeasurement covered. A row's own text gives its earlier provenance, which is
+**not** uniform: some rows name a measurement and a build, and several — the rows a
+real login gates, plus the mixed-state one — name only a procedure, so for those
+nothing here records when they were last true. Being login-free does not make a row
+re-measured (the host-managed provider row is login-free and was not re-read on
+2.1.288). Grep the claude rows for a date; the ones with none are the procedure-only
+set.
 
 Re-measured 2026-10-07 on 2.1.288: a temp-HOME `security` shim reached both service
 families for the default store, the config-dir hash, a trailing slash, an empty
@@ -2422,17 +2375,29 @@ before any keychain call. Offset reads found the suffix function returning
 assembly with its `CLAUDE_SECURESTORAGE_CONFIG_DIR` and NFC rule, the
 `.claude<suffix>.json` identity path, the account-attribute character class, and
 `profileFetchedAt` compared as `Date.now()-v<h$` with `h$` equal to `86400000`.
-The host-managed credential-file checks were not re-read on this build; that row
-keeps the provenance stated in the 2.1.284 paragraph above.
-`SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was not re-run. The rows a login, refresh,
-real account or switch gates keep the provenance written on them; none was re-run
-on 2.1.288. No 2.1.284 bundle remained installed, so there was no bundle-pair
-comparison. Two literal counts moved from their recorded values
-(`CLAUDE_CONFIG_DIR` 78 → 80, `CLAUDE_CODE_CUSTOM_OAUTH_URL` 14 → 15).
-§ Upstream Literal Fingerprints still records 2.1.284, so the audit refuses claude
-until those counts are reviewed and re-recorded.
+Two literal counts moved from their recorded values (`CLAUDE_CONFIG_DIR` 78 → 80,
+`CLAUDE_CODE_CUSTOM_OAUTH_URL` 14 → 15). § Upstream Literal Fingerprints still
+records the 2.1.284 counts, which were reviewed against that pass's offset reads, so
+the audit refuses claude until those counts are reviewed and re-recorded.
 
-Re-recorded from the same 2026-09-04 pass, because it is a **negative** result and
+Not re-established on 2.1.288, with the latest pass that did:
+
+- The raw `CLAUDE_CONFIG_DIR` resolver (the relative-value row's file half) was last
+  re-read 2026-09-06 on 2.1.261.
+- The host-managed credential-file checks keep the row's 2.1.260 reading,
+  re-established 2026-09-06 on 2.1.261 together with the file's environment
+  injection; 2026-09-29 on 2.1.282 partly re-read them (size, mode, uid, pid and
+  process start).
+- `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` was last run 2026-09-06 on 2.1.261 (next
+  paragraph).
+- The rows a login, refresh, real account or switch gates keep the provenance
+  written on them; none was re-run in the 2.1.261, 2.1.282, 2.1.284 or 2.1.288
+  passes. The real-machine switch/rollback/bind results are in
+  [ACCEPTANCE.md](ACCEPTANCE.md).
+- No bundle-pair comparison was made: the previous build's bundle was not installed
+  for the 2.1.261, 2.1.284 or 2.1.288 pass.
+
+Recorded from the 2026-09-04 pass on 2.1.260, because it is a **negative** result and
 nothing else would keep it: `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` does **not** move the
 credential, though it does outrank `CLAUDE_CONFIG_DIR` somewhere. Both halves are
 derivations rather than claims. The precedence is one offset-read window on 2.1.260,
@@ -2442,7 +2407,8 @@ in a function whose neighbours are runner file-walking rather than credentials:
 any other. The negative is the shim, run both ways: set alongside `CLAUDE_CONFIG_DIR`
 the service still carried the `CLAUDE_CONFIG_DIR` hash, and set alone the service was
 the unsuffixed name, which is what the credential path would look like with the
-variable unset. kae therefore needs no entry for it; what would change that is a build
+variable unset. The shim was re-run both ways 2026-09-06 on 2.1.261 with the same
+result. kae therefore needs no entry for it; what would change that is a build
 reading it in the resolver the row below names, and that is the same shim run to
 re-check.
 

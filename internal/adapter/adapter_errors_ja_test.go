@@ -120,8 +120,8 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 		{
 			name:  "claude identity unparsable",
 			raise: identityIn(claudeAdapter, "linux", nil, map[string]string{".claude.json": "{"}),
-			en:    "parse $HOME/.claude.json: unexpected end of JSON input",
-			ja:    "$HOME/.claude.json を解析できません: unexpected end of JSON input",
+			en:    "parse $HOME/.claude.json: the document ends before its value is complete",
+			ja:    "$HOME/.claude.json を解析できません: ドキュメントが値の途中で終わっています",
 		},
 		{
 			name:  "claude identity missing",
@@ -175,8 +175,8 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 		{
 			name:  "codex auth unparsable",
 			raise: identityIn(codexAdapter, "linux", nil, map[string]string{".codex/auth.json": "{"}),
-			en:    "parse $HOME/.codex/auth.json: unexpected end of JSON input",
-			ja:    "$HOME/.codex/auth.json を解析できません: unexpected end of JSON input",
+			en:    "parse $HOME/.codex/auth.json: the document ends before its value is complete",
+			ja:    "$HOME/.codex/auth.json を解析できません: ドキュメントが値の途中で終わっています",
 		},
 		{
 			name:  "codex auth without identity",
@@ -215,8 +215,8 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 		{
 			name:  "copilot last user not an object",
 			raise: identityIn(copilotAdapter, "linux", nil, map[string]string{".copilot/config.json": `{"lastLoggedInUser":1}`}),
-			en:    "parse $HOME/.copilot/config.json/lastLoggedInUser: $CAUSE",
-			ja:    "$HOME/.copilot/config.json/lastLoggedInUser を解析できません: $CAUSE",
+			en:    "parse $HOME/.copilot/config.json/lastLoggedInUser: a member has an unexpected type",
+			ja:    "$HOME/.copilot/config.json/lastLoggedInUser を解析できません: メンバーの型が想定と異なります",
 		},
 		{
 			name:  "copilot no login",
@@ -258,8 +258,8 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 		{
 			name:  "agy unparsable",
 			raise: identityIn(agyAdapter, "linux", nil, map[string]string{".gemini/google_accounts.json": "{"}),
-			en:    "parse $HOME/.gemini/google_accounts.json: unexpected end of JSON input",
-			ja:    "$HOME/.gemini/google_accounts.json を解析できません: unexpected end of JSON input",
+			en:    "parse $HOME/.gemini/google_accounts.json: the document ends before its value is complete",
+			ja:    "$HOME/.gemini/google_accounts.json を解析できません: ドキュメントが値の途中で終わっています",
 		},
 		{
 			name:  "agy no active account",
@@ -276,8 +276,8 @@ func TestAdapterErrorsRenderInJapanese(t *testing.T) {
 		{
 			name:  "opencode unparsable",
 			raise: identityIn(opencodeAdapter, "linux", nil, map[string]string{".local/share/opencode/auth.json": "{"}),
-			en:    "parse $HOME/.local/share/opencode/auth.json: unexpected end of JSON input",
-			ja:    "$HOME/.local/share/opencode/auth.json を解析できません: unexpected end of JSON input",
+			en:    "parse $HOME/.local/share/opencode/auth.json: the document ends before its value is complete",
+			ja:    "$HOME/.local/share/opencode/auth.json を解析できません: ドキュメントが値の途中で終わっています",
 		},
 		{
 			name:  "opencode without identity",

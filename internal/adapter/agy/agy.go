@@ -22,6 +22,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 // KeychainService and KeychainAccount identify agy's macOS Keychain item. The
@@ -149,7 +150,7 @@ func (Agy) Identity(_ context.Context, env adapter.Env) (string, error) {
 		Active string `json:"active"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return "", l10n.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, patch.RedactParseError(err))
 	}
 	if doc.Active == "" {
 		return "", l10n.Errorf("no active Google account in %s", path)

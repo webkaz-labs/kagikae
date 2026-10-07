@@ -206,6 +206,9 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 			raw, found, err = patch.GetPointer(doc, sp.Pointer)
 		}
 		if err != nil {
+			// The patch reason is one of its fixed, content-free reasons
+			// (patch.RedactParseError): the document is a credential, and this
+			// error reaches output through createBackup and relogin.
 			return Value{}, l10n.Errorf("%w: %s is not a JSON object (%v)", ErrUnsafe, sp.Target, err)
 		}
 		if !found {

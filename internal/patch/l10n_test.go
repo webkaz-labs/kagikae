@@ -12,7 +12,9 @@ import (
 
 // The patch errors are message values: Error() keeps the English text, and a
 // human sink renders the catalog's Japanese, nested kae causes included, while an
-// external cause (an OS or JSON parser error) stays verbatim as the tail.
+// external cause (an OS error) stays verbatim as the tail. A parse error is
+// always one of the package's fixed reasons, never the parser's own text, which
+// quotes the document.
 func TestPatchErrorsRenderInJapanese(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "file")
@@ -68,7 +70,7 @@ func TestPatchErrorsRenderInJapanese(t *testing.T) {
 		},
 		{
 			"duplicate member", func() error { return set(`{"a":1,"a":2}`, "/a", `1`) },
-			`parse json: duplicate object member "a"`, `JSON を解析できません: オブジェクトのメンバー "a" が重複しています`, false,
+			"parse json: duplicate object member", "JSON を解析できません: オブジェクトのメンバーが重複しています", false,
 		},
 		{
 			"invalid pointer", func() error { return get(`{}`, "a") },
@@ -80,8 +82,8 @@ func TestPatchErrorsRenderInJapanese(t *testing.T) {
 		},
 		{
 			"pointer value", func() error { return set(`{}`, "/a", `{"x":1,"x":2}`) },
-			`pointer value: parse json: duplicate object member "x"`,
-			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
+			`pointer value: parse json: duplicate object member`,
+			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバーが重複しています`, false,
 		},
 		{
 			"root not an object", func() error { return set(`[]`, "/a", `1`) },
@@ -97,17 +99,31 @@ func TestPatchErrorsRenderInJapanese(t *testing.T) {
 		},
 		{
 			"jsonc syntax", func() error { return setJSONC(`{`, "/a", `1`) },
-			"parse jsonc: ", "JSONC を解析できません: ", true,
+			"parse jsonc: the document ends before its value is complete", "JSONC を解析できません: ドキュメントが値の途中で終わっています", false,
+		},
+		{
+			// encoding/json's own message would quote the first byte, 'S'.
+			"json syntax", func() error { return get(`SYNTHSECRET`, "/a") },
+			"parse json: the document has a syntax error", "JSON を解析できません: ドキュメントに構文エラーがあります", false,
+		},
+		{
+			"json truncated", func() error { return get(`{"a":"SYNTH`, "/a") },
+			"parse json: the document ends before its value is complete", "JSON を解析できません: ドキュメントが値の途中で終わっています", false,
+		},
+		{
+			// hujson's own message would quote the whole literal.
+			"jsonc literal", func() error { return setJSONC(`{"a":SYNTHSECRET}`, "/a", `1`) },
+			"parse jsonc: the document has a syntax error", "JSONC を解析できません: ドキュメントに構文エラーがあります", false,
 		},
 		{
 			"jsonc duplicate", func() error { return setJSONC(`{"a":1,"a":2}`, "/a", `1`) },
-			`parse jsonc: parse json: duplicate object member "a"`,
-			`JSONC を解析できません: JSON を解析できません: オブジェクトのメンバー "a" が重複しています`, false,
+			`parse jsonc: parse json: duplicate object member`,
+			`JSONC を解析できません: JSON を解析できません: オブジェクトのメンバーが重複しています`, false,
 		},
 		{
 			"jsonc pointer value", func() error { return setJSONC(`{}`, "/a", `{"x":1,"x":2}`) },
-			`pointer value: parse json: duplicate object member "x"`,
-			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバー "x" が重複しています`, false,
+			`pointer value: parse json: duplicate object member`,
+			`ポインターに設定する値が不正です: JSON を解析できません: オブジェクトのメンバーが重複しています`, false,
 		},
 	}
 	l10ntest.UseJapanese(t)

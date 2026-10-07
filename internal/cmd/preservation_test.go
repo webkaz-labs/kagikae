@@ -598,45 +598,106 @@ func TestReloginPreservationWriteFailureAndExplicitRetry(t *testing.T) {
 	}
 }
 
+// unreadableCredentials are the contents relogin and the switch backup cannot read
+// as a credential. Each holds a synthetic secret; the truncated one is cut off
+// inside the token, and the last one starts with a secret byte, which
+// encoding/json's own diagnostic would quote ("invalid character 'S' ...").
+var unreadableCredentials = map[string]string{
+	"malformed":    "malformed-synthetic-secret",
+	"truncated":    `{"claudeAiOauth":{"accessToken":"SYNTH-SECRET`,
+	"secret-first": "SYNTHSECRET",
+}
+
+// assertNoCredentialFragment fails when output carries any part of a synthetic
+// secret, or a parser diagnostic that quotes the document.
+func assertNoCredentialFragment(t *testing.T, output string) {
+	t.Helper()
+	for _, fragment := range []string{"SYNTH", "synthetic-secret", "invalid character", "'S'", "'m'", "'{'"} {
+		if strings.Contains(output, fragment) {
+			t.Fatalf("output exposed %q of the credential: %s", fragment, output)
+		}
+	}
+}
+
 func TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow(t *testing.T) {
-	for _, kind := range []string{"malformed", "unreadable"} {
+	kinds := []string{"unreadable"}
+	for kind := range unreadableCredentials {
+		kinds = append(kinds, kind)
+	}
+	slices.Sort(kinds)
+	for _, kind := range kinds {
+		for _, format := range []string{formatText, formatJSON} {
+			t.Run(kind+"/"+format, func(t *testing.T) {
+				app, store, saved, credFile := preservationFixture(t)
+				before, err := store.List(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if content, ok := unreadableCredentials[kind]; ok {
+					writeFile(t, credFile, content)
+				} else {
+					if err := os.Remove(credFile); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Mkdir(credFile, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+					t.Fatal("unpreservable input launched login")
+					return 0, nil
+				})
+				code, out, stderr := captureBoth(t, func() int {
+					return runRelogin(context.Background(), app, commonOpts{Format: format}, constants.ToolClaude)
+				})
+				mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+				// The refusal names the file kae could not read and says kae left it.
+				location := app.displayPath(saved.Origin.Locator.Target)
+				for _, want := range []string{"cannot preserve", location, "kae left it unchanged", "did not start the login flow"} {
+					if !strings.Contains(out+stderr, want) {
+						t.Fatalf("refusal lacks %q: %s", want, out+stderr)
+					}
+				}
+				assertNoCredentialFragment(t, out+stderr)
+				after, err := store.List(context.Background())
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatal("unreadable input changed preservation history")
+				}
+				if content, ok := unreadableCredentials[kind]; ok {
+					if readFile(t, credFile) != content {
+						t.Fatal("malformed input was rewritten")
+					}
+				} else if info, err := os.Stat(credFile); err != nil || !info.IsDir() {
+					t.Fatal("unreadable destination was replaced")
+				}
+			})
+		}
+	}
+}
+
+// A switch backs up the live credential before it writes; a credential the
+// backup cannot read aborts the switch, and the abort names no part of it.
+func TestSwitchBackupAbortDoesNotQuoteUnreadableCredential(t *testing.T) {
+	for kind, content := range unreadableCredentials {
 		t.Run(kind, func(t *testing.T) {
-			app, store, _, credFile := preservationFixture(t)
-			before, err := store.List(context.Background())
-			if err != nil {
-				t.Fatal(err)
+			app := testApp(t, nil)
+			ctx := context.Background()
+			seedClaude(t, app, mainToken, "main-uuid")
+			if code, out := captureStdout(t, func() int { return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "main") }); code != constants.ExitOK {
+				t.Fatalf("capture: %d %s", code, out)
 			}
-			if kind == "malformed" {
-				writeFile(t, credFile, "malformed-synthetic-secret")
-			} else {
-				if err := os.Remove(credFile); err != nil {
-					t.Fatal(err)
+			credFile := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+			writeFile(t, credFile, content)
+			for _, format := range []string{formatText, formatJSON} {
+				code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, commonOpts{Format: format}, "claude", "main") })
+				mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+				if !strings.Contains(out+stderr, credFile) {
+					t.Fatalf("abort does not name the file: %s", out+stderr)
 				}
-				if err := os.Mkdir(credFile, 0o700); err != nil {
-					t.Fatal(err)
+				assertNoCredentialFragment(t, out+stderr)
+				if readFile(t, credFile) != content {
+					t.Fatal("aborted switch rewrote the credential")
 				}
-			}
-			withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-				t.Fatal("unpreservable input launched login")
-				return 0, nil
-			})
-			code, out, stderr := captureBoth(t, func() int {
-				return runRelogin(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolClaude)
-			})
-			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
-			if !strings.Contains(out+stderr, "cannot preserve") || strings.Contains(out+stderr, "malformed-synthetic-secret") {
-				t.Fatal("refusal lost its observation or exposed input")
-			}
-			after, err := store.List(context.Background())
-			if err != nil || !reflect.DeepEqual(before, after) {
-				t.Fatal("unreadable input changed preservation history")
-			}
-			if kind == "malformed" {
-				if readFile(t, credFile) != "malformed-synthetic-secret" {
-					t.Fatal("malformed input was rewritten")
-				}
-			} else if info, err := os.Stat(credFile); err != nil || !info.IsDir() {
-				t.Fatal("unreadable destination was replaced")
 			}
 		})
 	}

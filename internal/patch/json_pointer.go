@@ -6,6 +6,7 @@ package patch
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -15,6 +16,44 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
+// The documents this package parses hold credentials, so a parse diagnostic names
+// one of these fixed reasons and never the document's bytes. encoding/json's own
+// errors quote input ("invalid character 'S' looking for beginning of value"
+// echoes the first byte of a malformed token, and a type error on a number echoes
+// the number), and hujson's quote whole literals; every caller that wraps a parse
+// error would carry that into output.
+var (
+	errSyntax          = l10n.Errorf("the document has a syntax error")
+	errTruncated       = l10n.Errorf("the document ends before its value is complete")
+	errTrailingValue   = l10n.Errorf("unexpected value after top-level value")
+	errMemberNotString = l10n.Errorf("object member name is not a string")
+	errDuplicateMember = l10n.Errorf("duplicate object member")
+	errUnexpectedType  = l10n.Errorf("a member has an unexpected type")
+)
+
+// RedactParseError returns the fixed reason for a JSON or JSONC parse error, so
+// a caller that parses a credential document itself (an adapter's identity read)
+// can say why it failed without quoting the document. A reason this package
+// already returns passes through unchanged.
+func RedactParseError(err error) error {
+	var typeErr *json.UnmarshalTypeError
+	var syntaxErr *json.SyntaxError
+	switch {
+	case errors.Is(err, errSyntax), errors.Is(err, errTruncated), errors.Is(err, errTrailingValue),
+		errors.Is(err, errMemberNotString), errors.Is(err, errDuplicateMember), errors.Is(err, errUnexpectedType):
+		return err
+	case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, io.EOF):
+		return errTruncated
+	// json.Unmarshal reports a truncated document as this fixed SyntaxError text.
+	case errors.As(err, &syntaxErr) && syntaxErr.Error() == "unexpected end of JSON input":
+		return errTruncated
+	case errors.As(err, &typeErr):
+		return errUnexpectedType
+	default:
+		return errSyntax
+	}
+}
+
 // decodeDoc parses exactly one strict JSON value, rejects duplicate object
 // members at every nesting level, and preserves number formatting via
 // json.Number so re-encoding cannot corrupt large integers or floats.
@@ -23,17 +62,21 @@ func decodeDoc(doc []byte) (any, error) {
 	dec.UseNumber()
 	v, err := decodeValue(dec)
 	if err != nil {
-		return nil, l10n.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", RedactParseError(err))
 	}
 	if _, err := dec.Token(); err != io.EOF {
 		if err == nil {
-			err = l10n.Errorf("unexpected value after top-level value")
+			err = errTrailingValue
 		}
-		return nil, l10n.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", RedactParseError(err))
 	}
 	return v, nil
 }
 
+// decodeValue reads one value through the decoder's tokenizer, which already
+// rejects mismatched delimiters; its own checks add duplicate-member rejection.
+// Its errors are this package's fixed reasons or the decoder's, which decodeDoc
+// redacts.
 func decodeValue(dec *json.Decoder) (any, error) {
 	tok, err := dec.Token()
 	if err != nil {
@@ -53,10 +96,10 @@ func decodeValue(dec *json.Decoder) (any, error) {
 			}
 			key, ok := keyToken.(string)
 			if !ok {
-				return nil, l10n.Errorf("object member name is not a string")
+				return nil, errMemberNotString
 			}
 			if _, exists := object[key]; exists {
-				return nil, l10n.Errorf("duplicate object member %q", key)
+				return nil, errDuplicateMember
 			}
 			value, err := decodeValue(dec)
 			if err != nil {
@@ -67,7 +110,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 		if closeToken, err := dec.Token(); err != nil {
 			return nil, err
 		} else if closeToken != json.Delim('}') {
-			return nil, l10n.Errorf("object closed by %q", closeToken)
+			return nil, errSyntax
 		}
 		return object, nil
 	case '[':
@@ -82,11 +125,11 @@ func decodeValue(dec *json.Decoder) (any, error) {
 		if closeToken, err := dec.Token(); err != nil {
 			return nil, err
 		} else if closeToken != json.Delim(']') {
-			return nil, l10n.Errorf("array closed by %q", closeToken)
+			return nil, errSyntax
 		}
 		return array, nil
 	default:
-		return nil, l10n.Errorf("unexpected delimiter %q", delim)
+		return nil, errSyntax
 	}
 }
 
@@ -217,7 +260,7 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 	}
 	parsed, err := hujson.Parse(doc)
 	if err != nil {
-		return nil, l10n.Errorf("parse json: %w", err)
+		return nil, l10n.Errorf("parse json: %w", RedactParseError(err))
 	}
 	return patchAndPack(&parsed, operations, pointer)
 }

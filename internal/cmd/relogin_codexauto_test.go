@@ -101,3 +101,89 @@ func TestReloginResolvesTheStoreAgainAfterTheFlow(t *testing.T) {
 		t.Errorf("kae must resolve the store again after the flow: %q", stderr)
 	}
 }
+
+// recordingKeychain serves one fixed Codex Auth payload and records every
+// `security` argv, so a test can show kae only ever read the item.
+type recordingKeychain struct {
+	payload string
+	calls   [][]string
+}
+
+func (f *recordingKeychain) Run(_ context.Context, name string, args ...string) (string, string, int) {
+	f.calls = append(f.calls, append([]string{name}, args...))
+	if name != "security" || len(args) == 0 || args[0] != "find-generic-password" {
+		return "", "", 0
+	}
+	if slices.Contains(args, "-w") {
+		return f.payload + "\n", "", 0
+	}
+	return "attributes", "", 0
+}
+
+func (f *recordingKeychain) RunInput(ctx context.Context, _, name string, args ...string) (string, string, int) {
+	return f.Run(ctx, name, args...)
+}
+
+// A keychain item relogin cannot read as a credential stops the flow like an
+// unreadable file: the refusal names the item's service, kae only read the item,
+// and nothing of its payload reaches output.
+func TestReloginRefusesUnreadableKeychainCredentialBeforeFlow(t *testing.T) {
+	payloads := map[string]string{
+		"not-json":        "SYNTHSECRET-not-json",
+		"missing-pointer": `{"other":"SYNTH-SECRET"}`,
+	}
+	for name, payload := range payloads {
+		t.Run(name, func(t *testing.T) {
+			app := overlayTestApp(t)
+			app.Env.GOOS = "darwin" // `auto` probes the keychain only there (usesKeyring)
+			ctx := context.Background()
+			app.Config.Profiles["main"].Accounts[constants.ToolCodex] = "main"
+			seedCodex(t, app, "codex-token")
+			writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+				"model = \"gpt-5.4\"\ncli_auth_credentials_store = \"auto\"\n")
+			var dir string
+			runner.With(&autoStoreKeychain{}, func() {
+				c, out := captureStdout(t, func() int {
+					return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
+				})
+				mustExit(t, constants.ExitOK, c, out)
+				dir = pinHere(t, app, modeShared)
+				storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolCodex)
+				if err := os.Remove(filepath.Join(storeDir, "auth.json")); err != nil {
+					t.Fatal(err)
+				}
+			})
+			withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+				t.Fatal("an unreadable keychain credential launched login")
+				return 0, nil
+			})
+			fake := &recordingKeychain{payload: payload}
+			runner.With(fake, func() {
+				_, sp, err := app.preservationOrigin(ctx, dir, constants.ToolCodex)
+				if err != nil || sp.Kind != constants.KindKeychain || sp.Target == "" {
+					t.Fatalf("the store does not resolve to its keychain item: %+v %v", sp, err)
+				}
+				for _, format := range []string{formatText, formatJSON} {
+					code, out, stderr := captureBoth(t, func() int {
+						return runRelogin(ctx, app, commonOpts{Format: format}, constants.ToolCodex)
+					})
+					mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+					for _, want := range []string{"keychain item", sp.Target, "kae left it unchanged", "did not start the login flow"} {
+						if !strings.Contains(out+stderr, want) {
+							t.Fatalf("refusal lacks %q: %s", want, out+stderr)
+						}
+					}
+					assertNoCredentialFragment(t, out+stderr)
+				}
+			})
+			if len(fake.calls) == 0 {
+				t.Fatal("the fixture never read the item; it asserts nothing")
+			}
+			for _, call := range fake.calls {
+				if len(call) < 2 || call[0] != "security" || call[1] != "find-generic-password" {
+					t.Fatalf("kae did more than read the keychain item: %v", call)
+				}
+			}
+		})
+	}
+}

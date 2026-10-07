@@ -57,10 +57,13 @@ func credentialConflictReason(tool, accountName string) message {
 	return msgf("%s, so kae cannot file it as %s/%s", mixedLoginFact(liveLoginSubject(tool)), tool, accountName)
 }
 
-// errCredentialConflict is captureSnapshot's refusal of a Conflict login.
+// errCredentialConflict is captureSnapshot's refusal of a Conflict login. Its
+// remedy is a plain login, not globalLoginRemedy's `kae add --restore`: restoring
+// the previous live state would put the mixed login back.
 func errCredentialConflict(tool, accountName string) *cmdError {
 	return errf(constants.ExitUnsafeRefused, "%s, so kae will not capture it as %s/%s; %s",
-		mixedLoginFact(liveLoginSubject(tool)), tool, accountName, globalLoginRemedy(tool, accountName))
+		mixedLoginFact(liveLoginSubject(tool)), tool, accountName,
+		msgf("to log in to %s again as account %s, run: kae add %s %s", tool, accountName, tool, accountName))
 }
 
 // credentialConflictLiveChecks is the live half of doctor's

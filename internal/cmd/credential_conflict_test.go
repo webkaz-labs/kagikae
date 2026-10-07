@@ -353,7 +353,8 @@ func TestDoctorConflictMessagesInJapanese(t *testing.T) {
 	if got := l10n.Render(reason); got != "現在の codex のログインは、"+fact+"そのため kae は codex/side として保存できません" {
 		t.Errorf("Render(reason) = %q", got)
 	}
-	if got := l10n.Render(captureErr); !strings.HasPrefix(got, "現在の codex のログインは、"+fact+"そのため kae は codex/side として取り込みません。") {
+	if got := l10n.Render(captureErr); got != "現在の codex のログインは、"+fact+"そのため kae は codex/side として取り込みません。"+
+		"アカウント side として codex に改めてログインするには、kae add codex side を実行してください" {
 		t.Errorf("Render(capture) = %q", got)
 	}
 }
@@ -437,8 +438,12 @@ func TestAddRefusesAMixedCodexLogin(t *testing.T) {
 				return runCapture(ctx, app, commonOpts{Format: formatText}, "codex", "side")
 			})
 			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
-			if !strings.Contains(stderr, "so kae will not capture it as codex/side") {
-				t.Errorf("expected the capture refusal: %q", stderr)
+			if !strings.Contains(stderr, "so kae will not capture it as codex/side; "+
+				"to log in to codex again as account side, run: kae add codex side") {
+				t.Errorf("expected the capture refusal and its remedy: %q", stderr)
+			}
+			if strings.Contains(stderr, "kae add --restore") {
+				t.Errorf("--restore would put the mixed login back: %q", stderr)
 			}
 			assertNoConflictPII(t, stderr+out)
 

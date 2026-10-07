@@ -649,7 +649,8 @@ login flow does not, and `--restore` requires the login flow).
 conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), both
 forms refuse the capture with exit `10` (`unsafe_refused`), write no snapshot and leave
 the active account as it was; the message names the tool and the account and no id or
-email. The login form's failure then follows its usual path (`--restore` puts the
+email, and its remedy is `kae add <tool> <account>` without `--restore`, which would
+put the mixed login back live. The login form's failure then follows its usual path (`--restore` puts the
 previous login back). `--dry-run` does not run the check, so it does not report the
 conflict.
 

@@ -150,7 +150,8 @@ What kae does with these, read in kae's source at `4a18a5c` and not run:
   switch away, unless the refresh is still in flight then (the
   [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Harvesting before a write or a delete
   harvest does not apply; it is per-directory and claude-only).
-- **A mixed file is declined, not filed.** kae reads the file's conflict verdict
+- **A mixed file is declined, not filed** — since the conflict verdict, not at
+  `4a18a5c`. kae reads the file's conflict verdict
   ([ADAPTERS.md](ADAPTERS.md) § Resident processes) and never files a Conflict under an
   account ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead
   of preserving). That is tested with fixtures built like the race's file

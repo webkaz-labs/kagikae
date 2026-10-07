@@ -23,7 +23,7 @@ func TestEnvProfileErrorsRenderInJapanese(t *testing.T) {
 	l10ntest.UseJapanese(t)
 
 	_, _, err := Load(dir)
-	l10ntest.ErrorText(t, "parse", err, "parse "+metaFile(dir)+": ", metaFile(dir)+" を解析できません: ", true)
+	l10ntest.ErrorText(t, "parse", err, "parse "+metaFile(dir)+": the document has a syntax error at line 1", metaFile(dir)+" を解析できません: ドキュメントの 1 行目に構文エラーがあります", false)
 	err = Save(filepath.Join(metaFile(dir), "sub"), profile)
 	l10ntest.ErrorText(t, "create dir", err, "create env profile dir: ", "環境変数プロファイルのディレクトリを作成できません: ", true)
 	_, err = EnvStrings(ctx, secrettest.NewMem(), profile)

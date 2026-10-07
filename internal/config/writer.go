@@ -9,6 +9,7 @@ import (
 	"github.com/creachadair/tomledit/transform"
 
 	"github.com/webkaz-labs/kagikae/internal/l10n"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 // Editor applies surgical, comment-preserving edits to a config.toml document.
@@ -27,7 +28,7 @@ type Editor struct {
 func NewEditor(data []byte) (*Editor, error) {
 	doc, err := tomledit.Parse(bytes.NewReader(data))
 	if err != nil {
-		return nil, l10n.Errorf("parse config for editing: %w", err)
+		return nil, l10n.Errorf("parse config for editing: %w", patch.RedactTOMLError(err))
 	}
 	return &Editor{doc: doc}, nil
 }

@@ -159,14 +159,14 @@ func TestLoadCauseErrorsKeepTheirCause(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected a parse error")
 		}
-		l10ntest.ErrorText(t, "parse", err, "parse config: ", "設定ファイルを解析できません: ", true)
+		l10ntest.ErrorText(t, "parse", err, "parse config: the document has a syntax error at line 1", "設定ファイルを解析できません: ドキュメントの 1 行目に構文エラーがあります", false)
 	})
 	t.Run("editor", func(t *testing.T) {
 		_, err := NewEditor([]byte("[profiles\n"))
 		if err == nil {
 			t.Fatal("expected a parse error")
 		}
-		l10ntest.ErrorText(t, "editor", err, "parse config for editing: ", "編集する設定ファイルを解析できません: ", true)
+		l10ntest.ErrorText(t, "editor", err, "parse config for editing: the document has an invalid value or syntax", "編集する設定ファイルを解析できません: ドキュメントに不正な値か構文があります", false)
 	})
 }
 

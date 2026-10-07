@@ -66,7 +66,7 @@ func Load(dir string) (Profile, bool, error) {
 		return profile, false, err
 	}
 	if _, err := toml.Decode(string(data), &profile); err != nil {
-		return profile, false, l10n.Errorf("parse %s: %w", metaFile(dir), err)
+		return profile, false, l10n.Errorf("parse %s: %w", metaFile(dir), patch.RedactTOMLError(err))
 	}
 	return profile, true, nil
 }

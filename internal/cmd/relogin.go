@@ -595,10 +595,16 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 
 // unpreservableCredential refuses a relogin whose existing credential kae cannot
 // read, before the login flow could replace it. It names where that credential is
-// — the file, or the keychain service — so the person can inspect or copy it, and
-// says kae left it alone. It does not carry the read error: that describes a
-// document holding a secret, and the location is what the person acts on.
+// — the file, or the keychain service and, for a service shared between items, the
+// item's account attribute — so the person can inspect or copy it, and says kae
+// left it alone. It does not carry the read error: that describes a document
+// holding a secret, and the location is what the person acts on.
 func (app *App) unpreservableCredential(sp artifact.Spec) error {
+	if sp.Kind == constants.KindKeychain && sp.KeychainMatchAccount {
+		return errf(constants.ExitUnsafeRefused,
+			"cannot preserve the existing credential in keychain item %q (account %q) because kae cannot read it; "+
+				"kae left it unchanged and did not start the login flow", sp.Target, sp.KeychainAccount)
+	}
 	if sp.Kind == constants.KindKeychain {
 		return errf(constants.ExitUnsafeRefused,
 			"cannot preserve the existing credential in keychain item %q because kae cannot read it; "+

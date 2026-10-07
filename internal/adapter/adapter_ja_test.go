@@ -298,22 +298,24 @@ func TestAdapterMessagesStayEnglishInJSON(t *testing.T) {
 		t.Errorf("unsupported json = %s, %v", raw, err)
 	}
 
-	// An external cause inside kae's error is quoted verbatim: the TOML decoder's
-	// text stays English after the Japanese head.
+	// A malformed config.toml is reported by line with a fixed reason: the TOML
+	// decoder's own text quotes the input, and this file holds MCP server env and
+	// headers, so neither the value nor its key reaches output in either language.
 	env = testEnv(t, "linux", nil)
-	write(t, filepath.Join(env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \n")
+	write(t, filepath.Join(env.Home, ".codex", "config.toml"),
+		"[mcp_servers.x.env]\nSYNTH_API_KEY = SYNTHSECRET-unquoted\n")
 	checks = codexAdapter.Doctor(context.Background(), env)
 	if len(checks) == 0 || checks[0].Code != constants.CheckUnsupported {
 		t.Fatalf("checks = %+v, want an unsupported check first", checks)
 	}
-	_, args := checks[0].Message.MessageFormat()
-	inner, ok := args[0].(*l10n.Error)
-	if !ok || len(inner.Unwrap()) != 1 {
-		t.Fatalf("check message %q does not carry kae's error with one cause", checks[0].Message.Error())
+	english, got := checks[0].Message.Error(), l10n.Render(checks[0].Message)
+	if !strings.HasSuffix(english, ": the document has a syntax error at line 2") ||
+		!strings.HasSuffix(got, " を解析できません: ドキュメントの 2 行目に構文エラーがあります") {
+		t.Errorf("parse failure = %q / %q, want the line and a fixed reason", english, got)
 	}
-	cause := inner.Unwrap()[0]
-	got := l10n.Render(checks[0].Message)
-	if !strings.HasSuffix(got, " を解析できません: "+cause.Error()) {
-		t.Errorf("parse failure = %q, want the TOML cause %q verbatim", got, cause.Error())
+	for _, text := range []string{english, got} {
+		if strings.Contains(text, "SYNTH") {
+			t.Errorf("parse failure quotes the document: %q", text)
+		}
 	}
 }

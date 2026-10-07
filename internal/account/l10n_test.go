@@ -17,7 +17,7 @@ func TestAccountErrorsRenderInJapanese(t *testing.T) {
 	}
 	l10ntest.UseJapanese(t)
 	_, _, err := Load(dir)
-	l10ntest.ErrorText(t, "parse", err, "parse "+metaFile(dir)+": ", metaFile(dir)+" を解析できません: ", true)
+	l10ntest.ErrorText(t, "parse", err, "parse "+metaFile(dir)+": the document has a syntax error at line 1", metaFile(dir)+" を解析できません: ドキュメントの 1 行目に構文エラーがあります", false)
 	err = Save(filepath.Join(metaFile(dir), "main"), Account{Tool: "claude", Name: "main"})
 	l10ntest.ErrorText(t, "create dir", err, "create account dir: ", "アカウントのディレクトリを作成できません: ", true)
 }

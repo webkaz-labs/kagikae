@@ -162,7 +162,7 @@ func configuredStore(env adapter.Env) (string, error) {
 	}
 	var cfg codexConfig
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		return "", l10n.Errorf("parse %s: %w", path, err)
+		return "", l10n.Errorf("parse %s: %w", path, patch.RedactTOMLError(err))
 	}
 	store := cfg.Store
 	if store == "" {

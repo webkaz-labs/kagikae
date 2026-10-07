@@ -248,6 +248,13 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   on darwin only). The key is compared and never printed. `cmd` owns the probe, the
   restart and the app handling; [ADAPTERS.md](ADAPTERS.md) § Resident processes owns
   what the codex adapter declares.
+- `OwnerComparer` declares a tool whose credential payload names its own owner (codex),
+  so a recapture can be attributed without an identity-only artifact. It is separate
+  from `ResidentHolder` because attribution has nothing to do with resident processes.
+  `CompareOwner(recorded, live)` answers whether two payloads belong to the same account
+  (Same, Different or Unknown, no value); both recaptures read it through `cmd`'s
+  `liveOwnerDiffers`. [ADAPTERS.md](ADAPTERS.md) § Recapture attribution owns what
+  codex compares and what declines.
 
 `VerifiedVersion() string` and `VerifiedOn() string` are **not** among them: they
 are methods of `Adapter` itself, because kae relies on undocumented *behaviour* of

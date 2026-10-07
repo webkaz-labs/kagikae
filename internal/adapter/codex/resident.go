@@ -44,36 +44,51 @@ func (Codex) CredentialAccount(payload []byte) (adapter.ResidentAccount, bool) {
 }
 
 // authModeChatGPT is the `auth_mode` of a ChatGPT login, the one mode whose
-// tokens carry the workspace claim CredentialConflict compares.
+// tokens carry the claims CredentialConflict and CompareOwner read.
 const authModeChatGPT = "chatgpt"
+
+// chatGPTTokens is the `tokens` object of a ChatGPT login.
+type chatGPTTokens struct {
+	IDToken     string `json:"id_token"`
+	AccessToken string `json:"access_token"`
+	AccountID   string `json:"account_id"`
+}
+
+// chatGPTLogin reads payload's tokens when it is a ChatGPT login: an
+// `auth_mode` of "chatgpt" or none at all, and a `tokens` object. ok is false
+// for any other mode and for a payload that does not decode as one.
+func chatGPTLogin(payload []byte) (chatGPTTokens, bool) {
+	var doc struct {
+		AuthMode *string        `json:"auth_mode"`
+		Tokens   *chatGPTTokens `json:"tokens"`
+	}
+	if err := json.Unmarshal(payload, &doc); err != nil || doc.Tokens == nil {
+		return chatGPTTokens{}, false
+	}
+	if doc.AuthMode != nil && *doc.AuthMode != authModeChatGPT {
+		return chatGPTTokens{}, false
+	}
+	return *doc.Tokens, true
+}
 
 // CredentialConflict compares tokens.account_id, the id_token's
 // chatgpt_account_id claim and the access token's (docs/ADAPTERS.md § Resident
-// processes, Known limitation). It decides only for a ChatGPT login: an
-// `auth_mode` of "chatgpt" or none at all. An empty value and a JWT that does
-// not decode count as absent; with fewer than two values present it cannot
-// tell. Nothing of the payload leaves it but the verdict.
+// processes, Known limitation). It decides only for a ChatGPT login
+// (chatGPTLogin). Nothing of the payload leaves it but the verdict.
 func (Codex) CredentialConflict(payload []byte) adapter.ConflictVerdict {
-	var doc struct {
-		AuthMode *string `json:"auth_mode"`
-		Tokens   *struct {
-			IDToken     string `json:"id_token"`
-			AccessToken string `json:"access_token"`
-			AccountID   string `json:"account_id"`
-		} `json:"tokens"`
-	}
-	if err := json.Unmarshal(payload, &doc); err != nil || doc.Tokens == nil {
+	tokens, ok := chatGPTLogin(payload)
+	if !ok {
 		return adapter.ConflictUnknown
 	}
-	if doc.AuthMode != nil && *doc.AuthMode != authModeChatGPT {
-		return adapter.ConflictUnknown
-	}
+	return tokens.conflict()
+}
+
+// conflict is CredentialConflict's comparison. An empty value and a JWT that
+// does not decode count as absent; with fewer than two values present it cannot
+// tell.
+func (t chatGPTTokens) conflict() adapter.ConflictVerdict {
 	present := []string{}
-	for _, id := range []string{
-		doc.Tokens.AccountID,
-		workspaceOf(doc.Tokens.IDToken),
-		workspaceOf(doc.Tokens.AccessToken),
-	} {
+	for _, id := range []string{t.AccountID, workspaceOf(t.IDToken), workspaceOf(t.AccessToken)} {
 		if id != "" {
 			present = append(present, id)
 		}
@@ -95,19 +110,24 @@ func (Codex) CredentialConflict(payload []byte) adapter.ConflictVerdict {
 // Assumptions locates it). It is "" when the token does not decode or carries
 // no such string claim.
 func workspaceOf(token string) string {
-	claims, ok := jwt.Payload(token)
-	if !ok {
-		return ""
-	}
 	var doc struct {
-		Auth *struct {
+		Auth struct {
 			AccountID string `json:"chatgpt_account_id"`
 		} `json:"https://api.openai.com/auth"`
 	}
-	if json.Unmarshal(claims, &doc) != nil || doc.Auth == nil {
+	if !jwtClaims(token, &doc) {
 		return ""
 	}
 	return doc.Auth.AccountID
+}
+
+// jwtClaims decodes a JWT's claims into v: the one decoder of the claims the
+// conflict verdict and the owner comparison read. It is false when the token
+// does not decode or its claims do not fit v, so a claim of the wrong type
+// voids every claim v reads.
+func jwtClaims(token string, v any) bool {
+	claims, ok := jwt.Payload(token)
+	return ok && json.Unmarshal(claims, v) == nil
 }
 
 // ParseDaemonAccount reads workspaceRouting.chatgptAccountId from an

@@ -42,6 +42,39 @@ func credentialConflicted(tool string, specs []artifact.Spec, values []artifact.
 	return false
 }
 
+// liveOwnerDiffers reports whether a live credential among values, read for
+// specs, provably belongs to another account than the payload acc's snapshot
+// holds for it (adapter.OwnerComparer's OwnerDifferent): the attribution guard of
+// a tool whose identity lives inside the credential, which keepSnapshotIdentity
+// cannot compare. Only positive evidence counts — a tool without the comparison,
+// an absent live value, a snapshot payload kae cannot read and an Unknown verdict
+// all decline nothing, as before the guard existed.
+func liveOwnerDiffers(ctx context.Context, be secret.Backend, tool string, specs []artifact.Spec,
+	acc account.Account, values []artifact.Value,
+) bool {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return false
+	}
+	oc, ok := ad.(adapter.OwnerComparer)
+	if !ok {
+		return false
+	}
+	for i, sp := range specs {
+		if sp.IdentityOnly || !values[i].Present {
+			continue
+		}
+		recorded, ok := storedPayload(ctx, be, acc, sp.Name)
+		if !ok {
+			continue
+		}
+		if oc.CompareOwner(recorded, values[i].Data) == adapter.OwnerDifferent {
+			return true
+		}
+	}
+	return false
+}
+
 // mixedLoginFact is the one sentence every message about a Conflict starts from:
 // subject names the login (the live one, or a snapshot) and nothing of its
 // contents — the ids that disagree are personal data, and the verdict carries
@@ -125,12 +158,8 @@ func snapshotConflicted(ctx context.Context, be secret.Backend, acc account.Acco
 		return false
 	}
 	for _, name := range acc.ArtifactNames() {
-		art := acc.Artifacts[name]
-		if !art.Present {
-			continue
-		}
-		data, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found {
+		data, ok := storedPayload(ctx, be, acc, name)
+		if !ok {
 			continue
 		}
 		if h.CredentialConflict(data) == adapter.ConflictDetected {
@@ -138,4 +167,22 @@ func snapshotConflicted(ctx context.Context, be secret.Backend, acc account.Acco
 		}
 	}
 	return false
+}
+
+// storedPayload reads the payload acc's snapshot holds for artifact name. ok is
+// false when the snapshot has no such artifact, records it absent, or its
+// payload is missing from or unreadable in be — callers that read a snapshot
+// only as evidence treat all of those alike. accountFreshness (which reports a
+// read error) and snapshotArtifactDiffers (which compares presence and returns
+// the error) need the distinction and read the backend themselves.
+func storedPayload(ctx context.Context, be secret.Backend, acc account.Account, name string) ([]byte, bool) {
+	art, ok := acc.Artifacts[name]
+	if !ok || !art.Present {
+		return nil, false
+	}
+	data, found, err := be.Get(ctx, art.SecretRef)
+	if err != nil || !found {
+		return nil, false
+	}
+	return data, true
 }

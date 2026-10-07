@@ -419,6 +419,15 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse, declinedOneAccount)
 			continue
 		}
+		if liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, acc, values) {
+			// The same refusal for a tool whose identity is inside the credential
+			// (codex): another account's login, so declined and kept in this switch's
+			// backup like the one above. It comes before the ordering guard, which
+			// cannot compare two accounts (see supersedes).
+			warnRecaptureDeclined(plan.Tool, active, outsideLoginReason(plan.Tool, active),
+				backupID, declinedByUse, declinedOneAccount)
+			continue
+		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); !why.Empty() {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
@@ -646,12 +655,8 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		}
 		live := values[i]
 		values[i] = artifact.Value{}
-		art, ok := acc.Artifacts[sp.Name]
-		if !ok || !art.Present {
-			continue
-		}
-		data, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found {
+		data, ok := storedPayload(ctx, be, acc, sp.Name)
+		if !ok {
 			continue
 		}
 		values[i] = artifact.Value{Data: data, Present: true}
@@ -680,12 +685,20 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 			)
 			continue
 		}
-		reason = msgf(
-			"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
-				"again outside kae", tool, tool, accountName, tool,
-		)
+		reason = outsideLoginReason(tool, accountName)
 	}
 	return reason
+}
+
+// outsideLoginReason is why a recapture declined a live login that provably
+// belongs to another account than the snapshot it would overwrite: claude's
+// identity record (keepSnapshotIdentity) and codex's owner comparison
+// (liveOwnerDiffers) give the same reason.
+func outsideLoginReason(tool, accountName string) message {
+	return msgf(
+		"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
+			"again outside kae", tool, tool, accountName, tool,
+	)
 }
 
 // supersedes reports whether copy a of one account's credential is provably the
@@ -699,7 +712,8 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 // the field cannot do is compare two *different* accounts, so every caller owes an
 // attribution guard of its own before acting on the answer (the harvest's is
 // dirIdentityConfirms, a backup restore's is liveLoginMatchesBackup, and the
-// two recaptures' is keepSnapshotIdentity, applied by each caller).
+// two recaptures' are keepSnapshotIdentity and liveOwnerDiffers, applied by each
+// caller).
 //
 // The a-side guard is `orderable`, the one docs/ADAPTERS.md prescribes. b degrading to
 // the zero cutoff is deliberate and *not* the same test: a copy kae cannot order has no

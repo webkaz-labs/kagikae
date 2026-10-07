@@ -552,6 +552,39 @@ processes — local acceptance (2026-10-06) on). No re-executor reaches these
 observations yet, so they are not in [VALIDATION.md](VALIDATION.md) § Upstream
 Behaviour Assumptions.
 
+### Recapture attribution
+
+codex has no identity-only artifact: the login names its owner inside the credential.
+So both recaptures ([CLI.md](CLI.md) § kae use Semantics) ask the adapter's owner
+comparison (`OwnerComparer.CompareOwner`) whether the live login belongs to the account
+whose snapshot it would overwrite, comparing it with that snapshot's stored payload
+rather than with the recorded identity. A Different verdict declines the recapture with
+the reason and remedy of claude's login outside kae; Same and Unknown decline nothing.
+The verdict carries no value of either payload.
+
+- **Mode.** It decides only when both payloads are ChatGPT logins (`auth_mode`
+  `chatgpt` or none) and neither mixes two accounts (the conflict verdict of
+  § Resident processes is not a Conflict); an API-key login on either side, any other
+  mode, and a mixed login are Unknown.
+- **Workspace.** `tokens.account_id`, or the id_token's
+  `"https://api.openai.com/auth".chatgpt_account_id` when it is empty. Readable on both
+  sides and different is Different: the same user in another workspace is another kae
+  account.
+- **User.** The id_token's `"https://api.openai.com/auth".chatgpt_user_id`, or
+  `user_id` in the same object. Readable on both sides: different is Different, equal is
+  Same.
+- **Email**, only when a user id is unreadable on either side: the id_token's top-level
+  `email`, or `"https://api.openai.com/profile".email`. Readable on both sides and
+  different, ignoring case, is Different. Equal emails are not evidence of the same
+  owner, because an address can change.
+- Anything else is Unknown. A JWT that does not decode or claims of the wrong type count
+  as absent, and a stored payload kae cannot read is not compared.
+
+Where these claims come from upstream, and what was observed of them, is a row of
+[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions. Because the user id
+decides before the email, a changed email under the same user and workspace compares
+Same.
+
 ### Preserved
 
 ```text

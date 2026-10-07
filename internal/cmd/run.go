@@ -504,9 +504,9 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// the account snapshots so the next switch applies fresh credentials.
 	//
 	// Through the **same guards** the switch-away recapture applies and no other
-	// (keepSnapshotIdentity, recaptureWouldDowngrade and credentialConflicted; a guard
-	// added to one path alone is how the two stop agreeing about what a recapture may
-	// overwrite). This used to call
+	// (keepSnapshotIdentity, liveOwnerDiffers, recaptureWouldDowngrade and
+	// credentialConflicted; a guard added to one path alone is how the two stop
+	// agreeing about what a recapture may overwrite). This used to call
 	// captureSnapshot directly, so a child that logged in as another account filed that
 	// credential *and* that identity under the target account's name, and a child whose
 	// refresh failed filed the tombstone over a snapshot that still worked. Both
@@ -540,8 +540,9 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// so anywhere.
 	//
 	// One run can decline two tools with different reasons and remedies (claude through
-	// the two guards above, codex through credentialConflicted), so each warning is kept
-	// with its own plan; TestRunSharedDeclinesTwoToolsAtOnce holds that.
+	// the two guards above, codex through liveOwnerDiffers or credentialConflicted), so
+	// each warning is kept with its own plan; TestRunSharedDeclinesTwoToolsAtOnce holds
+	// that.
 	type declinedRecapture struct {
 		plan toolPlan
 		why  message
@@ -563,6 +564,12 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {
 			declined = append(declined, declinedRecapture{plan, why, declinedOneAccount})
+			continue
+		}
+		if liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, plan.Meta, values) {
+			// codex's counterpart of the identity guard above, at the same position as
+			// on the switch: the child logged in as another account.
+			declined = append(declined, declinedRecapture{plan, outsideLoginReason(plan.Tool, plan.Account), declinedOneAccount})
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); !why.Empty() {

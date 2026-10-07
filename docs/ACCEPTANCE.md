@@ -150,14 +150,10 @@ What kae does with these, read in kae's source at `4a18a5c` and not run:
   switch away, unless the refresh is still in flight then (the
   [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Harvesting before a write or a delete
   harvest does not apply; it is per-directory and claude-only).
-- **A mixed file is declined, not filed.** At `4a18a5c` the codex recapture compared
-  bytes and attributed nothing, so switching away from side with the race's file live
-  rewrote side's snapshot with main's tokens and side's account id. kae now reads the
-  file's conflict verdict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), which
-  compares `tokens.account_id` with the workspace claim of both tokens: both
-  recaptures decline the file and keep it in a backup, `kae add` refuses it, and
-  `kae doctor` reports it live and in a snapshot (`credential_account_conflict`).
-  That is tested with fixtures built like the race's file
+- **A mixed file is declined, not filed.** kae reads the file's conflict verdict
+  ([ADAPTERS.md](ADAPTERS.md) § Resident processes) and never files a Conflict under an
+  account ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead
+  of preserving). That is tested with fixtures built like the race's file
   (`internal/cmd/credential_conflict_test.go`), not against codex. The switch to main
   still applies main's snapshot, whose refresh token the race superseded. kae's other
   two reads of the file still disagree: `Identity` in

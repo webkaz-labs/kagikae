@@ -204,8 +204,7 @@ child could rotate the live credential unseen — a cached value would be stale.
   **Offline**, no network, no signature check: kae only reads claims of payloads it
   already holds. The adapter returns a verdict with no id in it, and the messages name
   only the tool, the account or snapshot, and a suggested command — never an id, an
-  email or a token; tests pin that for the warning, the doctor text and JSON, and the
-  `kae add` error.
+  email or a token.
 
   Two payload sources, and one of them reads live. The account-snapshot half reads
   kae's own secret store; the **bound-directory** half reads the per-directory

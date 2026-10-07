@@ -67,11 +67,10 @@ decisions it specifies are not reopened. The acceptance is recorded in
 [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident processes — local acceptance
 (2026-10-06) on, and codex's `VerifiedVersion()` is the version it ran against. What
 invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
-part: switch round trips is not established. The known limitation the acceptance
-leaves, a refresh in flight across a switch, writes a login that mixes two accounts;
-kae detects that file and never files it under an account ([ADAPTERS.md](ADAPTERS.md)
-§ Resident processes), and what stays open around it is **codex's switch-away
-recapture has no attribution guard** in § Hardening backlog — daily-use robustness.
+part: switch round trips is not established. The login a refresh in flight across a
+switch leaves is handled under [ADAPTERS.md](ADAPTERS.md) § Resident processes; what
+stays open around it is **codex's switch-away recapture has no attribution guard** in
+§ Hardening backlog — daily-use robustness.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -604,8 +603,7 @@ alternative exists (`secret-tool`).
   `captureSnapshot` directly, so a child that logged in as another account filed that
   credential *and* that identity under the target account's name, and a child whose
   refresh failed filed the tombstone; it now applies `keepSnapshotIdentity` and
-  `recaptureWouldDowngrade`, **those two and no third** — no guard of its own. Both
-  recaptures have since gained one shared guard, codex's conflict verdict.
+  `recaptureWouldDowngrade` among the switch-away recapture's guards, and no guard of its own.
   **And the prescription this entry used to carry for the second half was wrong — it is
   withdrawn, measured.** It said `keepSnapshotIdentity` should "route that comparison
   through `identityComparable` too", adding a refusal to `kae use`. Built that way, the

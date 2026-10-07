@@ -200,7 +200,7 @@ matches.
   account's tokens under another account's id (the conflict verdict of
   [ADAPTERS.md](ADAPTERS.md) § Resident processes).
   `keepSnapshotIdentity`, `recaptureWouldDowngrade` and `credentialConflicted` are
-  normative for the set — read them rather than this list, which was wrong for a release. The freshness guard is
+  normative for the set — read them rather than this list. The freshness guard is
   one-directional: kae never prefers the older value. What it refuses is wider than "a
   dead credential over a working one" — a usable but *older* copy is refused too, and so
   is one kae cannot judge, which is reported as exactly that rather than as dead.

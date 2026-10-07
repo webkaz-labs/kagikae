@@ -401,10 +401,9 @@ and whether the app gives its codex externally managed tokens, which are never
 written to the login, is not established. **Known limitation:** a refresh already in
 flight when kae switches writes the old account's rotated tokens into the new
 account's login, which keeps that account's `tokens.account_id`. kae cannot prevent
-that write; it detects the file it leaves (the conflict verdict below) and never
-files it under an account: both recaptures decline it and keep it in a backup,
-`kae add` refuses it, and `kae doctor` reports it live and in a snapshot
-([CLI.md](CLI.md) § kae use Semantics). The measurement, the source reading and what
+that write; it detects the file by the conflict verdict below and never files it
+under an account ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys
+instead of preserving; the commands' behavior is in [CLI.md](CLI.md)). The measurement, the source reading and what
 kae's code does with each case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an
 old-account process refreshing its token.
 

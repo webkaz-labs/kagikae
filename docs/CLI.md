@@ -335,7 +335,9 @@ them as follows; tools without resident processes are unaffected.
 6. **Sessions.** Whenever this command changed codex's account, kae warns, before
    the write, that codex sessions started before the switch and not connected to
    the managed daemon keep the previous account until they are restarted. kae does
-   not look for such a session; the warning is a fixed sentence.
+   not look for such a session; the warning is a fixed sentence. Such a session's
+   token refreshes after a switch are described in [ADAPTERS.md](ADAPTERS.md)
+   § Resident processes; kae does not detect a refresh in flight across the switch.
 
 Nothing is restarted or quit, and a warning names the manual step instead, when:
 

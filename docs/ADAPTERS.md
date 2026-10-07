@@ -394,6 +394,18 @@ reaches each one:
 | the codex server embedded in the ChatGPT desktop app (macOS) | quits and relaunches the app with consent; it speaks stdio to the app, so kae cannot ask it which account it holds |
 | a long-running codex session (an open TUI, `codex resume`) that does not go through the daemon | a fixed warning only; kae does not look for one. Which sessions were seen to go through the daemon is in [ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips and [ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit dialog |
 
+A process still on the old account neither refreshes that account's token nor writes
+the login while codex's login names another account. This was measured on codex's
+app-server; a TUI and the ChatGPT app's embedded codex are inferred to behave alike,
+and whether the app gives its codex externally managed tokens, which are never
+written to the login, is not established. **Known limitation:** a refresh already in
+flight when kae switches writes the old account's rotated tokens into the new
+account's login, which keeps that account's `tokens.account_id`. kae does not detect
+such a file, and its switch-away recapture files it under the snapshot of the
+account that was active. The measurement, the source reading and what kae's code
+does with each case are in [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an
+old-account process refreshing its token.
+
 The adapter implements `ResidentHolder` ([ARCHITECTURE.md](ARCHITECTURE.md)
 § Adapter Interface) and declares:
 
@@ -524,11 +536,11 @@ read-only requests and issuing no login, logout, refresh or daemon command:
 - The ChatGPT app ran its own `codex … app-server` over stdio as a child of
   `/Applications/ChatGPT.app`.
 
-What is still unverified, and the acceptance that settles it, is tracked in
-[ROADMAP.md](ROADMAP.md) § Current work order. No re-executor reaches these
-observations yet, so they are not in [VALIDATION.md](VALIDATION.md)
-§ Upstream Behaviour Assumptions, and `VerifiedVersion()` does not move for them
-until that acceptance runs.
+The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) (from § codex resident
+processes — local acceptance (2026-10-06) on); raising `VerifiedVersion()` is tracked
+in [ROADMAP.md](ROADMAP.md) § Current work order. No
+re-executor reaches these observations yet, so they are not in
+[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions.
 
 ### Preserved
 

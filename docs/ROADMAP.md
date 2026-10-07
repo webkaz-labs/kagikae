@@ -69,34 +69,27 @@ daemon probe, the reconcile in `kae use`, the same reconcile in `kae add` and
 `kae rollback`, the ChatGPT app's confirmation, quit and relaunch in those three
 commands, `doctor resident_drift`, and the codex
 usage veto ([CLI.md](CLI.md) § Subscription windows in listings) — are on main, and
-git log records them; no release ships them yet. What remains is slice 8, the
-real-machine acceptance, recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with
-placeholder names, after which
-codex's `VerifiedVersion()` is raised to the version it ran against; until then it
-stays where it is.
+git log records them; no release ships them yet. Slice 8, the acceptance, is
+recorded in [ACCEPTANCE.md](ACCEPTANCE.md) with placeholder names. What remains is
+raising codex's `VerifiedVersion()` to the version it ran against (0.160.1), a slice
+of its own; until then it stays where it is.
 
 The operator's decisions, which the slices do not reopen, are the behaviour
 [CLI.md](CLI.md) § kae use Semantics (**Resident processes (codex)**) specifies.
 
-The local part of the acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ codex resident processes — local acceptance (2026-10-06),
-[ACCEPTANCE.md](ACCEPTANCE.md) § Second part: switch round trips,
-[ACCEPTANCE.md](ACCEPTANCE.md) § Third part: idle reads, running tasks and the quit
-dialog and [ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's
-limit, the app's n and an isolated daemon, which answer the questions they settled.
-Before slice 8 can pass, the acceptance still has to settle what kae does about a
-resident process still on the old account that refreshes that account's token.
-Whether it writes the token back to `auth.json` is not measured; an old session
-not connected to the daemon is inferred to invalidate the token in kae's snapshot
-by rotating it, which a new login of that account repairs. In upstream's source a
-daemon's routing discovery that meets a 401 reloads and refreshes its own token
-only while its stored login (`auth.json` or the keyring item) names the account
-it holds
-([ACCEPTANCE.md](ACCEPTANCE.md) § Fourth part: a restart past kae's limit, the
-app's n and an isolated daemon).
+The acceptance is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) from § codex resident
+processes — local acceptance (2026-10-06) on. The question the earlier parts left
+open, what a process still on the old account does about its token, is answered in
+[ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
+token; the contract is [ADAPTERS.md](ADAPTERS.md) § Resident processes. What
+invalidated the left account's token in [ACCEPTANCE.md](ACCEPTANCE.md) § Second
+part: switch round trips is still not established, and the known limitation the
+answer leaves, a refresh in flight across a switch, is **A codex login file can
+carry one account's tokens under another's account id** in § Hardening backlog —
+daily-use robustness.
 
-Done when slice 8's acceptance is recorded, the question above has a recorded
-answer, and the contract has been corrected wherever an answer contradicts it.
+Done when codex's `VerifiedVersion()` is raised to the version the acceptance ran
+against.
 
 § Agent orchestration and remote authentication — deferred exploration still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -1072,6 +1065,24 @@ alternative exists (`secret-tool`).
   rejected immediately or within a grace window, whether presenting it revokes
   the newer copy too (the cascade), whether a fresh login or logout revokes the
   previous chain, and the access token's lifetime (`exp` minus `iat`).
+  [ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
+  token measured codex's client against a mock token endpoint, so it settles none of
+  these server-side questions.
+
+- **A codex login file can carry one account's tokens under another's account id**
+  (recorded 2026-10-07; not implemented). A codex process on main whose token refresh
+  is in flight when kae switches the live login to side writes main's rotated tokens
+  into side's `auth.json`, keeping side's `tokens.account_id`
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Fifth part: an old-account process refreshing its
+  token, the race). kae does not notice: the switch-away recapture files that file
+  under side, and kae's identity read (the id_token's email) and its resident
+  comparison (`tokens.account_id`) name different accounts in it. The candidate
+  detection is the disagreement itself: the id_token's `chatgpt_account_id` claim
+  (upstream parses it: rust-v0.160.1 `codex-rs/login/src/token_data.rs` line 38, read
+  2026-10-07) against `tokens.account_id`. Done when the codex recapture declines such
+  a file with the warning and backup that a declined recapture gives, `kae doctor`
+  warns when the live codex login is one, and both are tested with a fixture built
+  like the race's file.
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

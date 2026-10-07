@@ -173,6 +173,37 @@ refresh through this same `AuthManager` as the app-server measured here. Not
 established: whether the ChatGPT app gives its codex externally managed tokens,
 which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 1146).
 
+## v0.24.0 candidate
+
+Assessed on 2026-10-07 (JST) at `7bed477`. Application commits since published
+v0.23.0 include the codex resident-process work, accepted in § codex resident
+processes — local acceptance (2026-10-06) and the parts that follow it, the Limit
+reading's age under `--full`, the darwin/amd64 drop, the codex 0.160.1
+re-verification and the claude 2.1.288 re-verification (`eda38d5`); the reported
+version is `v0.24.0`. It is the first tag the release workflow signs with the
+Packslip 1.6.0 Action; v0.23.0 was signed with 1.1.1.
+
+`mise run check` passed in the default locale and under `LC_ALL=C.UTF-8
+LANG=C.UTF-8`; the Japanese run, `KAE_LANG=ja LC_ALL=ja_JP.UTF-8 mise run
+test-fresh`, `GOOS=linux go vet ./...` and `git diff --check` passed.
+`mise run goreleaser-check`, `mise run release-evidence`, `mise run release-smoke`
+and `mise run naming-agreement` passed. The last needed the new reviewed digest: the
+installed Claude was 2.1.288, and a login-free temp-HOME `security` shim showed it
+reads the same service names as kae writes (see [VALIDATION.md](VALIDATION.md)
+§ Upstream Behaviour Assumptions, claude).
+
+Not run, by the operator's decision: the real-machine account-switching checks of
+§ Real-Machine Acceptance, and the fingerprint-table re-recording; the codex
+resident-process parts above were run separately. `mise run audit` fails: its
+fingerprint test refuses the installed claude (2.1.288, recorded 2.1.284, two
+literal counts moved: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_CUSTOM_OAUTH_URL`), agy
+(digest differs from the recorded 1.2.12 build), copilot (launcher selected 1.0.91,
+recorded 1.0.88), cursor (artifact not readable) and opencode (1.18.34, recorded
+1.18.32); codex has no fingerprints by design. Its `vuln` half, run alone as
+`mise run vuln`, found no vulnerabilities. Authentication behaviour other than
+claude's naming, codex's resident processes and the codex 0.160.1 re-verification
+is therefore carried by earlier evidence and not re-measured here.
+
 ## v0.23.0 candidate
 
 Assessed on 2026-10-05 (JST). Application commits since published v0.22.1 include

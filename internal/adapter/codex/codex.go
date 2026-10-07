@@ -117,10 +117,10 @@ func (Codex) Binary() string { return "codex" }
 // VerifiedVersion is the Codex CLI release kae's behaviour assumptions were last
 // checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). As on claude, it
 // is not evidence that every row there was re-run on it; the rows say which.
-func (Codex) VerifiedVersion() string { return "0.157.1" }
+func (Codex) VerifiedVersion() string { return "0.160.1" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Codex) VerifiedOn() string { return "2026-09-29" }
+func (Codex) VerifiedOn() string { return "2026-10-07" }
 
 // codexHome honors CODEX_HOME as the live base path when already set.
 func codexHome(env adapter.Env) string {

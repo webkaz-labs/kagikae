@@ -194,8 +194,21 @@ vulnerabilities, while fingerprints differed for agy (digest), Claude 2.1.289
 (recorded 2.1.284), Copilot 1.0.91 (1.0.88), Cursor 2026.10.01-e373342
 (2026.09.08-6caf4ff) and OpenCode 1.18.34 (1.18.32). Codex fingerprints are
 excluded by design. The operator explicitly approved publishing this patch
-while recording these other-tool discrepancies. No publication result is
-recorded here.
+while recording these other-tool discrepancies.
+
+### v0.24.1 publication result
+
+On 2026-10-08 (JST), main CI and the release workflow succeeded for source
+`a2388f5537680af7f480b67816db231e33c24f05` and tag `v0.24.1`, including signing
+the darwin/arm64 and linux amd64/arm64 archives with Packslip 1.6.0.
+
+`KAE_RELEASE_VERIFY_FRESH=1 mise run release-verify -- v0.24.1` returned
+`status: success`, with Packslip 1.6.0 and mise 2026.10.2. Signature, source,
+archives and completion resources verified; foreign signer identities were
+refused. The native binary and isolated installer reported `kae v0.24.1`.
+The native mise consumer passed under an isolated zero-age release policy,
+not the default age policy. The installer used verified-asset fixtures, so
+its HTTP transport was not exercised. No live login was part of this check.
 
 ## v0.24.0 candidate
 

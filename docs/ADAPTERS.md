@@ -1557,7 +1557,7 @@ claims decoder is `internal/jwt`).
 `kae`, `kae ls` and `kae accounts` show the windows a tool has already written.
 The listing rules, the cache, and the network fallback are in
 [CLI.md](CLI.md) § Subscription windows in listings. This section is only where
-each tool writes the local record, because that path is adapter knowledge.
+each tool writes the local record and how its adapter parses reset times.
 
 | Tool | Local record | What kae reads |
 |------|----------------|----------------|
@@ -1566,6 +1566,11 @@ each tool writes the local record, because that path is adapter knowledge.
 
 The shapes are what the parsers accept. They are not a claim that every
 installed build was re-measured. A tool with no row here has no window column.
+
+For the Codex network fallback, a positive `reset_after_seconds` becomes an
+absolute reset time using the listing's injected observation time when
+`resets_at` is absent. Local rollout records use their absolute `resets_at`;
+missing or null relative reset values do not supply a countdown.
 
 A shared home's file does not name an account. kae keeps it attributed to the
 account that owned that mtime, so a switch does not move the previous account's

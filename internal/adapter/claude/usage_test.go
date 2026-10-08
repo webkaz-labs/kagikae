@@ -53,7 +53,7 @@ func TestProbeUsageRefusesAnExpiredToken(t *testing.T) {
 
 func TestParseUsageBody(t *testing.T) {
 	body := []byte(`{"five_hour":{"utilization":10,"resets_at":"2026-07-01T00:00:00Z"},"seven_day":{"utilization":20,"resets_at":"2026-07-08T00:00:00Z"},"seven_day_opus":null}`)
-	reading, ok := (Claude{}).ParseUsageBody(body)
+	reading, ok := (Claude{}).ParseUsageBody(body, time.Time{})
 	if !ok {
 		t.Fatal("expected windows")
 	}

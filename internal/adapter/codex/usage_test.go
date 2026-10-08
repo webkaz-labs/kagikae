@@ -41,12 +41,50 @@ func TestLocalUsageUsesTheNewestSessionTail(t *testing.T) {
 
 func TestParseUsageBodyReadsWindowSeconds(t *testing.T) {
 	body := []byte(`{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":25,"limit_window_seconds":18000,"resets_at":1800000000},"secondary_window":{"used_percent":5,"limit_window_seconds":604800,"resets_at":1800003600}}}`)
-	reading, ok := (Codex{}).ParseUsageBody(body)
+	reading, ok := (Codex{}).ParseUsageBody(body, time.Time{})
 	if !ok {
 		t.Fatal("expected windows")
 	}
 	if got, want := usagelimit.Format(reading.Windows), "5h 25% · 7d 5%"; got != want {
 		t.Fatalf("Format = %q, want %q", got, want)
+	}
+	if got, want := reading.Windows[0].ResetsAt, time.Unix(1800000000, 0).UTC(); !got.Equal(want) {
+		t.Fatalf("absolute ResetsAt = %s, want %s", got, want)
+	}
+}
+
+func TestParseUsageBodyAnchorsRelativeResetsToNow(t *testing.T) {
+	now := time.Date(2026, 10, 8, 1, 2, 3, 0, time.UTC)
+	body := []byte(`{"rate_limit":{"primary_window":{"used_percent":25,"limit_window_seconds":18000,"reset_after_seconds":120,"reset_at":2000000000},"secondary_window":{"used_percent":5,"limit_window_seconds":604800,"reset_after_seconds":43200,"reset_at":2000000000}}}`)
+	reading, ok := (Codex{}).ParseUsageBody(body, now)
+	if !ok {
+		t.Fatal("expected windows")
+	}
+	for i, want := range []time.Time{now.Add(2 * time.Minute), now.Add(12 * time.Hour)} {
+		if got := reading.Windows[i].ResetsAt; !got.Equal(want) {
+			t.Errorf("window %d ResetsAt = %s, want %s", i, got, want)
+		}
+	}
+}
+
+func TestParseUsageBodyKeepsMissingAndNullResetsUnset(t *testing.T) {
+	now := time.Date(2026, 10, 8, 1, 2, 3, 0, time.UTC)
+	for _, tc := range []struct {
+		name, reset string
+	}{
+		{name: "missing"},
+		{name: "null", reset: `,"reset_after_seconds":null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"rate_limit":{"primary_window":{"used_percent":25,"limit_window_seconds":18000` + tc.reset + `}}}`)
+			reading, ok := (Codex{}).ParseUsageBody(body, now)
+			if !ok || len(reading.Windows) != 1 {
+				t.Fatalf("reading = %+v, ok = %v", reading, ok)
+			}
+			if !reading.Windows[0].ResetsAt.IsZero() {
+				t.Fatalf("ResetsAt = %s, want zero", reading.Windows[0].ResetsAt)
+			}
+		})
 	}
 }
 

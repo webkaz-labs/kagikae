@@ -484,7 +484,7 @@ func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc ac
 		if !ok {
 			continue
 		}
-		reading, ok := app.doUsageProbe(ctx, prober, req)
+		reading, ok := app.doUsageProbe(ctx, prober, req, now)
 		if !ok {
 			continue
 		}
@@ -500,7 +500,7 @@ func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc ac
 	return usageView{}, false
 }
 
-func (app *App) doUsageProbe(ctx context.Context, prober adapter.UsageProber, req *http.Request) (usagelimit.Reading, bool) {
+func (app *App) doUsageProbe(ctx context.Context, prober adapter.UsageProber, req *http.Request, now time.Time) (usagelimit.Reading, bool) {
 	if app.usageClient == nil || !usageRequestAllowed(req) {
 		return usagelimit.Reading{}, false
 	}
@@ -513,7 +513,7 @@ func (app *App) doUsageProbe(ctx context.Context, prober adapter.UsageProber, re
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return usagelimit.Reading{}, false
 	}
-	return prober.ParseUsageBody(body)
+	return prober.ParseUsageBody(body, now)
 }
 
 func usageRequestAllowed(req *http.Request) bool {

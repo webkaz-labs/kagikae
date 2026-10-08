@@ -94,7 +94,7 @@ func (Claude) ProbeUsage(payload []byte, now time.Time) (*http.Request, bool) {
 	return req, true
 }
 
-func (Claude) ParseUsageBody(body []byte) (usagelimit.Reading, bool) {
+func (Claude) ParseUsageBody(body []byte, _ time.Time) (usagelimit.Reading, bool) {
 	var doc struct {
 		FiveHour *apiUsageWindow `json:"five_hour"`
 		SevenDay *apiUsageWindow `json:"seven_day"`

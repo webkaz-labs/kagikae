@@ -89,8 +89,8 @@ func (Codex) ProbeUsage(payload []byte, now time.Time) (*http.Request, bool) {
 	return req, true
 }
 
-func (Codex) ParseUsageBody(body []byte) (usagelimit.Reading, bool) {
-	windows, ok := windowsFromCodexJSON(body)
+func (Codex) ParseUsageBody(body []byte, now time.Time) (usagelimit.Reading, bool) {
+	windows, ok := windowsFromCodexJSON(body, now)
 	if !ok {
 		return usagelimit.Reading{}, false
 	}
@@ -123,9 +123,10 @@ type rateWindow struct {
 	WindowMinutes      int     `json:"window_minutes"`
 	LimitWindowSeconds int     `json:"limit_window_seconds"`
 	ResetsAt           float64 `json:"resets_at"`
+	ResetAfterSeconds  float64 `json:"reset_after_seconds"`
 }
 
-func (w *rateWindow) window() (usagelimit.Window, bool) {
+func (w *rateWindow) window(now time.Time) (usagelimit.Window, bool) {
 	if w == nil {
 		return usagelimit.Window{}, false
 	}
@@ -140,18 +141,22 @@ func (w *rateWindow) window() (usagelimit.Window, bool) {
 	if id == "" {
 		return usagelimit.Window{}, false
 	}
+	resetsAt := freshness.EpochToTime(w.ResetsAt)
+	if resetsAt.IsZero() && !now.IsZero() && w.ResetAfterSeconds > 0 {
+		resetsAt = now.Add(time.Duration(w.ResetAfterSeconds * float64(time.Second)))
+	}
 	return usagelimit.Window{
 		ID: id, UsedPercent: w.UsedPercent, Minutes: minutes,
-		ResetsAt: freshness.EpochToTime(w.ResetsAt),
+		ResetsAt: resetsAt,
 	}, true
 }
 
-func windowsFromPair(primary, secondary *rateWindow) ([]usagelimit.Window, bool) {
+func windowsFromPair(primary, secondary *rateWindow, now time.Time) ([]usagelimit.Window, bool) {
 	var windows []usagelimit.Window
-	if w, ok := primary.window(); ok {
+	if w, ok := primary.window(now); ok {
 		windows = append(windows, w)
 	}
-	if w, ok := secondary.window(); ok {
+	if w, ok := secondary.window(now); ok {
 		windows = append(windows, w)
 	}
 	return windows, len(windows) > 0
@@ -160,7 +165,7 @@ func windowsFromPair(primary, secondary *rateWindow) ([]usagelimit.Window, bool)
 // windowsFromCodexJSON accepts both shapes Codex leaves behind: a session
 // event's rate_limits (primary / secondary, minutes) and the usage response's
 // rate_limit (primary_window / secondary_window, seconds).
-func windowsFromCodexJSON(data []byte) ([]usagelimit.Window, bool) {
+func windowsFromCodexJSON(data []byte, now time.Time) ([]usagelimit.Window, bool) {
 	var event struct {
 		Payload struct {
 			RateLimits *struct {
@@ -177,12 +182,12 @@ func windowsFromCodexJSON(data []byte) ([]usagelimit.Window, bool) {
 		return nil, false
 	}
 	if event.Payload.RateLimits != nil {
-		if windows, ok := windowsFromPair(event.Payload.RateLimits.Primary, event.Payload.RateLimits.Secondary); ok {
+		if windows, ok := windowsFromPair(event.Payload.RateLimits.Primary, event.Payload.RateLimits.Secondary, now); ok {
 			return windows, true
 		}
 	}
 	if event.RateLimit != nil {
-		return windowsFromPair(event.RateLimit.Primary, event.RateLimit.Secondary)
+		return windowsFromPair(event.RateLimit.Primary, event.RateLimit.Secondary, now)
 	}
 	return nil, false
 }
@@ -194,7 +199,7 @@ func newestRateLimits(tail []byte) ([]usagelimit.Window, bool) {
 		if line == "" || !strings.Contains(line, "rate_limit") {
 			continue
 		}
-		if windows, ok := windowsFromCodexJSON([]byte(line)); ok {
+		if windows, ok := windowsFromCodexJSON([]byte(line), time.Time{}); ok {
 			return windows, true
 		}
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	"github.com/webkaz-labs/kagikae/internal/adapter/codex"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
@@ -264,8 +265,32 @@ func TestUsageProbeRefusesAForeignHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+canary)
-	if _, ok := app.doUsageProbe(context.Background(), claude.Claude{}, req); ok {
+	if _, ok := app.doUsageProbe(context.Background(), claude.Claude{}, req, app.Now()); ok {
 		t.Fatal("foreign host was accepted")
+	}
+}
+
+func TestCodexUsageProbeAnchorsRelativeResetToAppClock(t *testing.T) {
+	app := testApp(t, nil)
+	app.usageClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"rate_limit":{"primary_window":{"used_percent":25,"limit_window_seconds":18000,"reset_after_seconds":120,"reset_at":2000000000}}}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	req, err := http.NewRequest(http.MethodGet, "https://chatgpt.com/backend-api/wham/usage", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := app.Now()
+	reading, ok := app.doUsageProbe(context.Background(), codex.Codex{}, req, now)
+	if !ok || len(reading.Windows) != 1 {
+		t.Fatalf("reading = %+v, ok = %v", reading, ok)
+	}
+	if got, want := reading.Windows[0].ResetsAt, now.Add(2*time.Minute); !got.Equal(want) {
+		t.Fatalf("ResetsAt = %s, want app clock + 2m (%s)", got, want)
 	}
 }
 

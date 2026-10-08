@@ -169,7 +169,7 @@ type UsageCreator interface {
 // anywhere but the Authorization header.
 type UsageProber interface {
 	ProbeUsage(payload []byte, now time.Time) (*http.Request, bool)
-	ParseUsageBody(body []byte) (usagelimit.Reading, bool)
+	ParseUsageBody(body []byte, now time.Time) (usagelimit.Reading, bool)
 }
 
 var registry = map[string]Adapter{}

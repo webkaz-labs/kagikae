@@ -3,7 +3,8 @@
 ## Current release — kae v0.24.1
 
 Patch release restoring the Codex API usage countdown using
-`reset_after_seconds`.
+`reset_after_seconds`. Candidate assessment: [ACCEPTANCE.md](ACCEPTANCE.md)
+§ v0.24.1 candidate.
 
 ## Release procedure
 

@@ -172,6 +172,31 @@ refresh through this same `AuthManager` as the app-server measured here. Not
 established: whether the ChatGPT app gives its codex externally managed tokens,
 which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 1146).
 
+## v0.24.1 candidate
+
+Assessed on 2026-10-08 (JST) at `846ae64`; the application fix is `ceb612b`.
+The installed fixed snapshot, approved explicitly by the operator, was checked
+with a real `kae ls` after backing up and invalidating one old remote-usage cache
+entry: `seven_day` showed 1% with 5d22h remaining, and the local countdown
+remained. This accepts the read-only API response and its readers only; login,
+account switching and refresh mutations were not re-verified. Between installed
+`ceb612b` and candidate `846ae64`, the main source change is the version literal;
+there are no credential-mutation changes.
+
+`mise run check`, `git diff --check`, `mise run goreleaser-check`,
+`mise run release-evidence` (all 40 full-mutation checks), and both saved
+`mise run release-smoke` sections passed. Naming-agreement unit tests and the
+compiled verifier with reviewed Claude 2.1.288 at its exact digest matched all
+seven cases. The Packslip 1.6.0 signer test and standard consumer fixture passed.
+
+`mise run audit` is not green: the vulnerability scan found zero reachable
+vulnerabilities, while fingerprints differed for agy (digest), Claude 2.1.289
+(recorded 2.1.284), Copilot 1.0.91 (1.0.88), Cursor 2026.10.01-e373342
+(2026.09.08-6caf4ff) and OpenCode 1.18.34 (1.18.32). Codex fingerprints are
+excluded by design. The operator explicitly approved publishing this patch
+while recording these other-tool discrepancies. No publication result is
+recorded here.
+
 ## v0.24.0 candidate
 
 Assessed on 2026-10-07 (JST) at `7bed477`. Application commits since published

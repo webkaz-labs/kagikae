@@ -2171,11 +2171,10 @@ describe the **active** account's snapshot freshness (see "Credential freshness
 in listings" below); both are absent when no account is active.
 `live_credential` / `live_relogin_by` are the same pair read from the live store
 the tool uses for that account (same section, "The active account's live login").
-`usage`, when
-present, is that same account's subscription windows (see "Subscription windows
-in listings" below). The human text
-leads with the same data: the global-isolated homes (if any), the pin banner, the
-global active profile, the per-tool table, then the profiles list.
+`usage`, when present, is that same account's subscription windows (see
+"Subscription windows in listings" below). The human text leads with the same data:
+the global-isolated homes (if any), the pin banner, the global active profile, the
+per-tool table, then the profiles list.
 
 ### `kae accounts --json`
 
@@ -2254,17 +2253,24 @@ its own homes in this shell (a bound directory) or in global isolated mode
 holds. A bound directory's live copy is
 reported by `kae doctor` instead ("Bound-directory credentials").
 
-The `Credential` cell shows whichever of the two is worse, and marks the live one:
-`re-login now (live login)` when the live copy is stale while the snapshot is not.
-A live copy that is merely as bad as the snapshot adds nothing, because the remedy
-for the active account is the same `kae relogin <tool>` either way. The rule is the
-one `kae doctor` applies, so the cell and the check agree.
+**The worse-of-two rule**, shared by this cell and `kae doctor`'s live half of
+`credential_stale` / `credential_expiring`: the live copy is reported only when it is
+`expiring` or `stale` and worse than the snapshot (a snapshot kae could not judge,
+or could not read, ranks below both). The cell then shows the live state, marked
+`re-login now (live login)` or `N day(s) left (live login)`; otherwise it shows the
+snapshot as before. A live copy that is merely as bad as the snapshot adds nothing,
+because the remedy for the active account is the same `kae relogin <tool>` either way.
 
-No extra store read: on darwin the read is the keychain item `Detect` has just read,
-and the command coalesces the two into one `security` call. No network and no token
-refresh; nothing of the credential but its state and deadline reaches the output.
-`kae ls` and `kae accounts` stay snapshot-only — they do not read live stores, and
-reading one there would add the read this avoids.
+**Cost.** One store read, coalesced through the command's keychain read cache with
+the reads of the same item that already happen — `Detect` in `kae status`;
+`auth_present` and, for codex, `credential_account_conflict`'s live read in
+`kae doctor` — including the attribute-only probe that resolves codex's `auto` store.
+On darwin that is no extra `security` call, with one exception: `kae doctor` inside a
+bound directory for claude, where `auth_present` reads the bound store and nothing
+else reads the real home's item, so that item is one more read. No network and no
+token refresh; nothing of the credential but its state and deadline reaches the
+output. `kae ls` and `kae accounts` stay snapshot-only — they do not read live
+stores, and reading one there would add the read this avoids.
 
 #### Subscription windows in listings
 
@@ -2557,15 +2563,12 @@ Credential-health checks (warn-level):
   directory** (see "Bound-directory credentials" below), and that half does read
   live, because a bound directory does not use a snapshot. A third half reads the
   **live store of each tool's active account** in the real home, the credential the
-  tool actually runs on outside a bound directory (a tool in global isolated mode is
-  skipped, as in `kae status`): it is reported only when it is
-  worse than that account's snapshot (or the snapshot cannot be judged), so the
-  ordinary case — both copies of one login nearing the same deadline — stays one
+  tool runs on outside a bound directory (a tool in global isolated mode is skipped),
+  and reports it under the worse-of-two rule and at the cost "The active account's
+  live login" states, so both copies of one login nearing one deadline stay one
   finding. Its remedy is `kae relogin <tool>`, through the active branch of
-  § Recovery guidance. It needs no secret backend, and outside a bound directory its
-  store read is coalesced with the ones `auth_present` and
-  `credential_account_conflict` make (inside one those read the bound store, so the
-  real home's item is one more read). The halves are told apart by the message:
+  § Recovery guidance, and it needs no secret backend. The halves are told apart by
+  the message:
   the snapshot one names `snapshot "<account>"`, the directory one `bound to <dir>`,
   the live one `the live <tool> credential of active account <account>`.
 - `credential_expiring`: the lead-time half of the same question — the snapshot

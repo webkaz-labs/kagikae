@@ -581,7 +581,10 @@ Commands are short-lived. Credential read caches opt in through the context:
   `security find-generic-password` reads of the same **upstream** tool service.
   The switch path uses it so `Detect`, the backup, and the recapture share one
   keychain read instead of three; `WriteItem`/`DeleteItem` invalidate the
-  cached service.
+  cached service. The attribute-only presence probe (`ItemExistsForAccount`, which
+  resolves codex's `auto` store) is cached under the same key and invalidation.
+  `kae status` and `kae doctor` use it so the active account's live freshness read
+  reuses what `Detect` (and in doctor `credential_account_conflict`) already read.
 - `secret.WithReadCache(ctx)` + `secret.Cached(be)` coalesce reads of **kae's
   own** secret store. The switch path uses it so each target snapshot payload is
   read once — the switch-time stale warning and `applySnapshot` share it instead

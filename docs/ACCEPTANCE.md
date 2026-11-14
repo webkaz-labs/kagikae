@@ -176,15 +176,22 @@ which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 11
 
 Assessed on 2026-11-15 (JST) at `544b04d`. The release changes credential
 mutation paths (global `kae relogin`, `kae add` refusals, `--restore` for the
-active account), so the affected live check ran again. On macOS with Claude Code
-2.1.312, the operator used a binary built from `544b04d` with a non-working
-account (`side`) and reported every step as expected: `kae add --no-login` of
-the active account, `kae relogin claude` with the same account selected in the
-browser followed by a fresh `claude -p "say hi" </dev/null` reply,
-`kae add --restore claude side` refused before any login, a `kae use claude
-main` / `kae use claude side` round trip with a fresh-process reply after each
-switch, and the Credential and Limit cells in `kae` and `kae doctor`. Recorded
-from the operator's report; no transcript was kept.
+active account), so a claude-only subset of § Real-Machine Acceptance ran. On
+macOS with Claude Code 2.1.312, the operator was handed a binary built from
+`544b04d` and a second account not used for work (`side`), per that section's
+precondition, with these steps and expectations: (1) `kae use claude side` and
+`kae add --no-login claude side`, where a refusal as worse than the stored copy
+was also acceptable; (2) `kae relogin claude` with the same account selected in
+the browser, exiting 0, then a fresh `claude -p "say hi" </dev/null` reply;
+(3) `kae add --restore claude side` refused with exit 64, naming `kae relogin`,
+before any login; (4) a `kae use claude main` / `kae use claude side` round
+trip with a fresh-process reply after each switch; (5) the Credential and Limit
+cells in `kae` and `kae doctor`. The operator answered 「期待通りだったのでプッシュとリリースしてよい」.
+Whether step 1 captured or refused was not reported, and the build the operator
+ran is recorded only as handed over; no transcript was kept. Not run: the rest
+of § Real-Machine Acceptance, other tools' live checks and the Upstream Behaviour
+Assumptions re-recording; authentication behaviour beyond these steps is carried
+by earlier evidence.
 
 `mise run check` (also under `LC_ALL=C.UTF-8`), `git diff --check`,
 `mise run goreleaser-check`, `mise run release-evidence` (all 40 full-mutation

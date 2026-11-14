@@ -439,3 +439,148 @@ func TestGlobalLoginRemedyFollowsActiveness(t *testing.T) {
 		}()
 	}
 }
+
+// A live copy worse than the existing snapshot is not captured over it: nothing
+// backs up a snapshot, so the overwrite could not be undone. Each path is a row.
+func TestAddRefusesALiveCopyWorseThanTheSnapshot(t *testing.T) {
+	const tombstone = `{"accessToken":"","refreshToken":"","expiresAt":0}`
+	for _, tc := range []struct {
+		name    string
+		noLogin bool
+	}{
+		{name: "--no-login", noLogin: true},
+		{name: "login flow leaving a tombstone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+			be := testBackend(t, app)
+			snapBefore := snapshotPayload(t, app, be, constants.ToolClaude, "main")
+			var code int
+			var stderr string
+			if tc.noLogin {
+				seedClaudeOAuth(t, app, tombstone)
+				code, stderr = captureStderr(t, func() int {
+					return runCapture(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+				})
+			} else {
+				withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+					seedClaudeOAuth(t, app, tombstone)
+					return 0, nil
+				})
+				code, stderr = captureStderr(t, func() int {
+					return runLogin(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", false)
+				})
+				if got := claudeCreds(t, app); !strings.Contains(got, mainToken) {
+					t.Fatalf("the pre-login login must be restored: %s", got)
+				}
+			}
+			mustExit(t, constants.ExitUnsafeRefused, code, stderr)
+			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); got != snapBefore {
+				t.Fatalf("the usable snapshot must be unchanged: %s", got)
+			}
+			if !strings.Contains(stderr, "needs a re-login while snapshot claude/main still holds a usable one") ||
+				!strings.Contains(stderr, "kae relogin claude") {
+				t.Errorf("the refusal must say why and name the re-login: %q", stderr)
+			}
+			if strings.Contains(stderr, mainToken) {
+				t.Fatal("a credential reached the output")
+			}
+		})
+	}
+}
+
+// A newer live copy of the same account is still captured.
+func TestAddCapturesANewerLiveCopy(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		claudeOAuthPayload(reloggedToken, app.Now().Add(8*time.Hour)))
+	mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "main"), "capture newer main")
+	if got := snapshotPayload(t, app, testBackend(t, app), constants.ToolClaude, "main"); !strings.Contains(got, reloggedToken) {
+		t.Fatalf("the newer copy must be captured: %s", got)
+	}
+}
+
+// An auto-detected name comes from the email's local part, so two accounts can
+// land on one name; the second is refused rather than filed over the first.
+func TestAddRefusesAnAutoNamedCollision(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	login := func(uuid, token string) func(context.Context, []string, string, ...string) (int, error) {
+		return func(context.Context, []string, string, ...string) (int, error) {
+			writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+				claudeOAuthPayload(token, app.Now().Add(8*time.Hour)))
+			writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+				`{"oauthAccount":`+claudeOAuthAccount(uuid, "you@example.com")+`}`)
+			return 0, nil
+		}
+	}
+	withInteractive(t, login("first-uuid", mainToken))
+	code, out, stderr := captureBoth(t, func() int { return runLogin(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "", false) })
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(out, "claude/you") {
+		t.Fatalf("the fixture must auto-name the account you: %q", out)
+	}
+	snapBefore := snapshotPayload(t, app, testBackend(t, app), constants.ToolClaude, "you")
+	withInteractive(t, login("second-uuid", sideToken))
+	code, stderr = captureStderr(t, func() int { return runLogin(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "", false) })
+	mustExit(t, constants.ExitUnsafeRefused, code, stderr)
+	if got := snapshotPayload(t, app, testBackend(t, app), constants.ToolClaude, "you"); got != snapBefore {
+		t.Fatalf("the first account's snapshot must be unchanged: %s", got)
+	}
+	if !strings.Contains(claudeCreds(t, app), mainToken) {
+		t.Fatal("the live login must be restored to the first account's")
+	}
+}
+
+// `kae add --restore <tool>` without a name, landing on the active account: the
+// previous login is that account's own older copy, so the new login stays live.
+func TestAddRestoreAutoNamedActiveKeepsTheNewLogin(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	withInteractive(t, claudeLoginAs(t, app, mainToken, "you", &[]string{}))
+	code, stderr := captureStderr(t, func() int { return runLogin(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "", false) })
+	mustExit(t, constants.ExitOK, code, stderr)
+	seedClaudeOAuth(t, app, `{"accessToken":"","refreshToken":"","expiresAt":0}`)
+	withInteractive(t, claudeLoginAs(t, app, reloggedToken, "you", &[]string{}))
+	code, out, stderr := captureBoth(t, func() int { return runLogin(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "", true) })
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(claudeCreds(t, app), reloggedToken) {
+		t.Fatalf("the new login must stay live: %s", claudeCreds(t, app))
+	}
+	if !strings.Contains(out, "new login stays live") || activeClaude(t, app) != "you" {
+		t.Fatalf("must say so and keep the account active: %q", out)
+	}
+}
+
+// Inside a bound directory (or an isolated home) the login flow would write
+// into the store kae's own variable names, so kae add refuses before anything,
+// also after the global-scope masking `kae add` applies. --no-login reads the
+// masked, real store and is not refused.
+func TestAddLoginRefusesKaeIsolationInTheShell(t *testing.T) {
+	env := map[string]string{}
+	app := testApp(t, env)
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	env["CLAUDE_CONFIG_DIR"] = app.Paths.SharedDir("abcdef0123456789", constants.ToolClaude)
+	app.applyGlobalScope()
+	backups := backupCount(t, app)
+	ran := false
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		ran = true
+		return 0, nil
+	})
+	code, stderr := captureStderr(t, func() int {
+		return runLogin(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", false)
+	})
+	mustExit(t, constants.ExitUsage, code, stderr)
+	if ran || backupCount(t, app) != backups {
+		t.Fatalf("nothing may run or be backed up: ran=%v", ran)
+	}
+	for _, want := range []string{"CLAUDE_CONFIG_DIR", "kae relogin claude"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal must name %q: %q", want, stderr)
+		}
+	}
+	mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "main"), "--no-login reads the real store")
+}

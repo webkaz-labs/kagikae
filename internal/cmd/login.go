@@ -165,6 +165,15 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 		return finish(opts, errf(constants.ExitUnsupported,
 			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool)), nil, message{}
 	}
+	// The login runs with the shell's environment, which kae cannot strip a
+	// variable from: inside a bound directory (or an isolated home) the tool would
+	// write the login into the store kae's own variable names, while kae compares
+	// and captures the global one.
+	if envVar := app.kaeIsolationVar(tool); envVar != "" {
+		return finish(opts, errf(constants.ExitUsage,
+			"this shell carries kae's isolation (%s points into kae's stores, as a bound directory or an isolated home sets it), so the %s login flow would write into that store instead of the global one; run kae add outside the bound directory, in a shell where its binding is not active; to log in a bound directory's account, run kae relogin %s in that directory",
+			envVar, tool, tool)), nil, message{}
+	}
 	// Plan the tool before the name is known; only plan.Account (set after login)
 	// depends on it, and that is not read until captureSnapshot below.
 	plan, err := app.planTool(ctx, tool, explicitName)
@@ -253,21 +262,32 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	// this name cannot be detected afterwards. The live state goes back to the
 	// pre-login backup whether or not --restore was given, so the other account's
 	// login is not left live under this account's record.
-	if mismatch, err := app.liveLoginNotAccount(ctx, be, plan); err != nil {
+	// The same holds for a live copy worse than the snapshot it would replace.
+	if refusal, err := app.captureIntoExistingRefusal(ctx, be, plan); err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil, message{}
-	} else if mismatch {
+	} else if refusal != nil {
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return finish(opts, doubleFailure(loginStepCapture.phrase(),
-				errAccountOwnerMismatch(tool, accountName, msgf("nothing was captured")), restoreErr, meta.ID)), nil, message{}
+				refusal(msgf("nothing was captured")), restoreErr, meta.ID)), nil, message{}
 		}
-		return finish(opts, errAccountOwnerMismatch(tool, accountName,
-			msgf("nothing was captured and the previous login was restored from backup %s", meta.ID))), nil, message{}
+		return finish(opts, refusal(
+			msgf("nothing was captured and the previous login was restored from backup %s", meta.ID),
+		)), nil, message{}
 	}
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil, message{}
 	}
 
+	if restore && explicitName == "" && accountName == active {
+		// The detected account is the one that was active before the flow, so the
+		// previous login --restore would put back is this account's own older copy
+		// (the case a named account refuses before the flow, errRestoreActiveAccount).
+		// The new login passed the attribution guard above, so it stays live.
+		return constants.ExitOK, backupCredential(be, meta, tool),
+			msgf("Captured %s/%s; it is the active account, so the new login stays live instead of restoring its previous copy (kept in backup %s)",
+				tool, accountName, meta.ID)
+	}
 	if restore {
 		if err := app.applyBackup(ctx, be, meta, nil, false); err != nil {
 			return finish(opts, errf(exitOf(err),
@@ -391,28 +411,52 @@ func errAccountOwnerMismatch(tool, accountName string, outcome message) *cmdErro
 		tool, tool, accountName, outcome, tool, accountName, tool, accountName, tool, accountName)
 }
 
-// liveLoginNotAccount reports whether the live login must not be captured into
-// plan.Account because that account's existing snapshot records another login.
-// It is the switch-away recapture's attribution question asked before a capture,
-// through the same two guards (keepSnapshotIdentity for an identity record beside
-// the credential, liveOwnerDiffers for an identity inside it), so their semantics
-// carry over: an account never captured, a snapshot that records no identity and
-// an absent live identity all allow the capture. Only whether a guard declined is
-// used; their reasons are worded for a recapture.
-func (app *App) liveLoginNotAccount(ctx context.Context, be secret.Backend, plan toolPlan) (bool, error) {
+// errCaptureWouldDowngrade refuses to capture a live copy that is worse than the
+// existing snapshot of the same account; why is recaptureWouldDowngrade's reason.
+func errCaptureWouldDowngrade(tool, accountName string, why, outcome message) *cmdError {
+	return errf(constants.ExitUnsafeRefused,
+		"kae did not capture the %s login as %s/%s: %s; %s; check that the login you meant is in the intended global store; to log in again as that account outside a bound directory, run kae relogin %s if it is the active account, otherwise kae add --restore %s %s",
+		tool, tool, accountName, why, outcome, tool, tool, accountName)
+}
+
+// captureIntoExistingRefusal returns the refusal for capturing the live login into
+// plan.Account's existing snapshot, or nil when the capture may proceed. outcome,
+// passed by the caller, says what kae did with the live state.
+//
+// It asks the switch-away recapture's questions before a capture, through the same
+// guards, so their semantics carry over:
+//   - **another login** (errAccountOwnerMismatch): keepSnapshotIdentity for an
+//     identity record beside the credential, liveOwnerDiffers for an identity inside
+//     it. An account never captured, a snapshot that records no identity and an
+//     absent live identity all allow the capture. Only whether a guard declined is
+//     used; their reasons are worded for a recapture.
+//   - **a worse copy** (errCaptureWouldDowngrade): recaptureWouldDowngrade, which
+//     orders the two through supersedes. Nothing backs up an account snapshot
+//     (docs/CREDENTIAL-RULES.md), so overwriting a usable or later copy with a dead
+//     or older one is unrecoverable.
+func (app *App) captureIntoExistingRefusal(ctx context.Context, be secret.Backend, plan toolPlan) (func(outcome message) *cmdError, error) {
 	acc, found, err := account.Load(app.Paths.AccountDir(plan.Tool, plan.Account))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !found {
-		return false, nil
+		return nil, nil
 	}
 	values, _, err := readLiveValues(ctx, plan.Specs)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+	otherLogin := func(outcome message) *cmdError { return errAccountOwnerMismatch(plan.Tool, plan.Account, outcome) }
 	if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, acc, values); !why.Empty() {
-		return true, nil
+		return otherLogin, nil
 	}
-	return liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, acc, values), nil
+	if liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, acc, values) {
+		return otherLogin, nil
+	}
+	if why, _ := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, acc, values); !why.Empty() {
+		return func(outcome message) *cmdError {
+			return errCaptureWouldDowngrade(plan.Tool, plan.Account, why, outcome)
+		}, nil
+	}
+	return nil, nil
 }

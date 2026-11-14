@@ -86,13 +86,20 @@ func globalReloginTool(active map[string]string, explicitTool string) (string, e
 // per-directory binding (the shell is inside, or below, a bound directory), or
 // tool's own isolation or credential variable set by kae (a bound directory or
 // an isolated home). "" when the shell's environment is the real one for tool.
+//
+// It reads the shell's environment as it was before applyGlobalScope masked kae's
+// own values, since a child process inherits that one.
 func (app *App) kaeIsolationVar(tool string) string {
+	getenv := app.Env.Getenv
+	if app.shellEnv != nil {
+		getenv = app.shellEnv.Getenv
+	}
 	for _, t := range constants.Tools {
 		envVar := isolationEnvVar(t)
 		if envVar == "" {
 			continue
 		}
-		value := app.Env.Getenv(envVar)
+		value := getenv(envVar)
 		if _, perDirectory := bindModeFor(app.kaeManagedHomeKind(value)); perDirectory {
 			return envVar
 		}
@@ -100,7 +107,7 @@ func (app *App) kaeIsolationVar(tool string) string {
 			return envVar
 		}
 	}
-	if credVar := credentialEnvVar(tool); credVar != "" && app.isKaeManagedCredStore(app.Env.Getenv(credVar)) {
+	if credVar := credentialEnvVar(tool); credVar != "" && app.isKaeManagedCredStore(getenv(credVar)) {
 		return credVar
 	}
 	return ""

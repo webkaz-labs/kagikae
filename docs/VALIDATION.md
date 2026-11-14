@@ -1284,7 +1284,12 @@ accstore() { printf '%s/kagikae/credstore/claude/%s/.credentials.json' "$XDG_DAT
 # testing their own subject exactly that way.
 # One line, because scripts/smoke-run.sh evaluates one line at a time and a function
 # body spread over several is the same trap as a here-document.
-reset_main() { cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"; /tmp/kae add --no-login --identity you@example.com claude main; rm -f "$(accstore main)"; }
+# A reset also forgets the snapshot first (forget_main): `kae add` refuses to capture a
+# copy older than, or dead against, the snapshot it would replace (docs/CLI.md § kae add
+# Semantics), and putting MAIN-OLD back over a harvested MAIN-NEW is exactly that. The
+# secret store keeps the payload file, which the first capture overwrites.
+forget_main() { rm -rf "$XDG_DATA_HOME/kagikae/accounts/claude/main"; }
+reset_main() { cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"; forget_main; /tmp/kae add --no-login --identity you@example.com claude main; rm -f "$(accstore main)"; }
 
 mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -1635,7 +1640,7 @@ cd "$HOME"
 
 # --- G. run -s on the account that is ALREADY active keeps the child's refresh ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+forget_main; /tmp/kae add --no-login --identity you@example.com claude main
 /tmp/kae run -s claude main -- "$HOME/child.sh" MAIN-NEW $NEW main 2> "$HOME/G.err"
 grep -q 'was already the active account' "$HOME/G.err"
 test "$(grep -c 'previous auth state restored' "$HOME/G.err")" -eq 0
@@ -1649,7 +1654,7 @@ snap main | grep MAIN-NEW                # assert: the post-child recapture has 
 
 # --- H. the same run, except the child logged in as somebody else ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+forget_main; /tmp/kae add --no-login --identity you@example.com claude main
 /tmp/kae run -s claude main -- "$HOME/child.sh" FOREIGN $LATER other 2> "$HOME/H.err"
 grep -q 'previous auth state restored' "$HOME/H.err"
 test "$(grep -c 'already the active account' "$HOME/H.err")" -eq 0
@@ -1685,7 +1690,7 @@ snap main | grep MAIN-OLD                # assert: the snapshot still holds its 
 
 # --- I. rollback says the credential it restores is already dead, and restores it ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+forget_main; /tmp/kae add --no-login --identity you@example.com claude main
 /tmp/kae use claude main                 # a backup whose active_before is main
 cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"   # the tool refreshed in place,
                                         #         with no kae command running

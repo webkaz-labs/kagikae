@@ -109,7 +109,7 @@ func TestDidYouMeanDoctorTool(t *testing.T) {
 func TestDidYouMeanUnknownProfile(t *testing.T) {
 	app := applyTestApp(t, nil) // defines profiles main + side
 
-	_, _, err := app.resolveTargets("all", "mian")
+	_, _, err := app.resolveTargets("use", "all", "mian")
 	if err == nil || !strings.Contains(err.Error(), `did you mean "main"?`) {
 		t.Fatalf("expected a did-you-mean hint naming main, got %v", err)
 	}
@@ -117,7 +117,7 @@ func TestDidYouMeanUnknownProfile(t *testing.T) {
 		t.Fatalf("hint must keep the not-found exit code, got %d", exitOf(err))
 	}
 
-	_, _, unrelated := app.resolveTargets("all", "zzzzz")
+	_, _, unrelated := app.resolveTargets("use", "all", "zzzzz")
 	if unrelated == nil || strings.Contains(unrelated.Error(), "did you mean") {
 		t.Fatalf("an unrelated profile token must not hint, got %v", unrelated)
 	}

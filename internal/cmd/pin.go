@@ -138,7 +138,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, err)
 	}
 	defer pinLock.Release()
-	targets, _, err := app.resolveTargets("all", profileName)
+	targets, _, err := app.resolveTargets("pin", "all", profileName)
 	if err != nil {
 		return finish(opts, err)
 	}

@@ -32,6 +32,10 @@ func CmdAccount(ctx context.Context, args []string) int {
 		return cmdAccountRename(ctx, args[1:])
 	case "set-identity":
 		return cmdAccountSetIdentity(ctx, args[1:])
+	case "add", "new", "create":
+		return usageError("kae account has no add subcommand (rm, rename, set-identity); to register an account, run: kae add <tool> <account>")
+	case "list", "ls":
+		return usageError("kae account has no list subcommand (rm, rename, set-identity); to list accounts, run: kae accounts")
 	default:
 		return usageError("unknown account subcommand %q (rm, rename, set-identity)", args[0])
 	}

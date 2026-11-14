@@ -33,6 +33,10 @@ func CmdProfile(ctx context.Context, args []string) int {
 		return cmdProfileRm(ctx, args[1:])
 	case "default":
 		return cmdProfileDefault(ctx, args[1:])
+	case "add", "new", "create":
+		return usageError("kae profile has no add subcommand (save, set, unset, rm, default); to define a profile, run: kae profile set <name> <tool> <account> (or kae profile save <name> for the active accounts)")
+	case "list", "ls":
+		return usageError("kae profile has no list subcommand (save, set, unset, rm, default); to list profiles, run: kae status")
 	default:
 		return usageError("unknown profile subcommand %q (save, set, unset, rm, default)", args[0])
 	}
@@ -89,7 +93,7 @@ func buildProfileSave(_ context.Context, app *App, opts commonOpts, name string)
 		accounts[tool] = acc
 	}
 	if len(accounts) == 0 {
-		return nil, errf(constants.ExitNotFound, "no active accounts to save; switch first, then run: kae use <tool> <account>")
+		return nil, errf(constants.ExitNotFound, "no active accounts to save; switch first (kae use <tool> <account>), then rerun: kae profile save <name>")
 	}
 	report := &profileReport{
 		SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun,

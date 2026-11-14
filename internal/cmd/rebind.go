@@ -41,8 +41,12 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		return finish(opts, err)
 	}
 	if !exists {
-		return finish(opts, errf(constants.ExitUnsupported,
-			"this directory is not bound; run: kae pin"))
+		// Not-found, like every other "this directory is not bound" refusal (unpin).
+		// Re-binding needs a binding, so the remedy names the way to make the first
+		// one: a profile holding this pair, then a pin of that profile.
+		return finish(opts, errf(constants.ExitNotFound,
+			"this directory is not bound, so there is nothing to re-bind; to bind %s/%s here, define a profile for it, run: kae profile set <profile> %s %s, then: kae pin <profile>",
+			tool, accountName, tool, accountName))
 	}
 	// Before the not-bound refusal below, whose remedy — re-pin the profile — is wrong
 	// here: a re-pin in this mode would leave the tool on the real home again.

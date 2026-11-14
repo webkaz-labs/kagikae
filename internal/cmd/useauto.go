@@ -52,7 +52,7 @@ func runUseAuto(ctx context.Context, app *App, opts commonOpts, profile string, 
 
 func buildUseAuto(ctx context.Context, app *App, opts commonOpts, profile string) (*bareUseReport, error) {
 	app.pinnedGlobalScope()
-	targets, _, err := app.resolveTargets("all", profile)
+	targets, _, err := app.resolveTargets("use", "all", profile)
 	if err != nil {
 		return nil, err
 	}

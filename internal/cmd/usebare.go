@@ -66,7 +66,7 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 
 func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName string) (*bareUseReport, error) {
 	app.pinnedGlobalScope()
-	targets, _, err := app.resolveTargets("all", profileName)
+	targets, _, err := app.resolveTargets("use", "all", profileName)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func recordedMatch(active map[string]string, targets []runTarget) bool {
 
 func printBareUseReport(report *bareUseReport) {
 	if !report.Changed {
-		reportf("Profile %s already active (no changes)", *report.Profile)
+		reportf("Profile %s already active in kae's recorded state (no changes); to apply it anyway, run: kae use %s", *report.Profile, *report.Profile)
 		return
 	}
 	printSwitchReport(&switchReport{

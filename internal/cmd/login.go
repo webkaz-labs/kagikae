@@ -237,13 +237,12 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
-		hint := tool
-		if explicitName != "" {
-			hint = tool + " " + explicitName
-		}
+		// The live login is still the previous one, which may be another account's
+		// or an expired one, so the capture command comes behind the same
+		// "verify first" wording every other no-login remedy uses.
 		return finish(opts, errf(constants.ExitAuthUnchanged,
-			"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s",
-			tool, hint)), nil, message{}
+			"%s login flow exited without changing auth; nothing captured; the live login is still the one from before the flow; %s",
+			tool, verifiedCaptureRemedy(tool, explicitName))), nil, message{}
 	}
 
 	// The login flow changed auth, so the new identity is now live: resolve the

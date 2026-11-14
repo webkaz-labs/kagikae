@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -152,7 +153,7 @@ func runRun(ctx context.Context, app *App, opts commonOpts, runMode, target, nam
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
-	targets, profileName, err := app.resolveTargets(target, name)
+	targets, profileName, err := app.resolveTargets("run", target, name)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -365,6 +366,51 @@ type runTarget struct {
 	Account string
 }
 
+// oneToolHint ends the undefined-profile error when name is not a profile but is
+// a tool (or a unique prefix of one) or a captured account name: a lone name is
+// always read as a profile, so `kae use main` and `kae use claude` otherwise end
+// without the `<tool> <account>` form that does what was meant. It is empty for
+// any other name.
+func (app *App) oneToolHint(verb, name string) message {
+	if tool, err := resolveToolArg(name); err == nil && constants.IsTool(tool) {
+		return msgf("; %q is a tool, not a profile; to target one tool's account, run: %s",
+			name, oneToolCommand(verb, tool, "<account>"))
+	}
+	accounts, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		return message{}
+	}
+	tools := []string{}
+	for _, acc := range accounts {
+		if acc.Name == name {
+			tools = append(tools, acc.Tool)
+		}
+	}
+	if len(tools) == 0 {
+		return message{}
+	}
+	tool := "<tool>"
+	if len(tools) == 1 {
+		tool = tools[0]
+	}
+	return msgf("; %q is an account name, not a profile; to target it on one tool, run: %s",
+		name, oneToolCommand(verb, tool, name))
+}
+
+// oneToolCommand is the command line that targets one tool's account for verb. A
+// pin has no bare one-tool form outside a bound directory (kae pin <tool> <account>
+// re-binds), so it is the profile that binds it.
+func oneToolCommand(verb, tool, accountName string) string {
+	switch verb {
+	case "run":
+		return "kae run " + tool + " " + accountName
+	case "pin":
+		return "kae profile set <profile> " + tool + " " + accountName + ", then kae pin <profile>"
+	default:
+		return "kae use " + tool + " " + accountName
+	}
+}
+
 func runTargetTools(targets []runTarget) []string {
 	tools := make([]string, 0, len(targets))
 	for _, target := range targets {
@@ -373,13 +419,16 @@ func runTargetTools(targets []runTarget) []string {
 	return tools
 }
 
-// resolveTargets expands <tool|all> <name> into concrete tool/account pairs.
-func (app *App) resolveTargets(target, name string) ([]runTarget, string, error) {
+// resolveTargets expands <tool|all> <name> into concrete tool/account pairs. verb
+// is the command being run ("use", "run" or "pin"); it only words the hint on an
+// undefined profile name (oneToolHint).
+func (app *App) resolveTargets(verb, target, name string) ([]runTarget, string, error) {
 	if target == "all" {
 		profile, ok := app.Config.Profiles[name]
 		if !ok {
 			return nil, "", errf(constants.ExitNotFound,
-				"profile %q is not defined in %s%s", name, app.ConfigPath, didYouMean(name, app.Config.ProfileNames()))
+				"profile %q is not defined in %s%s%s", name, app.ConfigPath,
+				didYouMean(name, app.Config.ProfileNames()), app.oneToolHint(verb, name))
 		}
 		targets := []runTarget{}
 		for _, tool := range app.enabledTools() {

@@ -982,7 +982,13 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 // verifiedCaptureRemedy qualifies capture when the live account needs verification.
 // A snapshot name alone does not establish which account the live store contains.
 // It is a message value, so an error that ends in it renders it in its own language.
+//
+// An empty accountName is a capture whose name kae detects from the login: the
+// clause then asks the same verification of "the account you mean to add".
 func verifiedCaptureRemedy(tool, accountName string) message {
+	if accountName == "" {
+		return msgf("first verify the live %s login is the account you mean to add and uses the intended global store; only then, to snapshot it, run: kae add --no-login %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, tool)
+	}
 	return msgf("first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
 }
 

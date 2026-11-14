@@ -78,8 +78,8 @@ func useReportCases() []useReportCase {
 		{
 			name: "bare use no change",
 			run:  stdout(func() { printBareUseReport(&bareUseReport{Profile: &profile}) }),
-			en:   "Profile main already active (no changes)\n",
-			ja:   "プロファイル main はすでに有効です（変更なし）\n",
+			en:   "Profile main already active in kae's recorded state (no changes); to apply it anyway, run: kae use main\n",
+			ja:   "プロファイル main は kae の記録上すでに有効です（変更なし）。それでも適用するには kae use main を実行してください\n",
 		},
 		{
 			name: "capture report",

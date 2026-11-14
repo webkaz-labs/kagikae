@@ -179,6 +179,12 @@ func TestAddWithoutASuccessfulCaptureDoesNotReconcile(t *testing.T) {
 				return runLogin(context.Background(), f.app, commonOpts{Format: formatText}, constants.ToolCodex, tc.account, false)
 			})
 			mustExit(t, tc.code, code, stdout+stderr)
+			// An unchanged flow leaves the previous login live, which may be another
+			// account's or an expired one: the message asks before it recommends a capture.
+			if tc.code == constants.ExitAuthUnchanged &&
+				!strings.Contains(stderr, "first verify the live codex login belongs to account main") {
+				t.Errorf("auth_unchanged must ask for verification before capture:\n%s", stderr)
+			}
 			if f.restartCount() != 0 {
 				t.Error("restarted")
 			}

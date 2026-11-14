@@ -27,14 +27,17 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
 1 つのプロセスだけへの適用です。
 `,
 	`Usage:
-  kae [-f|--full]                      status summary: this directory's pin,
-                                       global profile, tools, profiles
+  kae [-f|--full]                      status report (same as kae status): this
+                                       directory's pin, global profile, tools,
+                                       profiles
   kae init                             create config and directories
   kae edit                             open the config in $VISUAL / $EDITOR
   kae doctor [tool] [--json]           environment / auth health checks (alias: kae d)
   kae add <tool> [<account>]           register an account (official login
                                        flow + snapshot; --no-login snapshots
-                                       the current login instead)
+                                       the current login instead; --restore
+                                       puts the previous login back afterwards,
+                                       so <account> is not made live)
   kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it
                                        idempotently (the former kae apply)
   kae use --auto [-P <profile>]       automatic apply; retain global isolation
@@ -47,13 +50,16 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
                                        -t keeps one store for the directory's
                                        tree across account switches (claude only)
   kae pin <tool> <account>             re-bind one tool inside a bound dir
-  kae unpin                            remove the binding from .mise.toml
+  kae unpin [--purge]                  delete this directory's kae-owned mise
+                                       fragment (--purge: also its per-directory
+                                       credentials); your mise.toml is untouched
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
   kae relogin [<tool>]                 log in again: in a bound directory, into
                                        its store, capturing the result back into
                                        that account's snapshot; elsewhere, the
                                        tool's active global account
   kae run [-s|-i|--env] <t|all> <n> -- C
+  kae run [-s|-i|--env] <profile> -- C
                                        run C with an account applied (alias: kae r);
                                        -s (default) uses the real home and restores
                                        the previous login after; -i runs in the
@@ -66,6 +72,15 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)
   kae accounts [-f] [--json]           registered accounts
+  kae account rm|rename|set-identity ...
+                                       manage a captured account: rm <tool>
+                                       <account> [--force], rename <tool> <old>
+                                       <new>, set-identity <tool> <account> <value>
+  kae profile save|set|unset|rm|default ...
+                                       define profiles: save <name> (from the
+                                       active accounts), set <name> <tool>
+                                       <account>, unset <name> <tool>, rm <name>,
+                                       default [<name>|--clear]
   kae ls [<target>] [-f] [--json]      places and accounts: groups account, pin,
                                        each relevant tool, repo, kae; a target
                                        (account|pin|repo|kae|<tool>) shows one
@@ -79,7 +94,7 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   kae cd [<target>] [--at N|--pick]    move the shell to a place; needs the kae
                                        shell function that eval "$(kae
                                        completion zsh)" (or bash) defines
-  kae status [-f] [--json]             full status report (alias: kae s);
+  kae status [-f] [--json]             status report (alias: kae s);
                                        -f/--full on status, accounts and ls adds
                                        the Identity and Driver columns
   kae preservation list [--json]       list preserved credential records
@@ -93,14 +108,17 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   kae version | --version | -v
   kae help | --help | -h
 `: `使い方:
-  kae [-f|--full]                      状態の概要: このディレクトリの固定、
-                                       グローバルなプロファイル、ツール、プロファイル
+  kae [-f|--full]                      状態の報告（kae status と同じ）: このディレクトリの
+                                       固定、グローバルなプロファイル、ツール、
+                                       プロファイル
   kae init                             設定ファイルとディレクトリを作成
   kae edit                             設定ファイルを $VISUAL / $EDITOR で開く
   kae doctor [tool] [--json]           環境と認証の健全性の検査（別名: kae d）
   kae add <tool> [<account>]           アカウントを登録（公式のログインと
                                        スナップショット。--no-login は現在の
-                                       ログインをそのままスナップショットに保存）
+                                       ログインをそのままスナップショットに保存。
+                                       --restore は登録の後に直前のログインへ戻す
+                                       ので、<account> は有効にならない）
   kae use [-s|-i] [-P <profile>]       引数なし: プロファイルを解決して、何度
                                        実行しても同じ結果になるよう適用（以前の
                                        kae apply）
@@ -115,7 +133,9 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
                                        ツリーに 1 つのストアを保持（claude のみ）
   kae pin <tool> <account>             固定したディレクトリの中で 1 つのツールを
                                        固定し直し
-  kae unpin                            .mise.toml から固定の内容を削除
+  kae unpin [--purge]                  このディレクトリの kae 専用の mise フラグメントを
+                                       削除（--purge: ディレクトリごとの認証情報も
+                                       削除）。mise.toml には触れない
   kae uninstall [--dry-run] [--yes]    kae が管理する連携と、記録された直接配置の
                                        バイナリを削除
   kae relogin [<tool>]                 再ログイン。固定したディレクトリでは
@@ -123,6 +143,7 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
                                        スナップショットに取り込み直し。それ以外では
                                        ツールのグローバルで有効なアカウント
   kae run [-s|-i|--env] <t|all> <n> -- C
+  kae run [-s|-i|--env] <profile> -- C
                                        アカウントを適用して C を実行（別名: kae r）。
                                        -s（既定）は実ホームを使い、終了後に元の
                                        ログインを復元。-i はアカウントごとの独立した
@@ -135,6 +156,15 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
                                        auth モードのタスクと任意のフックを生成
                                        （ディレクトリの固定には kae pin を使用）
   kae accounts [-f] [--json]           登録済みのアカウント
+  kae account rm|rename|set-identity ...
+                                       登録済みアカウントの管理: rm <tool> <account>
+                                       [--force]、rename <tool> <old> <new>、
+                                       set-identity <tool> <account> <value>
+  kae profile save|set|unset|rm|default ...
+                                       プロファイルの定義: save <name>（有効な
+                                       アカウントから）、set <name> <tool> <account>、
+                                       unset <name> <tool>、rm <name>、
+                                       default [<name>|--clear]
   kae ls [<target>] [-f] [--json]      場所とアカウント: account、pin、関係する
                                        各ツール、repo、kae のグループ。対象
                                        （account|pin|repo|kae|<tool>）を指定すると
@@ -149,7 +179,7 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   kae cd [<target>] [--at N|--pick]    シェルを場所へ移動。eval "$(kae
                                        completion zsh)"（または bash）が定義する
                                        kae のシェル関数が必要
-  kae status [-f] [--json]             状態の詳しい報告（別名: kae s）。status、
+  kae status [-f] [--json]             状態の報告（別名: kae s）。status、
                                        accounts、ls の -f/--full は識別子と
                                        ドライバーの列を追加
   kae preservation list [--json]       保全記録の一覧
@@ -165,7 +195,8 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
 	`Flags (structured commands):
   --json                shorthand for --format json
   --format text|json    output format
-  --dry-run             preview without writing (add --no-login/use/rollback)
+  --dry-run             preview without writing (add --no-login/use/rollback;
+                        also uninstall, account, profile, preservation)
   --yes                 answer confirmations yes without asking
   --no-restart          warn instead of restarting codex's managed daemon (use/add/rollback)
   --no-color            disable color
@@ -173,7 +204,8 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
 `: `フラグ（構造化出力に対応するコマンド）:
   --json                --format json の短縮形
   --format text|json    出力形式
-  --dry-run             書き込まずに確認（add --no-login/use/rollback）
+  --dry-run             書き込まずに確認（add --no-login/use/rollback。
+                        uninstall、account、profile、preservation も）
   --yes                 確認を求めずに yes と回答
   --no-restart          codex の管理デーモンを再起動せずに警告（use/add/rollback）
   --no-color            色の無効化

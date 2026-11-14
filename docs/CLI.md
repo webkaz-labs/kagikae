@@ -75,7 +75,7 @@ kae profile set <name> <tool> <account>        # set one profile mapping
 kae profile unset <name> <tool>      # drop one profile mapping
 kae profile rm <name> [--force]      # delete a profile
 kae profile default [<name>|--clear] # show or set default_profile
-kae status [-f|--full] [--json]      # full status report (alias: kae s)
+kae status [-f|--full] [--json]      # status report (alias: kae s; same as bare kae)
 kae backup list [--json]             # list switch backups
 kae preservation list [--json]       # list preserved credential records
 kae preservation restore <id>        # put a preserved credential back in its original store

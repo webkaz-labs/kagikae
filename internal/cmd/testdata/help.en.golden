@@ -4,14 +4,17 @@ Two verbs by scope plus run: use = switch now (global), pin = bind this
 directory (-s/--shared default, -i/--isolated), run = one process.
 
 Usage:
-  kae [-f|--full]                      status summary: this directory's pin,
-                                       global profile, tools, profiles
+  kae [-f|--full]                      status report (same as kae status): this
+                                       directory's pin, global profile, tools,
+                                       profiles
   kae init                             create config and directories
   kae edit                             open the config in $VISUAL / $EDITOR
   kae doctor [tool] [--json]           environment / auth health checks (alias: kae d)
   kae add <tool> [<account>]           register an account (official login
                                        flow + snapshot; --no-login snapshots
-                                       the current login instead)
+                                       the current login instead; --restore
+                                       puts the previous login back afterwards,
+                                       so <account> is not made live)
   kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it
                                        idempotently (the former kae apply)
   kae use --auto [-P <profile>]       automatic apply; retain global isolation
@@ -24,13 +27,16 @@ Usage:
                                        -t keeps one store for the directory's
                                        tree across account switches (claude only)
   kae pin <tool> <account>             re-bind one tool inside a bound dir
-  kae unpin                            remove the binding from .mise.toml
+  kae unpin [--purge]                  delete this directory's kae-owned mise
+                                       fragment (--purge: also its per-directory
+                                       credentials); your mise.toml is untouched
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
   kae relogin [<tool>]                 log in again: in a bound directory, into
                                        its store, capturing the result back into
                                        that account's snapshot; elsewhere, the
                                        tool's active global account
   kae run [-s|-i|--env] <t|all> <n> -- C
+  kae run [-s|-i|--env] <profile> -- C
                                        run C with an account applied (alias: kae r);
                                        -s (default) uses the real home and restores
                                        the previous login after; -i runs in the
@@ -43,6 +49,15 @@ Usage:
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)
   kae accounts [-f] [--json]           registered accounts
+  kae account rm|rename|set-identity ...
+                                       manage a captured account: rm <tool>
+                                       <account> [--force], rename <tool> <old>
+                                       <new>, set-identity <tool> <account> <value>
+  kae profile save|set|unset|rm|default ...
+                                       define profiles: save <name> (from the
+                                       active accounts), set <name> <tool>
+                                       <account>, unset <name> <tool>, rm <name>,
+                                       default [<name>|--clear]
   kae ls [<target>] [-f] [--json]      places and accounts: groups account, pin,
                                        each relevant tool, repo, kae; a target
                                        (account|pin|repo|kae|<tool>) shows one
@@ -56,7 +71,7 @@ Usage:
   kae cd [<target>] [--at N|--pick]    move the shell to a place; needs the kae
                                        shell function that eval "$(kae
                                        completion zsh)" (or bash) defines
-  kae status [-f] [--json]             full status report (alias: kae s);
+  kae status [-f] [--json]             status report (alias: kae s);
                                        -f/--full on status, accounts and ls adds
                                        the Identity and Driver columns
   kae preservation list [--json]       list preserved credential records
@@ -73,7 +88,8 @@ Usage:
 Flags (structured commands):
   --json                shorthand for --format json
   --format text|json    output format
-  --dry-run             preview without writing (add --no-login/use/rollback)
+  --dry-run             preview without writing (add --no-login/use/rollback;
+                        also uninstall, account, profile, preservation)
   --yes                 answer confirmations yes without asking
   --no-restart          warn instead of restarting codex's managed daemon (use/add/rollback)
   --no-color            disable color

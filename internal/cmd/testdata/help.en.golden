@@ -26,9 +26,10 @@ Usage:
   kae pin <tool> <account>             re-bind one tool inside a bound dir
   kae unpin                            remove the binding from .mise.toml
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
-  kae relogin [<tool>]                 run the tool's login flow into this
-                                       directory's bound store, then capture the
-                                       result back into that account's snapshot
+  kae relogin [<tool>]                 log in again: in a bound directory, into
+                                       its store, capturing the result back into
+                                       that account's snapshot; elsewhere, the
+                                       tool's active global account
   kae run [-s|-i|--env] <t|all> <n> -- C
                                        run C with an account applied (alias: kae r);
                                        -s (default) uses the real home and restores

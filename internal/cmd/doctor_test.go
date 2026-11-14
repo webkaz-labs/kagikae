@@ -45,8 +45,9 @@ func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a credential_stale check, got %+v", report.Checks)
 	}
-	if !strings.Contains(msg, "stale") || !strings.Contains(msg, "kae add") {
-		t.Fatalf("stale message should name the account and kae add: %q", msg)
+	// The snapshot is the active account, so the remedy is its re-login.
+	if !strings.Contains(msg, "stale") || !strings.Contains(msg, "kae relogin claude") {
+		t.Fatalf("stale message should name the account and kae relogin: %q", msg)
 	}
 	for _, c := range report.Checks {
 		if c.Code == constants.CheckCredentialStale && c.Status != constants.StatusWarn {
@@ -70,7 +71,7 @@ func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatal("a tombstoned snapshot must be reported stale")
 	}
-	if !strings.Contains(msg, "failed token refresh") || !strings.Contains(msg, "kae add --restore claude") {
+	if !strings.Contains(msg, "failed token refresh") || !strings.Contains(msg, "kae relogin claude") {
 		t.Fatalf("stale message should explain the tombstone and name the login flow: %q", msg)
 	}
 }
@@ -209,7 +210,7 @@ func TestDoctorReportsExpiringSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a credential_expiring check, got %+v", report.Checks)
 	}
-	if !strings.Contains(msg, "4 day(s)") || !strings.Contains(msg, "kae add --restore claude soon") {
+	if !strings.Contains(msg, "4 day(s)") || !strings.Contains(msg, "kae relogin claude") {
 		t.Fatalf("expiring message should name the lead time and the refresh command: %q", msg)
 	}
 	if _, ok := findCheck(report, constants.CheckCredentialStale); ok {
@@ -435,12 +436,26 @@ func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
 	})
 }
 
+// The remedy is chosen by whether the snapshot is the active account: the active
+// one is re-logged in place (kae relogin), any other is logged in and the live
+// login put back (kae add --restore). --restore for the active account would put
+// its own expired copy back over the new login.
 func TestDoctorRecoveryGuidanceDelivery(t *testing.T) {
-	for _, expiring := range []bool{false, true} {
-		t.Run(fmt.Sprint(expiring), func(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		expiring  bool
+		active    bool
+		want, not string
+	}{
+		{"stale active", false, true, "kae relogin claude", "--restore"},
+		{"expiring active", true, true, "kae relogin claude", "--restore"},
+		{"stale inactive", false, false, "kae add --restore claude main", "kae relogin"},
+		{"expiring inactive", true, false, "kae add --restore claude main", "kae relogin"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			app := testApp(t, nil)
 			lifetime := -time.Hour
-			if expiring {
+			if tc.expiring {
 				lifetime = 24 * time.Hour
 			}
 			seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), lifetime, mainToken))
@@ -448,14 +463,25 @@ func TestDoctorRecoveryGuidanceDelivery(t *testing.T) {
 				return runCapture(context.Background(), app, commonOpts{Format: formatJSON}, "claude", "main")
 			})
 			mustExit(t, constants.ExitOK, code, out)
+			if !tc.active {
+				// Capturing another account makes it the active one.
+				seedClaude(t, app, sideToken, "side-uuid")
+				code, out := captureStdout(t, func() int {
+					return runCapture(context.Background(), app, commonOpts{Format: formatJSON}, "claude", "side")
+				})
+				mustExit(t, constants.ExitOK, code, out)
+			}
 			for _, format := range []string{formatText, formatJSON} {
 				_, out, diagnostic := captureBoth(t, func() int { return runDoctor(context.Background(), app, commonOpts{Format: format}, "claude") })
-				for _, want := range []string{"confirm account main", "intended global store", "kae add --restore claude main"} {
+				for _, want := range []string{"confirm account main", "intended global store", tc.want} {
 					if !strings.Contains(out, want) {
 						t.Fatalf("missing %q in %s", want, out)
 					}
 				}
-				if strings.Contains(out+diagnostic, mainToken) {
+				if strings.Contains(out, tc.not) {
+					t.Fatalf("names %q for this account: %s", tc.not, out)
+				}
+				if strings.Contains(out+diagnostic, mainToken) || strings.Contains(out+diagnostic, sideToken) {
 					t.Fatal("credential leaked")
 				}
 			}

@@ -209,9 +209,9 @@ func TestReloginDoesNotFileAnotherAccountsLoginUnderThisAccount(t *testing.T) {
 	}
 }
 
-// Outside a binding there is no store to log into, and driving the tool's login
-// against the real home is `kae add`'s job — with a backup and a restore, which this
-// command has neither of.
+// Outside a binding the command logs in the active global account
+// (relogin_global_test.go); with no account active there is nothing to log in, and
+// nothing may be launched.
 func TestReloginRefusesOutsideABoundDirectory(t *testing.T) {
 	app := overlayTestApp(t)
 	chdirTemp(t)
@@ -227,10 +227,10 @@ func TestReloginRefusesOutsideABoundDirectory(t *testing.T) {
 		t.Fatalf("exit = %d, want %d: %s", code, constants.ExitNotFound, stderr)
 	}
 	if ran {
-		t.Fatal("no login may be launched when there is no store to launch it into")
+		t.Fatal("no login may be launched when there is no account to log in")
 	}
-	if !strings.Contains(stderr, "add --restore") {
-		t.Errorf("the refusal must name the global path: %q", stderr)
+	if !strings.Contains(stderr, "kae add <tool> <account>") {
+		t.Errorf("the refusal must name the registration path: %q", stderr)
 	}
 }
 
@@ -266,7 +266,8 @@ func TestReloginRefusesAToolThisDirectoryDoesNotBind(t *testing.T) {
 // fragment is what mise exports — so a directory that was unpinned has no store to
 // speak of even though its store tree survives on purpose (a re-pin restores its
 // sessions). Without the fragment gate this would log in to a directory nothing
-// points at.
+// points at. Unbound, the command is the global re-login, so the flow runs with
+// no isolation variable at all.
 func TestReloginRefusesAfterUnpin(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -283,15 +284,23 @@ func TestReloginRefusesAfterUnpin(t *testing.T) {
 	}
 
 	ran := false
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
 		ran = true
+		if len(extraEnv) != 0 {
+			t.Errorf("an unpinned directory's store must not be exported: %v", extraEnv)
+		}
 		return 0, nil
 	})
+	before := readFile(t, credFile)
 	code, stderr := captureStderr(t, func() int {
 		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
-	if code != constants.ExitNotFound || ran {
-		t.Fatalf("an unpinned directory has nothing to log in to: exit=%d ran=%v %s", code, ran, stderr)
+	// The fake changes nothing, so the global flow refuses as auth_unchanged.
+	if code != constants.ExitAuthUnchanged || !ran {
+		t.Fatalf("an unpinned directory runs the global re-login: exit=%d ran=%v %s", code, ran, stderr)
+	}
+	if readFile(t, credFile) != before {
+		t.Fatal("the surviving store must not be written")
 	}
 }
 

@@ -358,7 +358,7 @@ func TestDoctorConflictMessagesInJapanese(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := append(app.credentialConflictLiveChecks(ctx, constants.ToolCodex),
-		credentialConflictSnapshotChecks(ctx, be, accounts, constants.ToolCodex)...)
+		credentialConflictSnapshotChecks(ctx, be, accounts, map[string]string{}, constants.ToolCodex)...)
 	if len(rows) != 2 {
 		t.Fatalf("rows = %+v", rows)
 	}

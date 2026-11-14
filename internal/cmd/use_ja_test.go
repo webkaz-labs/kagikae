@@ -101,7 +101,7 @@ func useReportCases() []useReportCase {
 			run: stderr(func() {
 				warnBeforeApply([]switchResult{{
 					Tool: "claude", Account: "main",
-					Warnings: []l10n.Msg{msgf("snapshot credential is stale: %s", staleCredentialDetail(staleInfo, "claude", "main"))},
+					Warnings: []l10n.Msg{msgf("snapshot credential is stale: %s", staleCredentialDetail(staleInfo, "claude", "main", false))},
 				}}, nil)
 			}),
 			en: "kae: warning: claude: snapshot credential is stale: it expired 2026-09-01T00:00:00Z and has no refresh token; " +

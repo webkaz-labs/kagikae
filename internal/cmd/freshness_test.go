@@ -112,8 +112,9 @@ func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 		t.Fatalf("switch to stale must proceed, got error: %v", err)
 	}
 	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
-	if !strings.Contains(warnings, "expired") || !strings.Contains(warnings, "kae add") {
-		t.Fatalf("expected stale warning naming kae add, got: %q", warnings)
+	// The switch makes the target active, so its remedy is the active re-login.
+	if !strings.Contains(warnings, "expired") || !strings.Contains(warnings, "kae relogin claude") {
+		t.Fatalf("expected stale warning naming kae relogin, got: %q", warnings)
 	}
 }
 
@@ -184,7 +185,7 @@ func TestSwitchToExpiredRefreshTokenWarns(t *testing.T) {
 		t.Fatalf("switch to stale must proceed, got error: %v", err)
 	}
 	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
-	for _, want := range []string{"refresh token expired", "kae add --restore claude", "kae add --restore claude stale"} {
+	for _, want := range []string{"refresh token expired", "confirm account stale", "kae relogin claude"} {
 		if !strings.Contains(warnings, want) {
 			t.Errorf("stale warning should contain %q, got: %q", want, warnings)
 		}
@@ -210,7 +211,7 @@ func TestSwitchToTombstonedSnapshotWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
-	if !strings.Contains(warnings, "failed token refresh") || !strings.Contains(warnings, "kae add --restore claude") {
+	if !strings.Contains(warnings, "failed token refresh") || !strings.Contains(warnings, "kae relogin claude") {
 		t.Fatalf("expected a tombstone warning naming the login flow, got: %q", warnings)
 	}
 	if strings.Contains(warnings, "0001-01-01") {
@@ -534,7 +535,7 @@ func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 	if !strings.Contains(stderr, "needs an interactive re-login in 3 day(s)") {
 		t.Errorf("lead-time notice missing or not counting days: %q", stderr)
 	}
-	if !strings.Contains(stderr, "kae add --restore claude soon") {
+	if !strings.Contains(stderr, "kae relogin claude") || strings.Contains(stderr, "--restore") {
 		t.Errorf("lead-time notice must name the proactive refresh command: %q", stderr)
 	}
 	if strings.Contains(stderr, "is stale") {

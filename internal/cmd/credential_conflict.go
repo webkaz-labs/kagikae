@@ -91,7 +91,8 @@ func credentialConflictReason(tool, accountName string) message {
 }
 
 // errCredentialConflict is captureSnapshot's refusal of a Conflict login. Its
-// remedy is a plain login, not globalLoginRemedy's `kae add --restore`: restoring
+// remedy is a plain login, not the `kae add --restore` globalLoginRemedy names for
+// an inactive account: restoring
 // the previous live state would put the mixed login back.
 func errCredentialConflict(tool, accountName string) *cmdError {
 	return errf(constants.ExitUnsafeRefused, "%s, so kae will not capture it as %s/%s; %s",
@@ -132,7 +133,7 @@ func (app *App) credentialConflictLiveChecks(ctx context.Context, toolFilter str
 // credentialConflictSnapshotChecks is the snapshot half: every saved snapshot of
 // a tool that declares the hook, inactive ones included. be is the cached view
 // credentialHealthChecks passes inside its read-cache scope (which says why).
-func credentialConflictSnapshotChecks(ctx context.Context, be secret.Backend, accounts []account.Account, toolFilter string) []adapter.Check {
+func credentialConflictSnapshotChecks(ctx context.Context, be secret.Backend, accounts []account.Account, active map[string]string, toolFilter string) []adapter.Check {
 	checks := []adapter.Check{}
 	for _, acc := range accounts {
 		if toolFilter != "" && acc.Tool != toolFilter {
@@ -144,7 +145,7 @@ func credentialConflictSnapshotChecks(ctx context.Context, be secret.Backend, ac
 		checks = append(checks, adapter.Check{
 			Tool: acc.Tool, Code: constants.CheckCredentialAccountConflict, Status: constants.StatusWarn,
 			Message: msgf("%s, so switching to it applies a login that is partly another account's; %s",
-				mixedLoginFact(msgf("snapshot %q", acc.Name)), globalLoginRemedy(acc.Tool, acc.Name)),
+				mixedLoginFact(msgf("snapshot %q", acc.Name)), globalLoginRemedy(acc.Tool, acc.Name, active[acc.Tool] == acc.Name)),
 		})
 	}
 	return checks

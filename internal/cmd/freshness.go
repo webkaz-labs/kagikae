@@ -104,7 +104,8 @@ const reloginLeadTime = 7 * 24 * time.Hour
 // credential deserves: the stale message once it can no
 // longer open a session without an interactive re-login, the expiring notice while
 // that deadline is still ahead but within reloginLeadTime, and "" when the
-// credential is fine, undated, or not-datable.
+// credential is fine, undated, or not-datable. acc is the account the switch makes
+// active, so the remedy is the active account's re-login.
 //
 // It returns the state token rather than a "was it stale" bool so the caller reads
 // the same vocabulary every other freshness surface uses, and a third band would
@@ -120,9 +121,9 @@ func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend,
 	cred := credentialStateAt(info, now)
 	switch cred.State {
 	case constants.CredentialStale:
-		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name)), cred.State, nil
+		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name, true)), cred.State, nil
 	case constants.CredentialExpiring:
-		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)), cred.State, nil
+		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, true)), cred.State, nil
 	}
 	return message{}, cred.State, nil
 }
@@ -318,8 +319,10 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 }
 
 // staleCredentialDetail combines the observed deadline with global login guidance.
-func staleCredentialDetail(info freshness.Info, tool, accountName string) message {
-	return msgf("%s; %s", staleCredentialReason(info, tool), globalLoginRemedy(tool, accountName))
+// active says whether accountName is the tool's active account, which picks the
+// login command (globalLoginRemedy).
+func staleCredentialDetail(info freshness.Info, tool, accountName string, active bool) message {
+	return msgf("%s; %s", staleCredentialReason(info, tool), globalLoginRemedy(tool, accountName, active))
 }
 
 // staleCredentialReason states why a credential can no longer open a session,
@@ -344,9 +347,9 @@ func staleCredentialReason(info freshness.Info, tool string) message {
 }
 
 // expiringCredentialDetail uses the same target and login prerequisites as a stale snapshot.
-func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) message {
+func expiringCredentialDetail(deadline, now time.Time, tool, accountName string, active bool) message {
 	when := msgf("needs an interactive re-login in %s (%s)", leadTimeMessage(deadline.Sub(now)), utcStamp(deadline))
-	return msgf("%s; %s", when, globalLoginRemedy(tool, accountName))
+	return msgf("%s; %s", when, globalLoginRemedy(tool, accountName, active))
 }
 
 // leadTimeMessage is the lead time as a fragment ("2 day(s)") that another message
@@ -892,7 +895,16 @@ func errUncapturedWithRemedy(tool, accountName string) *cmdError {
 		tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }
 
-func globalLoginRemedy(tool, accountName string) message {
+// globalLoginRemedy names the global login for one account snapshot. Which command
+// depends on whether the account is the tool's active one: `kae add --restore` puts
+// the previous live login back after capturing, and for the active account that
+// previous login is the same account's older copy, so its re-login is
+// `kae relogin <tool>`, which keeps the new login live (docs/CLI.md § Recovery
+// guidance).
+func globalLoginRemedy(tool, accountName string, active bool) message {
+	if loginCommand(tool) != nil && active {
+		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in again as that account (the active one), run: kae relogin %s (captures the new login and keeps it live)", accountName, tool)
+	}
 	if loginCommand(tool) != nil {
 		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
 	}

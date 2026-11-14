@@ -49,9 +49,10 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   kae pin <tool> <account>             re-bind one tool inside a bound dir
   kae unpin                            remove the binding from .mise.toml
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
-  kae relogin [<tool>]                 run the tool's login flow into this
-                                       directory's bound store, then capture the
-                                       result back into that account's snapshot
+  kae relogin [<tool>]                 log in again: in a bound directory, into
+                                       its store, capturing the result back into
+                                       that account's snapshot; elsewhere, the
+                                       tool's active global account
   kae run [-s|-i|--env] <t|all> <n> -- C
                                        run C with an account applied (alias: kae r);
                                        -s (default) uses the real home and restores
@@ -117,9 +118,10 @@ pin はこのディレクトリの固定（既定は -s/--shared、-i/--isolated
   kae unpin                            .mise.toml から固定の内容を削除
   kae uninstall [--dry-run] [--yes]    kae が管理する連携と、記録された直接配置の
                                        バイナリを削除
-  kae relogin [<tool>]                 このディレクトリの固定したストアでツールの
-                                       ログインを実行し、結果をそのアカウントの
-                                       スナップショットに取り込み直し
+  kae relogin [<tool>]                 再ログイン。固定したディレクトリでは
+                                       そのストアにログインし、結果をそのアカウントの
+                                       スナップショットに取り込み直し。それ以外では
+                                       ツールのグローバルで有効なアカウント
   kae run [-s|-i|--env] <t|all> <n> -- C
                                        アカウントを適用して C を実行（別名: kae r）。
                                        -s（既定）は実ホームを使い、終了後に元の

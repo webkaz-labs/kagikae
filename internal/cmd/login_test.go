@@ -113,7 +113,7 @@ func TestRecoveryWithoutLoginSupport(t *testing.T) {
 		return runLogin(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolAgy, "main", true)
 	})
 	mustExit(t, constants.ExitUnsupported, code, out)
-	global := globalLoginRemedy(constants.ToolAgy, "main")
+	global := globalLoginRemedy(constants.ToolAgy, "main", true)
 	bound := pinLoginRemedy(constants.ToolAgy, "~/code/side-project").Error()
 	for _, want := range []string{"kae cannot launch a login", "verify the live agy login belongs to account main", "kae add --no-login agy main"} {
 		if !strings.Contains(global.Error(), want) {

@@ -195,6 +195,17 @@ func (app *App) loadState() (*state.State, error) {
 	return state.Load(app.Paths.StateFile())
 }
 
+// activeAccounts is the recorded active account per tool, for a read-only report
+// that only words a remedy by it. An unreadable state reads as none active, which
+// selects the non-active remedy rather than failing the report.
+func (app *App) activeAccounts() map[string]string {
+	st, err := app.loadState()
+	if err != nil || st.Active == nil {
+		return map[string]string{}
+	}
+	return st.Active
+}
+
 // saveActive records the switched accounts and recomputes the matching profile,
 // against the state on disk at save time (see mutateState).
 // explicitProfile overrides recomputation (used by switch all).

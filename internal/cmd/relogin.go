@@ -34,7 +34,8 @@ import (
 //
 // The account is never an argument: which account a bound directory holds is the
 // binding's answer, and a name typed here that disagreed with it would either be
-// ignored or file one account's login under another's.
+// ignored or file one account's login under another's. Outside a bound directory
+// the answer is the tool's active global account (runGlobalRelogin).
 func CmdRelogin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	opts, ok := parseCommon("relogin", flags, false, nil)
@@ -76,9 +77,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		return finish(opts, err)
 	}
 	if !exists {
-		return finish(opts, errf(constants.ExitNotFound,
-			"this directory is not bound, so there is no bound store to log in to; "+
-				"to refresh a global account, run: kae add --restore <tool> <account>"))
+		return runGlobalRelogin(ctx, app, opts, explicitTool)
 	}
 	tool, err := reloginTool(app, paths.PinID(absDir), fragment, explicitTool)
 	if err != nil {

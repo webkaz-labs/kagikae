@@ -360,6 +360,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 	ctx = secret.WithReadCache(ctx)
 	cached := secret.Cached(be)
 	checks := []adapter.Check{}
+	active := app.activeAccounts()
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err == nil {
 		for _, acc := range accounts {
@@ -378,7 +379,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 					Tool: acc.Tool, Code: constants.CheckCredentialStale,
 					Status: constants.StatusWarn,
 					Message: msgf("snapshot %q is stale: %s",
-						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
+						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name, active[acc.Tool] == acc.Name)),
 				})
 			case constants.CredentialExpiring:
 				// Ahead of the deadline, so this is the window in which a re-login is
@@ -388,14 +389,14 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
 					Status: constants.StatusWarn,
 					Message: msgf("snapshot %q %s",
-						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)),
+						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, active[acc.Tool] == acc.Name)),
 				})
 			}
 		}
 	}
 	checks = append(checks, app.secretMissingChecks(ctx, cached, toolFilter)...)
 	if err == nil {
-		checks = append(checks, credentialConflictSnapshotChecks(ctx, cached, accounts, toolFilter)...)
+		checks = append(checks, credentialConflictSnapshotChecks(ctx, cached, accounts, active, toolFilter)...)
 	}
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }

@@ -1960,11 +1960,21 @@ test "$(grep -c relogin "$HOME/L2.txt")" -eq 0
                                         #   Scoped to the one line, and the two greps above
                                         #   are its positive control
 
-# --- M. outside a binding nothing is launched ---
+# --- M. outside a binding it is the global re-login, with nothing exported ---
 C=$(mktemp -d); cd "$C"
-/tmp/kae relogin > "$HOME/M.out" 2> "$HOME/M.err"; test $? -eq 7   # assert: 7 (not_found)
-grep -q 'this directory is not bound' "$HOME/M.err"
-grep -q 'kae add --restore' "$HOME/M.err"   # assert: and it names the global remedy
+CLAUDE_CONFIG_DIR="$SB" /tmp/kae relogin > "$HOME/M0.out" 2> "$HOME/M0.err"; test $? -eq 64
+                                        # assert: 64 — a shell that still exports a bound
+                                        #   store (mise active below a bound directory) is
+                                        #   refused before the flow: a global login there
+                                        #   would land in that store
+grep -q 'CLAUDE_CONFIG_DIR points into kae' "$HOME/M0.err"
+/tmp/kae relogin > "$HOME/M.out" 2> "$HOME/M.err"; test $? -eq 11  # assert: 11 (auth_unchanged)
+grep -q 'captured as claude/solo' "$HOME/M.err"
+                                        # assert: the account is the active global one (the
+                                        #   preamble captures solo last). The fake refuses
+                                        #   with exit 8 because kae exported no
+                                        #   CLAUDE_CONFIG_DIR, so nothing changed and kae
+                                        #   refuses the capture
 grep -q SOLO-OLD "$HOME/.claude/.credentials.json"
                                         # assert: the temp real home still holds what the
                                         #   preamble left there last. The literal is the
@@ -1982,15 +1992,19 @@ test "$(grep -c B-RELOGGED "$HOME/.claude/.credentials.json")" -eq 0
                                         # assert: 0 — paired with the positive line above,
                                         #   because a count for absence prints 0 when the
                                         #   file is missing too. Together they assert the
-                                        #   flow was never launched: the fake `claude` is
-                                        #   still first on PATH and writes into whatever
-                                        #   CLAUDE_CONFIG_DIR names, so with none set it
-                                        #   would land here. The exit code alone does not
+                                        #   global flow left the real home as it was: the
+                                        #   fake `claude` is still first on PATH and writes
+                                        #   into whatever CLAUDE_CONFIG_DIR names, and kae
+                                        #   exported none. The exit code alone does not
                                         #   say that
 ```
 
 `grep -c` printing `0` is an assertion on two lines here, so paste the block as-is
 rather than under `set -e`.
+
+**M rewritten for the global form of `kae relogin` and the section re-run on
+2026-11-15** through `bash scripts/smoke-run.sh` (darwin, file driver, file backend,
+temp HOME, `/tmp/kae` built from that tree): every line exited 0.
 
 **K–M PASSED 2026-08-08 on the release tree, 20/20** (darwin 24.6.0, file driver, file
 backend, temp HOME, `/tmp/kae` = v0.17.0), run after the preamble alone, each assertion

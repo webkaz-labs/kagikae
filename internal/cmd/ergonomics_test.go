@@ -48,12 +48,18 @@ func TestRunTargetArgs(t *testing.T) {
 	if _, _, ok := runTargetArgs("main", []string{"claude", "x"}); ok {
 		t.Fatal("-P with positionals must be rejected")
 	}
-	// Without -P, exactly two positionals are required.
+	// Without -P, two positionals are <tool|all> <name>; a lone one is a profile,
+	// as in `kae use <profile>`; none or more than two are rejected.
 	if target, name, ok := runTargetArgs("", []string{"claude", "main"}); !ok || target != "claude" || name != "main" {
 		t.Fatalf("positional form: %q %q %v", target, name, ok)
 	}
-	if _, _, ok := runTargetArgs("", []string{"claude"}); ok {
-		t.Fatal("one positional must be rejected")
+	if target, name, ok := runTargetArgs("", []string{"main"}); !ok || target != "all" || name != "main" {
+		t.Fatalf("lone profile form: %q %q %v", target, name, ok)
+	}
+	for _, positionals := range [][]string{nil, {"claude", "main", "x"}} {
+		if _, _, ok := runTargetArgs("", positionals); ok {
+			t.Fatalf("%q must be rejected", positionals)
+		}
 	}
 }
 

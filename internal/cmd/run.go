@@ -27,6 +27,7 @@ const (
 // CmdRun executes a child command with a temporarily applied account:
 //
 //	kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
+//	kae run [-s|-i|--env] <profile> -- <cmd...>
 //
 // -s (default) runs against the real home (backup → apply → run → recapture →
 // restore, lock held the whole run); -i runs in the per-account global isolated
@@ -63,7 +64,7 @@ func CmdRun(ctx context.Context, args []string) int {
 	}
 	target, name, ok := runTargetArgs(profileFlag, positionals)
 	if !ok {
-		return usageLine("run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>")
+		return usageLine("run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...> | run [-s|-i|--env] <profile> -- <cmd...>")
 	}
 	app := newApp(opts.ConfigPath)
 	return runRun(ctx, app, opts, runMode, target, name, childCmd)
@@ -94,8 +95,9 @@ func resolveRunMode(shared, isolated, envMode bool) (string, bool) {
 }
 
 // runTargetArgs resolves the (target, name) pair from the -P profile flag or the
-// positional <tool|all> <name>. -P is sugar for `all <profile>` and takes no
-// positional; otherwise exactly two positionals are required.
+// positionals. -P is sugar for `all <profile>` and takes no positional. Without
+// it, two positionals are <tool|all> <name> and a lone one is a profile, as in
+// `kae use <profile>`.
 func runTargetArgs(profileFlag string, positionals []string) (target, name string, ok bool) {
 	if profileFlag != "" {
 		if len(positionals) != 0 {
@@ -103,10 +105,13 @@ func runTargetArgs(profileFlag string, positionals []string) (target, name strin
 		}
 		return "all", profileFlag, true
 	}
-	if len(positionals) != 2 {
-		return "", "", false
+	switch len(positionals) {
+	case 1:
+		return "all", positionals[0], true
+	case 2:
+		return positionals[0], positionals[1], true
 	}
-	return positionals[0], positionals[1], true
+	return "", "", false
 }
 
 // defaultChildCmd resolves the child command when kae run was given no

@@ -458,6 +458,9 @@ func TestAddRefusesAnotherAccountsLoginForAnExistingName(t *testing.T) {
 			if mentions := strings.Contains(stderr, "login flow"); mentions == tc.noLogin {
 				t.Errorf("login flow mentioned=%v for --no-login=%v: %q", mentions, tc.noLogin, stderr)
 			}
+			if !tc.noLogin && !strings.Contains(stderr, "another account may have been selected in the login flow") {
+				t.Errorf("the login form must say another account may have been selected: %q", stderr)
+			}
 			for _, secret := range tc.leaks {
 				if strings.Contains(out+stderr, secret) {
 					t.Fatalf("output leaked %q: %q", secret, out+stderr)
@@ -531,6 +534,18 @@ func TestAddOverARecordlessIdentity(t *testing.T) {
 			run: func(t *testing.T, app *App) int {
 				withInteractive(t, claudeLoginAs(t, app, reloggedToken, "main-uuid", &[]string{}))
 				code, _ := captureStderr(t, func() int { return runRelogin(ctx, app, opts, constants.ToolClaude) })
+				return code
+			},
+		},
+		{
+			// docs/CLI.md: "a live login whose identity record is absent" is not refused.
+			name: "a live login without an identity record", code: constants.ExitOK,
+			recorded: `{"oauthAccount":` + claudeOAuthAccount("main-uuid", "main-uuid@example.com") + `}`,
+			run: func(t *testing.T, app *App) int {
+				writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+					claudeOAuthPayload(reloggedToken, app.Now().Add(8*time.Hour)))
+				writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), `{}`)
+				code, _ := captureStderr(t, func() int { return runCapture(ctx, app, opts, constants.ToolClaude, "main") })
 				return code
 			},
 		},

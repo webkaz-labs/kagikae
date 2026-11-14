@@ -97,15 +97,17 @@ func TestSwitchAwaySkipsRecaptureWhenMatching(t *testing.T) {
 // warns and names kae add, but still proceeds.
 func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 	// The switch makes the target active, so its remedy is the active re-login; a
-	// dry-run makes nothing active, so it names the inactive account's login.
+	// dry-run makes nothing active, so it names the inactive account's login —
+	// unless the target already is the active account.
 	for _, tc := range []struct {
-		dryRun      bool
-		want, avoid string
+		dryRun, alreadyActive bool
+		want, avoid           string
 	}{
-		{false, "kae relogin claude", "--restore"},
-		{true, "kae add --restore claude stale", "kae relogin"},
+		{false, false, "kae relogin claude", "--restore"},
+		{true, false, "kae add --restore claude stale", "kae relogin"},
+		{true, true, "kae relogin claude", "--restore"},
 	} {
-		t.Run(fmt.Sprintf("dry-run=%v", tc.dryRun), func(t *testing.T) {
+		t.Run(fmt.Sprintf("dry-run=%v/already-active=%v", tc.dryRun, tc.alreadyActive), func(t *testing.T) {
 			app := testApp(t, nil)
 			ctx := context.Background()
 			opts := commonOpts{Format: formatText}
@@ -117,6 +119,9 @@ func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 			seedClaude(t, app, sideToken, "side-uuid")
 			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
 			captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+			if tc.alreadyActive {
+				captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "stale") })
+			}
 
 			opts.DryRun = tc.dryRun
 			report, err := buildSwitch(ctx, app, opts, "claude", "stale")

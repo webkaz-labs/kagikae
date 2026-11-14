@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
@@ -33,6 +34,13 @@ type toolStatus struct {
 	// rule. Additive and omitempty; both absent when no account is active.
 	Credential string `json:"credential,omitempty"`
 	ReloginBy  string `json:"relogin_by,omitempty"`
+	// LiveCredential / LiveReloginBy are the same pair read from the live store the
+	// tool uses for that account (liveStoreCredentialState). Additive and
+	// omitempty; absent when kae could not judge the live copy, and for a row that
+	// is not about the real home (a bound directory, global isolated mode), where
+	// the store may hold another account than the row names.
+	LiveCredential string `json:"live_credential,omitempty"`
+	LiveReloginBy  string `json:"live_relogin_by,omitempty"`
 	// Usage is the active account's subscription windows. Same object as
 	// accountItem.Usage; absent when kae has no reading.
 	Usage *usageJSON `json:"usage,omitempty"`
@@ -152,10 +160,15 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	// status is the most-run command; on macOS each tool's Detect is a live
 	// `security` probe, so a sequential loop pays the sum. Run them concurrently
 	// and assemble below in canonical (tools) order, so the output is unchanged.
-	detections, err := detectTools(ctx, app.Env, tools)
+	//
+	// The keychain read cache spans Detect and the live freshness read below, which
+	// reads the item Detect just read; status writes nothing, so they agree.
+	liveCtx := keychain.WithReadCache(ctx)
+	detections, err := detectTools(liveCtx, app.Env, tools)
 	if err != nil {
 		return nil, err
 	}
+	now := app.Now()
 	for i, tool := range tools {
 		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []message{}, Accounts: []string{}}
 		if names, ok := capturedByTool[tool]; ok {
@@ -182,10 +195,40 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			ts.Driver = det.info.Driver
 			ts.AuthPresent = det.info.AuthPresent
 			ts.Warnings = append(ts.Warnings, det.info.Warnings...)
+			if ts.Account != nil && app.statusRowIsRealHome(tool, pinnedAccounts, st) {
+				live, _ := liveStoreCredentialState(liveCtx, tool, app.Env, now)
+				ts.LiveCredential, ts.LiveReloginBy = live.State, stampOrEmpty(live.ReloginBy)
+			}
 		}
 		report.Tools = append(report.Tools, ts)
 	}
 	return report, nil
+}
+
+// statusRowIsRealHome reports whether tool's status row names the account whose
+// live store this shell reads: the global active account in the real home. A row
+// bound by this directory's fragment, a tool this shell points at one of kae's own
+// homes, and a tool in global isolated mode are not — the store there may hold
+// another account than the row names — so the live freshness is left unjudged.
+func (app *App) statusRowIsRealHome(tool string, pinnedAccounts map[string]string, st *state.State) bool {
+	if _, bound := pinnedAccounts[tool]; bound {
+		return false
+	}
+	if _, isolated := st.Synced[tool]; isolated {
+		return false
+	}
+	return !app.toolIsolated(tool)
+}
+
+// statusCredentialCell renders a status row's Credential cell: the snapshot's
+// state, or the live copy's marked as such when liveCredentialWorse says it adds
+// to it — the rule doctor's live half applies, so the cell and the check agree.
+// worst is the state the cell shows, for the caller's coloring.
+func statusCredentialCell(ts toolStatus, now time.Time) (cell, worst string) {
+	if liveCredentialWorse(ts.LiveCredential, ts.Credential) {
+		return l10n.Sprintf("%s (live login)", credentialCell(ts.LiveCredential, ts.LiveReloginBy, now)), ts.LiveCredential
+	}
+	return credentialCell(ts.Credential, ts.ReloginBy, now), ts.Credential
 }
 
 // detection is one tool's concurrent Detect result.
@@ -361,9 +404,10 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		}
 		// Auth is about the live store ("is anything logged in here"); Credential is
 		// about the snapshot kae would apply, which is a different question and the
-		// one that goes stale unnoticed.
-		cred := credentialCell(ts.Credential, ts.ReloginBy, now)
-		if ts.Credential == constants.CredentialStale || ts.Credential == constants.CredentialExpiring {
+		// one that goes stale unnoticed — unless the live copy is the worse of the
+		// two (statusCredentialCell).
+		cred, worst := statusCredentialCell(ts, now)
+		if worst == constants.CredentialStale || worst == constants.CredentialExpiring {
 			cred = paint(constants.StatusWarn, cred, color)
 		}
 		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color, opts.Full), notes})

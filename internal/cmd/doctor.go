@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -184,7 +185,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 		})
 	}
 
-	// per tool
+	// per tool. Detect reads each tool's live credential here, and the live half of
+	// credential_stale / credential_expiring reads the active account's again right
+	// after the loop (it is emitted after the snapshot half, below). One keychain read
+	// cache spans both and credential_account_conflict's live read, so on darwin the
+	// later reads cost no `security` call outside a bound directory; doctor writes no
+	// credential.
+	liveCtx := keychain.WithReadCache(ctx)
 	for _, tool := range app.enabledTools() {
 		if toolFilter != "" && tool != toolFilter {
 			continue
@@ -197,8 +204,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 			})
 			continue
 		}
-		report.Checks = append(report.Checks, ad.Doctor(ctx, app.Env)...)
+		report.Checks = append(report.Checks, ad.Doctor(liveCtx, app.Env)...)
 	}
+	lives := app.activeLiveCredentials(liveCtx, toolFilter)
 
 	// upstream behaviour-assumption drift: the installed tool has moved past the
 	// version kae's assumptions were verified on. Per-tool, so it honors the
@@ -226,12 +234,20 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 	report.Checks = append(report.Checks, app.activeOrphanChecks(toolFilter)...)
 	// A live login that mixes two accounts: its snapshot half runs with the credential
 	// health checks below, but the live read needs no backend, so it stays out here.
-	report.Checks = append(report.Checks, app.credentialConflictLiveChecks(ctx, toolFilter)...)
+	report.Checks = append(report.Checks, app.credentialConflictLiveChecks(liveCtx, toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.
+	var activeSnapshots map[string]string
 	if err == nil {
-		report.Checks = append(report.Checks, app.credentialHealthChecks(ctx, be, toolFilter)...)
+		healthChecks, snapshots := app.credentialHealth(ctx, be, toolFilter)
+		activeSnapshots = snapshots
+		report.Checks = append(report.Checks, healthChecks...)
+	}
+	// Reported against the snapshot half's verdicts, so it says only what that half
+	// does not; with no backend every snapshot counts as unknown.
+	report.Checks = append(report.Checks, liveCredentialChecks(lives, activeSnapshots, app.Now())...)
+	if err == nil {
 		// Recorded identity validity and live identity drift both need the backend
 		// and honor the tool filter; validity includes inactive accounts.
 		report.Checks = append(report.Checks, app.identityRecordChecks(ctx, be, toolFilter)...)
@@ -357,9 +373,18 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 // on purpose — secret.Cached does not forward the Enumerator capability, and passing
 // the wrapper would silently switch orphan detection off wherever it still works.
 func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
+	checks, _ := app.credentialHealth(ctx, be, toolFilter)
+	return checks
+}
+
+// credentialHealth is credentialHealthChecks plus the snapshot state of each tool's
+// active account, which doctor's live half (liveCredentialChecks) is judged against.
+// A tool whose active snapshot kae could not judge is absent from the map.
+func (app *App) credentialHealth(ctx context.Context, be secret.Backend, toolFilter string) ([]adapter.Check, map[string]string) {
 	ctx = secret.WithReadCache(ctx)
 	cached := secret.Cached(be)
 	checks := []adapter.Check{}
+	activeStates := map[string]string{}
 	active := app.activeAccounts()
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err == nil {
@@ -373,6 +398,9 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			}
 			now := app.Now()
 			cred := credentialStateAt(info, now)
+			if isActive(active, acc) && cred.State != "" {
+				activeStates[acc.Tool] = cred.State
+			}
 			switch cred.State {
 			case constants.CredentialStale:
 				checks = append(checks, adapter.Check{
@@ -398,7 +426,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 	if err == nil {
 		checks = append(checks, credentialConflictSnapshotChecks(ctx, cached, accounts, active, toolFilter)...)
 	}
-	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
+	return append(checks, app.orphanChecks(ctx, be, toolFilter)...), activeStates
 }
 
 // activeOrphanChecks reports a tool whose recorded active account kae cannot

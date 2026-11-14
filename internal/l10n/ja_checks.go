@@ -33,6 +33,8 @@ var jaChecks = map[string]string{
 	"profile %s: %s token %s is not stored; run: kae companion add %s %s %s":      "プロファイル %s: %s のトークン %s が保存されていません。kae companion add %s %s %s を実行してください。",
 	"snapshot %q is stale: %s": "スナップショット %q は失効しています: %s。",
 	"snapshot %q %s":           "スナップショット %q: %s。",
+	"the live %s credential of active account %s is stale: %s":                                                                                                                              "有効なアカウント %[2]s の現在の %[1]s の認証情報は失効しています: %[3]s。",
+	"the live %s credential of active account %s %s":                                                                                                                                        "有効なアカウント %[2]s の現在の %[1]s の認証情報: %[3]s。",
 	"could not read %s (%v), so kae cannot say which account is active for any tool; run: kae use <tool> <account> (rewrites it)":                                                           "%s を読み取れませんでした（%v）。そのため、どのツールでどのアカウントが有効か kae には判断できません。kae use <tool> <account> を実行してください（読み取れなかったファイルを書き直します）。",
 	"state records %s/%s as active but its snapshot could not be read (%v), so kae cannot confirm it":                                                                                       "状態ファイルは %s/%s を有効なアカウントとして記録していますが、そのスナップショットを読み取れませんでした（%v）。そのため kae は確認できません。",
 	"state records %s/%s as active but that snapshot no longer exists, so kae cannot say which %s account is live; to pick one, run: kae use %s <account> (kae ls shows the captured ones)": "状態ファイルは %s/%s を有効なアカウントとして記録していますが、そのスナップショットはもう存在しません。そのため、%s のどのアカウントが現在使われているか kae には判断できません。アカウントを選ぶには kae use %s <account> を実行してください（登録済みのアカウントは kae ls で確認できます）。",

@@ -3,14 +3,17 @@
 ## Current release — kae v0.25.0
 
 Minor release. `kae relogin [<tool>]` outside a bound directory re-logs the
-active global account, recovery guidance names it for the active account, and
-`kae add --restore` refuses the active account instead of restoring its expired
-copy. Captures into an existing account refuse another account's login and a copy
-worse than the stored one. `kae status` and `kae doctor` report the active
-account's live login when it is worse than the snapshot. Remembered usage readings
-are asked again after ten minutes or a window reset and show their age. `kae run
-<profile>` is accepted like `kae use <profile>`, and help and guidance point at
-working commands ([CLI.md](CLI.md)).
+active global account, recovery guidance names `kae relogin <tool>` for the
+active account, and `kae add --restore` refuses the active account instead of
+restoring its expired copy. Captures into an existing account refuse another
+account's login and a copy worse than the stored one. `kae status` and
+`kae doctor` report the active account's live login when it is worse than the
+snapshot. Remembered usage readings are asked again after ten minutes or a window
+reset, failed requests back off, and readings show their age. `kae run <profile>`
+is accepted like `kae use <profile>`, and help and guidance point at working
+commands ([CLI.md](CLI.md)). Binaries are built with Go 1.27.4, a security
+release. Candidate assessment: [ACCEPTANCE.md](ACCEPTANCE.md)
+§ v0.25.0 candidate.
 
 ## Release procedure
 
@@ -22,7 +25,8 @@ by hand — the tag does it.
 
 1. Bump `toolVersion` in `internal/cmd/cmd.go` to the new `vX.Y.Z` (the binary's
    reported version is hardcoded, not injected; it must match the tag) and the
-   `TestBuildVersionReport` expectation. While `.goreleaser.yaml` excludes
+   `TestBuildVersionReport` expectation, and the `toolVersion` needle in
+   `scripts/packslipverify/fixtures.go`. While `.goreleaser.yaml` excludes
    darwin/amd64 unconditionally, that tag is v0.24.0 or later, including a patch
    tag released after a failed signer change (below); otherwise first move
    `intelMacDropped` in `scripts/releaseverify` and the `scripts/install.sh`

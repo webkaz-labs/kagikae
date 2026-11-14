@@ -172,6 +172,35 @@ refresh through this same `AuthManager` as the app-server measured here. Not
 established: whether the ChatGPT app gives its codex externally managed tokens,
 which upstream keeps in memory and never writes to `auth.json` (lines 1128 to 1146).
 
+## v0.25.0 candidate
+
+Assessed on 2026-11-15 (JST) at `544b04d`. The release changes credential
+mutation paths (global `kae relogin`, `kae add` refusals, `--restore` for the
+active account), so the affected live check ran again. On macOS with Claude Code
+2.1.312, the operator used a binary built from `544b04d` with a non-working
+account (`side`) and reported every step as expected: `kae add --no-login` of
+the active account, `kae relogin claude` with the same account selected in the
+browser followed by a fresh `claude -p "say hi" </dev/null` reply,
+`kae add --restore claude side` refused before any login, a `kae use claude
+main` / `kae use claude side` round trip with a fresh-process reply after each
+switch, and the Credential and Limit cells in `kae` and `kae doctor`. Recorded
+from the operator's report; no transcript was kept.
+
+`mise run check` (also under `LC_ALL=C.UTF-8`), `git diff --check`,
+`mise run goreleaser-check`, `mise run release-evidence` (all 40 full-mutation
+checks) and `mise run release-smoke` passed after the toolchain moved to Go
+1.27.4, which cleared the eleven reachable standard-library vulnerabilities
+govulncheck reported against Go 1.27.1; staticcheck v0.8.2 and golangci-lint
+v2.14.0 replaced versions that cannot read Go 1.27.4 export data.
+
+`mise run audit` is not green: the vulnerability scan is clean, while
+fingerprints differ for agy (digest), Claude 2.1.312 (recorded 2.1.284), Copilot
+1.0.112 (1.0.88), Cursor 2026.10.22-27dcf5f (2026.09.08-6caf4ff) and OpenCode
+2.2.2 (1.18.32); Codex fingerprints are excluded by design. `mise run
+naming-agreement` refused the unreviewed Claude 2.1.312 bytes, so the naming
+comparison did not run for this version. Operator decision (question → answer):
+「上流ツールの版が記録とずれている（claude 2.1.312（記録 2.1.284）、copilot、cursor、opencode、agy）。特に claude は、認証情報の保存先が kae の想定と一致するかの照合が「未レビューの版」で実行できない。どうするか？」→「記録して公開 (Recommended)」.
+
 ## v0.24.1 candidate
 
 Assessed on 2026-10-08 (JST) at `846ae64`; the application fix is `ceb612b`.

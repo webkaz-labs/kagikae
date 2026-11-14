@@ -208,6 +208,25 @@ naming-agreement` refused the unreviewed Claude 2.1.312 bytes, so the naming
 comparison did not run for this version. Operator decision (question → answer):
 「上流ツールの版が記録とずれている（claude 2.1.312（記録 2.1.284）、copilot、cursor、opencode、agy）。特に claude は、認証情報の保存先が kae の想定と一致するかの照合が「未レビューの版」で実行できない。どうするか？」→「記録して公開 (Recommended)」.
 
+### v0.25.0 publication result
+
+On 2026-11-15 (JST), main CI succeeded for source
+`da619f57a7c4bcc3d32d72e911e1c03e44da2791` after one rerun of the linux/arm64
+job, whose first attempt failed in `internal/wsrpc`
+(`TestCallEachCollectsTheWantedResponses/last_first`, a broken pipe from the test
+server; the package is unchanged by this release and 200 local runs passed). The
+release workflow then succeeded for tag `v0.25.0`, including signing the
+darwin/arm64 and linux amd64/arm64 archives with Packslip 1.6.0.
+
+`KAE_RELEASE_VERIFY_FRESH=1 mise run release-verify -- v0.25.0` returned
+`status: success`, with Packslip 1.6.0 (its archive checked with
+`gh attestation verify --repo jdx/packslip` first) and mise 2026.11.3.
+Signature, source, archives and completion resources verified; a foreign signer
+identity was refused. The native binary reported `kae v0.25.0`. The native mise
+consumer passed under an isolated zero-age release policy, not the default age
+policy. The installer used verified-asset fixtures, so its HTTP transport was not
+exercised. No live login was part of this check.
+
 ## v0.24.1 candidate
 
 Assessed on 2026-10-08 (JST) at `846ae64`; the application fix is `ceb612b`.

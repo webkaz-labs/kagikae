@@ -138,8 +138,9 @@ type Fresher interface {
 	Freshness(payload []byte) freshness.Info
 }
 
-// UsageHome is implemented by adapters that can point at the directory where
-// the tool writes its own subscription-window record. It is the live home for
+// UsageHome is implemented by adapters that can point at the directory that
+// holds the tool's subscription-window record (written by the tool, or for
+// claude by a user's statusline script). It is the live home for
 // this environment (CLAUDE_CONFIG_DIR / CODEX_HOME, or the tool's default).
 type UsageHome interface {
 	UsageHome(env Env) string

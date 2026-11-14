@@ -102,6 +102,22 @@ func TestUsageFailedRequestBacksOffForTheReadingTTL(t *testing.T) {
 		}
 	})
 
+	t.Run("a local file whose windows have all reset keeps the mark", func(t *testing.T) {
+		hits, status := 0, 500
+		app, captured := setup(t, validToken, &status, &hits)
+		// resetsAt 1000000000 is 2001: every window in the file has reset.
+		writeFile(t, filepath.Join(app.Env.Home, ".claude", "usage-exact.json"),
+			`{"fiveHour":{"usedPercent":16,"resetsAt":1000000000},"sevenDay":{"usedPercent":95,"resetsAt":1000003600}}`)
+		st := state.New()
+		st.Active[constants.ToolClaude] = "main"
+		for i := 0; i < 3; i++ {
+			app.accountUsages(context.Background(), captured, st)
+		}
+		if hits != 1 {
+			t.Fatalf("hits = %d, want 1 inside the backoff", hits)
+		}
+	})
+
 	t.Run("a reading clears the mark", func(t *testing.T) {
 		hits, status := 0, 500
 		app, captured := setup(t, validToken, &status, &hits)

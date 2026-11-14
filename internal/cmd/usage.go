@@ -123,8 +123,8 @@ func (app *App) accountReadings(ctx context.Context, captured []account.Account,
 // back for usageReadingTTL (usageEntry.ProbedAt).
 //
 // Network last, and only for that gap. Failure leaves the still-valid
-// remembered windows as they were. The token never reaches the report. usageClient nil skips the network,
-// which is how tests stay offline.
+// remembered windows as they were. The token never reaches the report.
+// usageClient nil skips the network, which is how tests stay offline.
 func (app *App) accountUsages(ctx context.Context, captured []account.Account, st *state.State) map[toolAccount]usageView {
 	now := app.Now()
 	cache, writable := loadUsageCache(app.Paths.UsageCacheFile())
@@ -183,7 +183,13 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 				Windows: usagelimit.Normalize(fresh),
 			}
 		}
-		cache.upsert(localUsageEntry(key, reading))
+		entry := localUsageEntry(key, reading)
+		if prev, found := cache.byAccount(key.tool, key.account); found &&
+			prev.SourcePath == entry.SourcePath && prev.ModTimeUnix == entry.ModTimeUnix {
+			// The same file again is not a new reading: keep the backoff.
+			entry.ProbedAt = prev.ProbedAt
+		}
+		cache.upsert(entry)
 	}
 	views := map[toolAccount]usageView{}
 	for key, view := range local {
@@ -218,9 +224,6 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 	if len(probe) > 0 {
 		probed, failed := app.probeUsages(ctx, probe, now)
 		for key := range failed {
-			if _, ok := probed[key]; ok {
-				continue
-			}
 			// Nothing came back: hold the next request back, on the entry the
 			// listing shows or, with none, on an entry that shows nothing.
 			entry, found := cache.byAccount(key.tool, key.account)

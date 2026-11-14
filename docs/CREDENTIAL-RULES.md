@@ -324,8 +324,9 @@ that state (an upstream `expiresAt` type change, where the live copy really is n
 a truncated payload, where it is worthless) want opposite answers and are
 indistinguishable offline.
 **`kae add` into an existing account asks the recaptures' attribution and ordering
-questions before it captures** (`keepSnapshotIdentity` and `liveOwnerDiffers`, with
-their rules for a missing identity, then `recaptureWouldDowngrade`), because a login
+questions before it captures** (the identity records `keepSnapshotIdentity` compares,
+counting a recorded identity that is missing or not a record as none, and
+`liveOwnerDiffers`, then `recaptureWouldDowngrade`), because a login
 flow lets the user pick any account, an auto-detected name can collide, and the one
 copy that is never backed up is the snapshot it would overwrite. Its refusal restores
 the pre-login backup and so discards the login it declined. That is not the loss this rule guards against: the

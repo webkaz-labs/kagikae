@@ -669,18 +669,21 @@ restoring, and the result line says so and names the backup holding the previous
 detected) account already has a snapshot, kae compares the live login with it before
 capturing, through the switch-away recapture's attribution guards: claude's identity
 record (`accountUuid`, `emailAddress`, `organizationUuid`) and codex's owner
-comparison. When kae cannot confirm the login is the account that snapshot records —
-another account was picked in the login flow, or the two identity records cannot be
-read as records — it refuses with exit `10` (`unsafe_refused`) and writes no snapshot.
-The login form then restores the pre-login live state from its backup **with or
-without** `--restore`, so the other account's login is not left live; that login is
-not kept (it is a fresh login, so no earlier copy of anything is lost). `--no-login`
-changes nothing. The message names no id or email; it names `kae add <tool> <account>`
-for keeping that login under another name and `kae account rename` / `kae account rm`
-for giving this name to it on purpose. A snapshot that records no identity, an account
-never captured and a live login whose identity record is absent are not refused,
-which are the recapture guards' own rules. An auto-detected name takes the email's local
-part, so two accounts can land on one name; the second is refused by this check.
+comparison ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md)). When the live login is
+another account's than the one the snapshot records — or the snapshot holds an
+identity record and the live identity is not one — kae refuses with exit `10`
+(`unsafe_refused`) and writes no snapshot. The login form then restores the pre-login
+live state from its backup **with or without** `--restore`, so the other account's
+login is not left live; that login is not kept (it is a fresh login, so no earlier copy
+of anything is lost). `--no-login` changes nothing. The message names no id or email;
+it names `kae add <tool> <account>` for keeping that login under another name and
+`kae account rename` / `kae account rm` for giving this name to it on purpose. Not
+refused: an account never captured, a snapshot that records no identity or whose
+recorded identity is not a record (it names no account, so the
+`identity_record_invalid` remedy `kae add --no-login` still repairs it), and a live login
+whose identity record is absent. An auto-detected name takes the email's local part,
+so two accounts can land on one name; the second is refused by this check. With no
+live credential at all, the capture fails `auth_missing` (exit `3`) as for a new name.
 
 **Nor a copy worse than the one it holds.** In the same place and with the same
 consequences (exit `10`, no snapshot written, the login form restoring its backup), kae
@@ -693,14 +696,21 @@ the guard's reason and names `kae relogin <tool>` for the active account and
 `kae add --restore <tool> <account>` otherwise. A newer copy is captured as before.
 `--dry-run` runs neither check.
 
-**The login form refuses kae's isolation in the shell.** The login runs with the
-shell's environment, so inside a bound directory (or under a global isolated home of
-that tool) it would write into the store kae's own variable names while kae compares
-and captures the global store. Where any tool's per-directory isolation variable, or
-this tool's isolation or credential variable, points into kae's stores, `kae add`
-exits `64` before the backup and the flow, naming the variable, and points at running
-it outside the bound directory or `kae relogin <tool>` inside it. `kae add --no-login`
-is not refused: it reads the global store with kae's own variables hidden.
+**A global login refuses kae's isolation in the shell.** The `kae add` login flow and
+`kae relogin` outside a bound directory (§ kae relogin Semantics) run the login with the
+shell's environment, so where that environment carries kae's isolation the tool would
+write into the store kae's own variable names while kae compares and captures the
+global store. Where any tool's per-directory isolation variable, or this tool's
+isolation or credential variable, points into kae's stores, both exit `64` before the
+backup and the flow, naming the variable. Below or inside a bound directory (mise
+active) the message points `kae add` at a shell outside the bound directory and
+`kae relogin <tool>` at the bound directory itself. Under this tool's global isolated
+home (`kae use -i`) there is no bound directory to point at: the message says that
+kae's isolation for the tool is active in this shell and that kae cannot log the tool
+in globally until it is off ([ROADMAP.md](ROADMAP.md) § Re-login under global isolated
+mode). Another tool's global isolated home does not redirect this tool's login and is
+not refused. `kae add --no-login` is not refused either: it reads the global store with
+kae's own variables hidden.
 
 **A codex login that mixes two accounts is refused.** When the live codex login's
 conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), both
@@ -1635,8 +1645,9 @@ Contract:
   naming them: two interactive login flows from one word is not a default, and
   taking the first would log in the tool you did not mean.
 - Not pinned → the global form below. A tool this directory does not bind → exit
-  `7`. An unpinned directory whose store tree survives (`kae unpin` keeps it on
-  purpose) is **not** pinned for this purpose: what is bound comes from the mise
+  `7`, naming `kae relogin <tool>` outside a bound directory for the tool's active
+  global account. An unpinned directory whose store tree survives (`kae unpin` keeps
+  it on purpose) is **not** pinned for this purpose: what is bound comes from the mise
   fragment, so it gets the global form, which writes nothing into that store.
 - The bound store not being there → exit `7`, naming `kae pin <tool> <account>`.
   kae recomputes the store path from a hash of the directory's *current* path, while
@@ -1739,16 +1750,10 @@ reconcile. The new login stays live and the active account does not change.
   for that account. A tool with no login command → exit `5`.
 - `<tool>` omitted: the single tool with an active account and a login command. None
   → exit `7`; several → exit `64` naming them.
-- **Refused where the shell carries kae's isolation** (exit `64`, before the backup
-  and the flow). The login runs with the shell's environment, so a global login there
-  would land in the store a variable names rather than the real home kae compares and
-  captures. That is the case below a bound directory with mise active (the directory
-  itself is not bound, its parent's fragment exports the variables): any tool's
-  per-directory isolation variable, or the tool's own isolation or credential variable
-  pointing into kae's stores (a global isolated home included). The message names the
-  variable; run `kae relogin` in the bound directory itself or in a shell where that
-  binding is not active. Another tool's global isolated home does not redirect this
-  tool's login and is not refused.
+- Refused where the shell carries kae's isolation (exit `64`, before the backup and the
+  flow), as § kae add Semantics states for the global login. Here that is typically a
+  directory below a bound one with mise active: it is not bound itself, its parent's
+  fragment exports the variables.
 - The active account is read again under the tool lock; if it changed in between,
   exit `10` before the flow.
 
@@ -2027,7 +2032,7 @@ best-match candidate is named (no multi-candidate list).
 | `7` | `not_found` | account / profile / backup not found |
 | `8` | `permission` | file permission or access error |
 | `9` | `secret_store` | secret backend unavailable |
-| `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, a capture found a codex login that mixes two accounts, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
+| `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, a capture found a codex login that mixes two accounts, another account's login or a worse copy than an existing snapshot (§ kae add Semantics), the active account changed before a global `kae relogin`, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
 | `11` | `auth_unchanged` | login flow exited without changing auth; nothing captured |
 | `64` | `usage` | usage / flag error |
 | `130` | `cancelled` | the picker of `kae open` and `kae cd` was cancelled; nothing was printed |

@@ -470,20 +470,9 @@ alternative exists (`secret-tool`).
   `kae relogin`; the global paths settled on 2026-11-15, below). The three expiry
   paths were not equally finished, and the worst one was the per-directory/per-worktree
   case:
-  - *Global accounts* — **settled 2026-11-15.** The remedy had become
-    `kae add --restore <tool> <account>` for every global snapshot, and for the
-    **active** account that restore put the account's own expired pre-login copy back
-    over the new login (a reported incident: still "Login expired" after following
-    kae's guidance). Decided by the operator, and now the contract in [CLI.md](CLI.md)
-    § Recovery guidance, § kae add Semantics and § kae relogin Semantics: the remedy
-    is chosen by active-ness (`kae relogin <tool>` for the active account,
-    `kae add --restore` otherwise); `--restore` refuses the active account before the
-    login; `kae relogin` outside a bound directory logs the active global account in
-    again, refusing where the shell carries kae's isolation; and a login is never
-    captured into an existing account whose snapshot records another one or a copy
-    worse than its own; `kae add --restore <tool>` with the name omitted keeps the new
-    login live when the detected account was the active one; and the `kae add` login
-    flow refuses a shell carrying kae's isolation.
+  - *Global accounts* — **settled 2026-11-15**: the remedy follows active-ness, and
+    the contract is [CLI.md](CLI.md) § Recovery guidance, § kae add Semantics and
+    § kae relogin Semantics.
   - *Bound directory* — was `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
     carried two hazards neither the message nor the docs mentioned. Both are closed;
     the remedy is now `cd <dir> && kae relogin <tool>` ([CLI.md](CLI.md) § kae
@@ -515,8 +504,6 @@ alternative exists (`secret-tool`).
   bindings") was decided for the new verb: `--fix` would have to decide which of
   several findings to act on, and `kae add --restore` is about the *global* store,
   where its backup-and-restore is the whole point and means nothing per directory.
-  The same verb later took the active global account too (above), so a re-login is
-  `kae relogin <tool>` in both places.
 
   **And the detection hook is already in the right place but blind.** The mise
   `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact
@@ -529,6 +516,16 @@ alternative exists (`secret-tool`).
   it needs a rate limit or a state-recorded last-warned stamp, and it must stay
   silent for a healthy login or it becomes wallpaper (the mistake v0.15.0/v0.15.1
   made in both directions).
+
+- **Re-login under global isolated mode** (open, recorded 2026-11-15). Under
+  `kae use -i`, every mise-activated shell carries the tool's isolation variable
+  pointing at its global isolated home, so the global login of `kae add` and
+  `kae relogin` refuses there ([CLI.md](CLI.md) § kae add Semantics) and the
+  stale/expiring remedy has no shell in which it runs. Undecided: whether kae should
+  log that home's account in again itself (exporting the variable as the bound form
+  does) and capture it back, or name a supported way out of the isolation first; and
+  whether `kae use -s` followed by `kae relogin` re-logs the intended store, which has
+  not been verified.
 
 - **Every credential copy kae keeps can be killed by another copy refreshing, and
   four kae commands do the killing** (measured 2026-08-04; the two write paths are

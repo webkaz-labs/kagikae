@@ -1480,8 +1480,8 @@ lock for the full child run, and restores the previous login.
 ## Login Commands
 
 `kae add` launches the official flow and captures the result, and `kae relogin`
-launches the same flow against a bound directory's own store (docs/CLI.md
-§ kae relogin Semantics). One table, so the two cannot name different commands;
+launches the same flow against a bound directory's own store, or, outside a bound
+directory, for the tool's active global account (docs/CLI.md § kae relogin Semantics). One table, so the two cannot name different commands;
 a tool with no entry here is one `kae relogin` declines to drive.
 
 | Tool | Command |

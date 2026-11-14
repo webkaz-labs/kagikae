@@ -1284,10 +1284,8 @@ accstore() { printf '%s/kagikae/credstore/claude/%s/.credentials.json' "$XDG_DAT
 # testing their own subject exactly that way.
 # One line, because scripts/smoke-run.sh evaluates one line at a time and a function
 # body spread over several is the same trap as a here-document.
-# A reset also forgets the snapshot first (forget_main): `kae add` refuses to capture a
-# copy older than, or dead against, the snapshot it would replace (docs/CLI.md § kae add
-# Semantics), and putting MAIN-OLD back over a harvested MAIN-NEW is exactly that. The
-# secret store keeps the payload file, which the first capture overwrites.
+# forget_main first: `kae add` refuses MAIN-OLD over a harvested MAIN-NEW, a worse copy
+# (docs/CLI.md § kae add Semantics).
 forget_main() { rm -rf "$XDG_DATA_HOME/kagikae/accounts/claude/main"; }
 reset_main() { cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"; forget_main; /tmp/kae add --no-login --identity you@example.com claude main; rm -f "$(accstore main)"; }
 

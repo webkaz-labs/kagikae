@@ -26,6 +26,13 @@ func usageLine(synopsis string) int {
 	return usageError("usage: %s", toolName+" "+synopsis)
 }
 
+// noSubcommand is the usage error for a subcommand a noun group does not have but
+// users expect: the group, the word they typed, the subcommands it does have and
+// the remedy naming the command that exists.
+func noSubcommand(group, typed, have string, remedy message) int {
+	return usageError("kae %s has no %s subcommand (%s); %s", group, typed, have, remedy)
+}
+
 // warnf writes a `kae: warning:` line, localized. The prefix stays English
 // (docs/CLI.md § Localization) and the catalog key is the text after it, without
 // the newline. Like usageError it forwards its unchanged format and args to

@@ -240,6 +240,13 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 		// The live login is still the previous one, which may be another account's
 		// or an expired one, so the capture command comes behind the same
 		// "verify first" wording every other no-login remedy uses.
+		// A relogin of the active account exists because that live copy is stale, so
+		// capturing it again would change nothing: the way forward is the login.
+		if req.activeOnly {
+			return finish(opts, errf(constants.ExitAuthUnchanged,
+				"%s login flow exited without changing auth; nothing captured; to log in again, run: kae relogin %s",
+				tool, tool)), nil, message{}
+		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
 			"%s login flow exited without changing auth; nothing captured; the live login is still the one from before the flow; %s",
 			tool, verifiedCaptureRemedy(tool, explicitName))), nil, message{}

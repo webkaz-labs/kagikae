@@ -14,6 +14,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
@@ -714,5 +715,23 @@ func TestAddAndRollbackRestartFailureWarns(t *testing.T) {
 				wantStderrLine(t, japanese, want, func() (int, string, string) { return tc.run(t) })
 			}
 		})
+	}
+}
+
+// A global relogin of the active account whose flow changes nothing is told to log
+// in again, not to capture the same stale copy.
+func TestGlobalReloginUnchangedAsksForAnotherLogin(t *testing.T) {
+	f := newResidentFixture(t)
+	f.loginAs(t, "")
+	if _, err := f.app.mutateState(func(st *state.State) { st.Active[constants.ToolCodex] = "main" }); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runLoginRequest(context.Background(), f.app, commonOpts{Format: formatText},
+			loginRequest{tool: constants.ToolCodex, explicitName: "main", activeOnly: true})
+	})
+	mustExit(t, constants.ExitAuthUnchanged, code, stdout+stderr)
+	if !strings.Contains(stderr, "to log in again, run: kae relogin codex") || strings.Contains(stderr, "kae add --no-login") {
+		t.Errorf("want a relogin remedy, not a capture:\n%s", stderr)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/backup"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
@@ -123,7 +124,7 @@ func runTargetArgs(profileFlag string, positionals []string) (target, name strin
 func defaultChildCmd(targets []runTarget, profileName string) ([]string, error) {
 	if profileName != "" || len(targets) != 1 {
 		return nil, errf(constants.ExitUsage,
-			"a profile target runs no single binary; name the command explicitly; run: kae run [-s|-i|--env] <tool|all> <name> -- <cmd...>")
+			"a profile target runs no single binary; name the command explicitly; run: kae run [-s|-i|--env] <tool|all> <name> -- <cmd...> or kae run [-s|-i|--env] <profile> -- <cmd...>")
 	}
 	tool := targets[0].Tool
 	adp, err := adapter.ForTool(tool)
@@ -153,7 +154,7 @@ func runRun(ctx context.Context, app *App, opts commonOpts, runMode, target, nam
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
-	targets, profileName, err := app.resolveTargets("run", target, name)
+	targets, profileName, err := app.resolveTargets(oneToolForm{verb: hintRun, flags: runModeFlag(runMode)}, target, name)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -366,24 +367,99 @@ type runTarget struct {
 	Account string
 }
 
+// hintVerb is the command whose one-tool form an undefined-profile hint spells.
+type hintVerb int
+
+const (
+	hintUse hintVerb = iota
+	hintRun
+	hintPin
+)
+
+// oneToolForm is what resolveTargets needs to word that hint for the command the
+// user typed: the verb, the mode flags they gave it (spelled as typed, so the hint
+// does not drop -i), and for a pin whether this directory is already bound.
+type oneToolForm struct {
+	verb  hintVerb
+	flags string
+	bound bool
+}
+
+// spell joins the non-empty words of a command line.
+func spell(words ...string) string {
+	kept := words[:0:0]
+	for _, w := range words {
+		if w != "" {
+			kept = append(kept, w)
+		}
+	}
+	return strings.Join(kept, " ")
+}
+
+// runModeFlag is the flag a run mode is selected with ("" for the default).
+func runModeFlag(runMode string) string {
+	switch runMode {
+	case runModeIsolated:
+		return "-i"
+	case runModeEnv:
+		return "--env"
+	}
+	return ""
+}
+
+// pinModeFlag is the flag a pin bind mode is selected with ("" for the default).
+func pinModeFlag(mode string) string {
+	switch mode {
+	case modeIsolated:
+		return "-i"
+	case modeTree:
+		return "-t"
+	}
+	return ""
+}
+
+// profileThenPinRemedy is the way to bind one tool's account in a directory that
+// has no binding: a profile holding the pair, then a pin of that profile.
+// pinCommand is the pin command as the caller spells it ("kae pin", "kae pin -i").
+func profileThenPinRemedy(tool, accountName, pinCommand string) message {
+	return msgf("kae profile set <profile> %s %s, then: %s <profile>", tool, accountName, pinCommand)
+}
+
+// command is the command line that targets one tool's account. Inside a bound
+// directory a pin is `kae pin <tool> <account>`, which re-binds that one tool; a
+// new profile pinned there would replace the whole binding. Outside one it is the
+// profile that binds it. The result is a string or, when it carries words of its
+// own, a message, so either fills a hint's %s.
+func (f oneToolForm) command(tool, accountName string) any {
+	switch f.verb {
+	case hintRun:
+		return spell("kae run", f.flags, tool, accountName)
+	case hintPin:
+		if f.bound {
+			return spell("kae pin", tool, accountName)
+		}
+		return profileThenPinRemedy(tool, accountName, spell("kae pin", f.flags))
+	}
+	return spell("kae use", f.flags, tool, accountName)
+}
+
 // oneToolHint ends the undefined-profile error when name is not a profile but is
 // a tool (or a unique prefix of one) or a captured account name: a lone name is
 // always read as a profile, so `kae use main` and `kae use claude` otherwise end
 // without the `<tool> <account>` form that does what was meant. It is empty for
 // any other name.
-func (app *App) oneToolHint(verb, name string) message {
+func (app *App) oneToolHint(form oneToolForm, name string) message {
 	if tool, err := resolveToolArg(name); err == nil && constants.IsTool(tool) {
 		return msgf("; %q is a tool, not a profile; to target one tool's account, run: %s",
-			name, oneToolCommand(verb, tool, "<account>"))
+			name, form.command(tool, "<account>"))
 	}
-	accounts, err := account.List(app.Paths.AccountsDir())
-	if err != nil {
+	if !config.ValidName(name) {
 		return message{}
 	}
-	tools := []string{}
-	for _, acc := range accounts {
-		if acc.Name == name {
-			tools = append(tools, acc.Tool)
+	var tools []string
+	for _, tool := range constants.Tools {
+		if _, found, err := account.Load(app.Paths.AccountDir(tool, name)); err == nil && found {
+			tools = append(tools, tool)
 		}
 	}
 	if len(tools) == 0 {
@@ -394,21 +470,7 @@ func (app *App) oneToolHint(verb, name string) message {
 		tool = tools[0]
 	}
 	return msgf("; %q is an account name, not a profile; to target it on one tool, run: %s",
-		name, oneToolCommand(verb, tool, name))
-}
-
-// oneToolCommand is the command line that targets one tool's account for verb. A
-// pin has no bare one-tool form outside a bound directory (kae pin <tool> <account>
-// re-binds), so it is the profile that binds it.
-func oneToolCommand(verb, tool, accountName string) string {
-	switch verb {
-	case "run":
-		return "kae run " + tool + " " + accountName
-	case "pin":
-		return "kae profile set <profile> " + tool + " " + accountName + ", then kae pin <profile>"
-	default:
-		return "kae use " + tool + " " + accountName
-	}
+		name, form.command(tool, name))
 }
 
 func runTargetTools(targets []runTarget) []string {
@@ -419,16 +481,16 @@ func runTargetTools(targets []runTarget) []string {
 	return tools
 }
 
-// resolveTargets expands <tool|all> <name> into concrete tool/account pairs. verb
-// is the command being run ("use", "run" or "pin"); it only words the hint on an
-// undefined profile name (oneToolHint).
-func (app *App) resolveTargets(verb, target, name string) ([]runTarget, string, error) {
+// resolveTargets expands <tool|all> <name> into concrete tool/account pairs. form
+// is the command being run; it only words the hint on an undefined profile name
+// (oneToolHint).
+func (app *App) resolveTargets(form oneToolForm, target, name string) ([]runTarget, string, error) {
 	if target == "all" {
 		profile, ok := app.Config.Profiles[name]
 		if !ok {
 			return nil, "", errf(constants.ExitNotFound,
 				"profile %q is not defined in %s%s%s", name, app.ConfigPath,
-				didYouMean(name, app.Config.ProfileNames()), app.oneToolHint(verb, name))
+				didYouMean(name, app.Config.ProfileNames()), app.oneToolHint(form, name))
 		}
 		targets := []runTarget{}
 		for _, tool := range app.enabledTools() {

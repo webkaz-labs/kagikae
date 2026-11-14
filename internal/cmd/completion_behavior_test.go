@@ -112,6 +112,9 @@ func TestCompletionFlagValueRouting(t *testing.T) {
 					runCompletionCase(t, bin, shell, tc.words, tc.want, tc.line)
 				}
 				runCompletionCase(t, bin, shell, []string{"add", ""}, []string{"claude", "codex"}, "kae \\\nadd ")
+				// `kae run <profile> -- cmd` takes a lone profile, so the first position offers
+				// profiles beside tools, as use and pin do.
+				runCompletionCase(t, bin, shell, []string{"run", ""}, []string{"main", "claude", "codex"})
 				// COMP_POINT is a byte offset, and the suffix is after the cursor.
 				prefix := "kae add --identity 日本 "
 				runCompletionCase(t, bin, shell, []string{"add", "--identity", "日本", ""}, []string{"claude", "codex"}, prefix+"claude side", fmt.Sprint(len(prefix)))

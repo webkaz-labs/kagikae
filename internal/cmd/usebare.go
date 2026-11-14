@@ -66,7 +66,7 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 
 func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName string) (*bareUseReport, error) {
 	app.pinnedGlobalScope()
-	targets, _, err := app.resolveTargets("use", "all", profileName)
+	targets, _, err := app.resolveTargets(oneToolForm{verb: hintUse}, "all", profileName)
 	if err != nil {
 		return nil, err
 	}

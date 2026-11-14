@@ -18,8 +18,7 @@ var jaReports = map[string]string{
 	"Globally isolated %s -> %s (private home; real ~/.%s left unchanged)": "グローバル独立環境にしました: %s -> %s（専用のホーム。実際の ~/.%s は変更していません）",
 	"Wrote %s (regenerated from kae state).":                               "%s を書き込みました（kae の状態から再生成したものです）。",
 	"Preserved global isolated %s -> %s (unchanged)":                       "グローバル独立環境のため変更しません: %s -> %s",
-	"No shared changes": "共有環境への変更はありません",
-	"Profile %s already active in kae's recorded state (no changes); to apply it anyway, run: kae use %s": "プロファイル %s は kae の記録上すでに有効です（変更なし）。それでも適用するには kae use %s を実行してください",
+	"No shared changes":                                            "共有環境への変更はありません",
 	"  warning: %s":                                                "  警告: %s",
 	"Would capture %s/%s (driver: %s)":                             "登録する予定です: %s/%s（ドライバー: %s）",
 	"Captured %s/%s (driver: %s)":                                  "登録しました: %s/%s（ドライバー: %s）",
@@ -29,6 +28,8 @@ var jaReports = map[string]string{
 	"no env profiles; run: kae env set <tool> <account> KEY=VALUE": "環境変数プロファイルがありません。kae env set <tool> <account> KEY=VALUE を実行してください",
 	"Variables": "変数",
 	"refreshed %s/%s snapshot from the live store before switching away": "別のアカウントに切り替える前に、現在の認証ストアから %s/%s のスナップショットを更新しました",
+
+	"Profile %s already active in kae's recorded state (no changes); to apply it anyway, run: kae use %s": "プロファイル %s は kae の記録上すでに有効です（変更なし）。それでも適用するには kae use %s を実行してください",
 
 	// freshness.go (shared with doctor and pin).
 	"%s left": "残り %s",

@@ -131,7 +131,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 	app.pinnedGlobalScope()
-	targets, profileName, err := app.resolveTargets("use", target, name)
+	targets, profileName, err := app.resolveTargets(oneToolForm{verb: hintUse}, target, name)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +418,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	// Inside a per-directory pin this warns that global state is changing; in a
 	// globally-isolated terminal it stays silent (use -i is the global path).
 	app.pinnedGlobalScope()
-	targets, profileName, err := app.resolveTargets("use", target, name)
+	targets, profileName, err := app.resolveTargets(oneToolForm{verb: hintUse, flags: "-i"}, target, name)
 	if err != nil {
 		return finish(opts, err)
 	}

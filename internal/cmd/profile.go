@@ -34,9 +34,10 @@ func CmdProfile(ctx context.Context, args []string) int {
 	case "default":
 		return cmdProfileDefault(ctx, args[1:])
 	case "add", "new", "create":
-		return usageError("kae profile has no add subcommand (save, set, unset, rm, default); to define a profile, run: kae profile set <name> <tool> <account> (or kae profile save <name> for the active accounts)")
+		return noSubcommand("profile", args[0], "save, set, unset, rm, default",
+			msgf("to define a profile, run: kae profile set <name> <tool> <account> (or kae profile save <name> for the active accounts)"))
 	case "list", "ls":
-		return usageError("kae profile has no list subcommand (save, set, unset, rm, default); to list profiles, run: kae status")
+		return noSubcommand("profile", args[0], "save, set, unset, rm, default", msgf("to list profiles, run: kae status"))
 	default:
 		return usageError("unknown profile subcommand %q (save, set, unset, rm, default)", args[0])
 	}

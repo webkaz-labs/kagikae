@@ -114,8 +114,9 @@ func TestDefaultChildCmd(t *testing.T) {
 		}
 	}
 	// A profile target (or any multi-tool target) has no single binary to default.
-	if _, err := defaultChildCmd([]runTarget{{Tool: "claude", Account: "main"}}, "myprofile"); exitOf(err) != constants.ExitUsage {
-		t.Fatalf("profile target must require an explicit -- <cmd>: %v", err)
+	_, err := defaultChildCmd([]runTarget{{Tool: "claude", Account: "main"}}, "myprofile")
+	if exitOf(err) != constants.ExitUsage || !strings.Contains(err.Error(), "kae run [-s|-i|--env] <profile> -- <cmd...>") {
+		t.Fatalf("profile target must require an explicit -- <cmd> and name the profile form: %v", err)
 	}
 	if _, err := defaultChildCmd([]runTarget{{Tool: "claude"}, {Tool: "codex"}}, ""); exitOf(err) != constants.ExitUsage {
 		t.Fatalf("multi-tool target must require an explicit -- <cmd>: %v", err)

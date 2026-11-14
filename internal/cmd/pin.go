@@ -138,7 +138,22 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, err)
 	}
 	defer pinLock.Release()
-	targets, _, err := app.resolveTargets("pin", "all", profileName)
+	// Read before anything replaces it: the binding being replaced is the only thing
+	// that can name the account a *shared* store's credential belongs to (storeAccount),
+	// which both harvests below need — and it is what tells a keep whether the label in the
+	// directory it is materializing is this store's or a previous binding's. An unreadable
+	// one degrades to "unattributable", which the sweep reports and acts on by keeping the
+	// credential.
+	// The error is kept, not dropped: a fragment that exists and cannot be read means kae has
+	// established **nothing** about what this directory was bound to, and saying otherwise
+	// makes the keep retract a live label on the strength of an emptiness that is only the
+	// read failing (measured 2026-08-08). `readFragmentAt` returns an error for anything that
+	// is not "absent", and absent is a genuine answer.
+	prevBinding, prevExists, prevErr := readDirFragment()
+	prevKnown := prevErr == nil
+	// Whether a binding exists decides which one-tool form a not-a-profile name is
+	// pointed at: inside a bound directory it is `kae pin <tool> <account>`.
+	targets, _, err := app.resolveTargets(oneToolForm{verb: hintPin, flags: pinModeFlag(mode), bound: prevExists}, "all", profileName)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -159,19 +174,6 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// child process runs during a bind — which is the one case both caches warn against.
 	ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
 	be = secret.Cached(be)
-	// Read before anything replaces it: the binding being replaced is the only thing
-	// that can name the account a *shared* store's credential belongs to (storeAccount),
-	// which both harvests below need — and it is what tells a keep whether the label in the
-	// directory it is materializing is this store's or a previous binding's. An unreadable
-	// one degrades to "unattributable", which the sweep reports and acts on by keeping the
-	// credential.
-	// The error is kept, not dropped: a fragment that exists and cannot be read means kae has
-	// established **nothing** about what this directory was bound to, and saying otherwise
-	// makes the keep retract a live label on the strength of an emptiness that is only the
-	// read failing (measured 2026-08-08). `readFragmentAt` returns an error for anything that
-	// is not "absent", and absent is a genuine answer.
-	prevBinding, prevExists, prevErr := readDirFragment()
-	prevKnown := prevErr == nil
 	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, pinID, prevBinding, prevKnown)
 	if err != nil {
 		return finish(opts, err)

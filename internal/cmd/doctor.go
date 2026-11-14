@@ -185,12 +185,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 		})
 	}
 
-	// per tool. Detect reads each tool's live credential here, and the live half of
-	// credential_stale / credential_expiring reads the active account's again right
-	// after the loop (it is emitted after the snapshot half, below). One keychain read
-	// cache spans both and credential_account_conflict's live read, so on darwin the
-	// later reads cost no `security` call outside a bound directory; doctor writes no
-	// credential.
+	// per tool. Detect reads each tool's live credential here through app.Env, and the
+	// live half of credential_stale / credential_expiring reads the active account's
+	// real-home copy right after the loop (it is emitted after the snapshot half,
+	// below), as credential_account_conflict does for codex. One keychain read cache
+	// spans all three; doctor writes no credential. Inside a bound directory app.Env
+	// names the bound store, so for claude, which has no conflict read, the real home's
+	// item is one more `security` call (docs/CLI.md § Credential freshness in listings).
 	liveCtx := keychain.WithReadCache(ctx)
 	for _, tool := range app.enabledTools() {
 		if toolFilter != "" && tool != toolFilter {
@@ -240,7 +241,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, optIns doctor
 	// backend resolved above; skip when it is unavailable.
 	var activeSnapshots map[string]string
 	if err == nil {
-		healthChecks, snapshots := app.credentialHealth(ctx, be, toolFilter)
+		healthChecks, snapshots := app.credentialHealthChecks(ctx, be, toolFilter)
 		activeSnapshots = snapshots
 		report.Checks = append(report.Checks, healthChecks...)
 	}
@@ -372,15 +373,11 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 // added check multiplied them. orphanChecks keeps the **raw** backend
 // on purpose — secret.Cached does not forward the Enumerator capability, and passing
 // the wrapper would silently switch orphan detection off wherever it still works.
-func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
-	checks, _ := app.credentialHealth(ctx, be, toolFilter)
-	return checks
-}
-
-// credentialHealth is credentialHealthChecks plus the snapshot state of each tool's
-// active account, which doctor's live half (liveCredentialChecks) is judged against.
-// A tool whose active snapshot kae could not judge is absent from the map.
-func (app *App) credentialHealth(ctx context.Context, be secret.Backend, toolFilter string) ([]adapter.Check, map[string]string) {
+//
+// It also returns the snapshot state of each tool's active account, which doctor's
+// live half (liveCredentialChecks) is judged against. A tool whose active snapshot
+// kae could not judge is absent from the map.
+func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) ([]adapter.Check, map[string]string) {
 	ctx = secret.WithReadCache(ctx)
 	cached := secret.Cached(be)
 	checks := []adapter.Check{}

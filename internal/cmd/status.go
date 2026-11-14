@@ -162,7 +162,8 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	// and assemble below in canonical (tools) order, so the output is unchanged.
 	//
 	// The keychain read cache spans Detect and the live freshness read below, which
-	// reads the item Detect just read; status writes nothing, so they agree.
+	// resolves the same store (codex's `auto` probe included) and reads the item
+	// Detect just read; status writes nothing, so they agree.
 	liveCtx := keychain.WithReadCache(ctx)
 	detections, err := detectTools(liveCtx, app.Env, tools)
 	if err != nil {

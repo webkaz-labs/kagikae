@@ -68,8 +68,8 @@ func credentialRank(state string) int {
 // live half, so the two agree. A live copy only as bad as the snapshot adds
 // nothing: the active account's remedy is `kae relogin <tool>` for either.
 func liveCredentialWorse(live, snapshot string) bool {
-	return credentialRank(live) >= credentialRank(constants.CredentialExpiring) &&
-		credentialRank(live) > credentialRank(snapshot)
+	needsAttention := live == constants.CredentialExpiring || live == constants.CredentialStale
+	return needsAttention && credentialRank(live) > credentialRank(snapshot)
 }
 
 // activeLiveCredential is one tool's active account and the state of the live copy

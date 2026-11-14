@@ -207,7 +207,8 @@ func (app *App) capturedCredentialStates(ctx context.Context, captured []account
 // credentialStateAt classifies one freshness reading into the three states every
 // freshness surface reports. It is the **only** place that decides which of them a
 // credential is in: doctor's two checks, the bound-directory sweep, the switch-time
-// warning and the inventory column all route through it, so none of them can
+// warning, the inventory column and the active account's live login (status and
+// doctor, live_freshness.go) all route through it, so none of them can
 // disagree with another about the same credential — the same reason it and
 // needsRelogin are both defined on one reloginDeadline. Three copies of this branch
 // existed briefly and that is exactly how a boundary drifts.

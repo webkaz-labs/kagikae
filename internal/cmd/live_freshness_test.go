@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	"github.com/webkaz-labs/kagikae/internal/adapter/codex"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/state"
@@ -22,7 +26,10 @@ import (
 // Credential=ok and doctor said nothing (docs/CLI.md § Credential freshness in
 // listings, "The active account's live login").
 
-const liveSecretToken = "sk-ant-oat01-LIVE-SECRET-ffff"
+const (
+	liveSecretToken = "sk-ant-oat01-LIVE-SECRET-ffff"
+	claudeTombstone = `{"accessToken":"","refreshToken":"","expiresAt":0}`
+)
 
 // credentialChecks returns doctor's credential_stale / credential_expiring
 // messages for claude.
@@ -54,29 +61,29 @@ func claudeStatusRow(t *testing.T, app *App) toolStatus {
 
 func TestActiveAccountLiveCredential(t *testing.T) {
 	const liveMarker = "the live claude credential of active account main"
+	fresh := func(now time.Time) string { return refreshBackedClaudeCred(now, 30*24*time.Hour) }
+	tombstone := func(time.Time) string { return claudeTombstone }
 	for _, tc := range []struct {
 		name       string
 		snapshot   func(now time.Time) string // claudeAiOauth object captured as main
 		live       func(now time.Time) string // claudeAiOauth object left live afterwards
-		liveState  string                     // status live_credential
-		snapState  string                     // status credential
-		code       string                     // the live doctor finding, "" for none
-		want       []string                   // in that finding
-		cell       string                     // the status Credential cell
-		findingsOf map[string]int             // credential checks by code
+		mutate     func(t *testing.T, app *App)
+		liveState  string         // status live_credential
+		snapState  string         // status credential
+		code       string         // the live doctor finding, "" for none
+		want       []string       // in that finding
+		cell       string         // the status Credential cell
+		findingsOf map[string]int // credential checks by code
 	}{
 		{
-			name:      "live tombstone, fresh snapshot",
-			snapshot:  func(now time.Time) string { return refreshBackedClaudeCred(now, 30*24*time.Hour) },
-			live:      func(time.Time) string { return `{"accessToken":"","refreshToken":"","expiresAt":0}` },
+			name: "live tombstone, fresh snapshot", snapshot: fresh, live: tombstone,
 			liveState: constants.CredentialStale, snapState: constants.CredentialOK,
 			code: constants.CheckCredentialStale,
 			want: []string{liveMarker + " is stale", "failed token refresh", "run: kae relogin claude"},
 			cell: "re-login now (live login)", findingsOf: map[string]int{constants.CheckCredentialStale: 1},
 		},
 		{
-			name:      "live expiring, fresh snapshot",
-			snapshot:  func(now time.Time) string { return refreshBackedClaudeCred(now, 30*24*time.Hour) },
+			name: "live expiring, fresh snapshot", snapshot: fresh,
 			live:      func(now time.Time) string { return endOfLifeClaudeCred(now, 3*24*time.Hour, liveSecretToken) },
 			liveState: constants.CredentialExpiring, snapState: constants.CredentialOK,
 			code: constants.CheckCredentialExpiring,
@@ -84,8 +91,7 @@ func TestActiveAccountLiveCredential(t *testing.T) {
 			cell: "3 day(s) left (live login)", findingsOf: map[string]int{constants.CheckCredentialExpiring: 1},
 		},
 		{
-			name:      "live fresh",
-			snapshot:  func(now time.Time) string { return refreshBackedClaudeCred(now, 30*24*time.Hour) },
+			name: "live fresh", snapshot: fresh,
 			live:      func(now time.Time) string { return endOfLifeClaudeCred(now, 20*24*time.Hour, liveSecretToken) },
 			liveState: constants.CredentialOK, snapState: constants.CredentialOK,
 			cell: constants.CredentialOK, findingsOf: map[string]int{},
@@ -98,6 +104,29 @@ func TestActiveAccountLiveCredential(t *testing.T) {
 			liveState: constants.CredentialExpiring, snapState: constants.CredentialExpiring,
 			cell: "3 day(s) left", findingsOf: map[string]int{constants.CheckCredentialExpiring: 1},
 		},
+		{
+			// The live half needs no secret backend; with none every snapshot counts as
+			// unknown, so a dead live copy is still reported.
+			name: "no secret backend", snapshot: fresh, live: tombstone,
+			mutate:    func(_ *testing.T, app *App) { app.Config.Security.SecretBackend = "unavailable-for-test" },
+			liveState: constants.CredentialStale, snapState: "",
+			code: constants.CheckCredentialStale, want: []string{liveMarker + " is stale"},
+			cell: "re-login now (live login)", findingsOf: map[string]int{constants.CheckCredentialStale: 1},
+		},
+		{
+			// In global isolated mode the tool runs on a private home, so the real
+			// home's copy is not the one in use and neither surface judges it.
+			name: "global isolated mode", snapshot: fresh, live: tombstone,
+			mutate: func(t *testing.T, app *App) {
+				if _, err := app.mutateState(func(st *state.State) {
+					st.Synced = map[string]string{constants.ToolClaude: "main"}
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			liveState: "", snapState: constants.CredentialOK,
+			cell: constants.CredentialOK, findingsOf: map[string]int{},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := testApp(t, nil)
@@ -108,6 +137,9 @@ func TestActiveAccountLiveCredential(t *testing.T) {
 			seedClaudeOAuth(t, app, tc.snapshot(now))
 			mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "main"), "capture main")
 			seedClaudeOAuth(t, app, tc.live(now))
+			if tc.mutate != nil {
+				tc.mutate(t, app)
+			}
 
 			checks := credentialChecks(t, app)
 			for _, code := range []string{constants.CheckCredentialStale, constants.CheckCredentialExpiring} {
@@ -129,7 +161,7 @@ func TestActiveAccountLiveCredential(t *testing.T) {
 			if (live != "") != (tc.code != "") {
 				t.Fatalf("live finding %q, want one=%v", live, tc.code != "")
 			}
-			if tc.code != "" && !slicesContain(checks[tc.code], live) {
+			if tc.code != "" && !slices.Contains(checks[tc.code], live) {
 				t.Fatalf("live finding under the wrong code: %v", checks)
 			}
 			for _, want := range tc.want {
@@ -154,15 +186,6 @@ func TestActiveAccountLiveCredential(t *testing.T) {
 			}
 		})
 	}
-}
-
-func slicesContain(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // `--json` grows two omitempty fields and nothing else: the snapshot pair keeps its
@@ -201,70 +224,74 @@ func TestStatusJSONLiveCredentialIsAdditive(t *testing.T) {
 	}
 }
 
-// An account that is not active is judged by its snapshot alone, and the live
-// finding names the account the live store belongs to.
+// An account that is not active is judged by its snapshot alone, and the live copy is
+// compared with the *active* account's snapshot: a stale inactive one listed after it
+// must not stand in for it.
 func TestLiveCredentialLeavesInactiveAccountsAlone(t *testing.T) {
 	app := testApp(t, nil)
 	chdirTemp(t)
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, app.Now().Add(time.Hour))
+	seedClaude(t, app, "", "zeta-uuid")
+	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}`)
+	mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "zeta"), "capture zeta")
 	mustExit(t, constants.ExitOK, func() int {
 		code, _ := captureStdout(t, func() int {
 			return runSwitch(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "side")
 		})
 		return code
 	}(), "switch to side")
-	seedClaudeOAuth(t, app, `{"accessToken":"","refreshToken":"","expiresAt":0}`)
+	seedClaudeOAuth(t, app, claudeTombstone)
 
-	checks := credentialChecks(t, app)
-	if len(checks[constants.CheckCredentialStale]) != 1 ||
-		!strings.Contains(checks[constants.CheckCredentialStale][0], "of active account side") {
-		t.Fatalf("want one live finding for side: %v", checks)
+	var live []string
+	for _, m := range credentialChecks(t, app)[constants.CheckCredentialStale] {
+		if strings.Contains(m, "the live claude credential") {
+			live = append(live, m)
+		}
+	}
+	if len(live) != 1 || !strings.Contains(live[0], "of active account side") {
+		t.Fatalf("want one live finding for side: %v", live)
 	}
 	items, _, err := buildAccountItemsWith(context.Background(), app, constants.ToolClaude, app.readState())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range items {
-		if item.Credential != constants.CredentialOK {
+		want := constants.CredentialOK
+		if item.Account == "zeta" {
+			want = constants.CredentialStale
+		}
+		if item.Credential != want {
 			t.Errorf("kae ls stays snapshot-only: %s is %q", item.Account, item.Credential)
 		}
 	}
 }
 
-// The live half needs no secret backend; with none, every snapshot counts as
-// unknown, so a dead live copy is still reported.
-func TestLiveCredentialWithoutABackend(t *testing.T) {
-	app := expiredActiveMain(t)
-	app.Config.Security.SecretBackend = "unavailable-for-test"
-	checks := credentialChecks(t, app)
-	if len(checks[constants.CheckCredentialStale]) != 1 ||
-		!strings.Contains(checks[constants.CheckCredentialStale][0], "the live claude credential of active account main is stale") {
-		t.Fatalf("want the live finding: %v", checks)
-	}
-	if row := claudeStatusRow(t, app); row.LiveCredential != constants.CredentialStale || row.Credential != "" {
-		t.Fatalf("credential=%q live_credential=%q", row.Credential, row.LiveCredential)
-	}
-}
-
-// In global isolated mode the tool runs on a private home, so the real home's copy
-// is not the one in use and neither surface judges it.
-func TestLiveCredentialSkipsGlobalIsolatedMode(t *testing.T) {
-	app := expiredActiveMain(t)
-	if _, err := app.mutateState(func(st *state.State) {
-		st.Synced = map[string]string{constants.ToolClaude: "main"}
-	}); err != nil {
-		t.Fatal(err)
+// doctor's live half reads the real home a global switch acts on, not a kae-managed
+// home this shell points the tool at.
+func TestDoctorLiveHalfReadsTheRealHome(t *testing.T) {
+	app := testApp(t, nil)
+	chdirTemp(t)
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	kaeHome := filepath.Join(app.Paths.IsolationDir(), "0123456789abcdef", constants.ToolClaude, "shared")
+	writeFile(t, filepath.Join(kaeHome, ".credentials.json"), `{"claudeAiOauth":`+claudeTombstone+`}`)
+	app.Env.Getenv = func(key string) string {
+		if key == isolationEnvVar(constants.ToolClaude) {
+			return kaeHome
+		}
+		return ""
 	}
 	for _, msgs := range credentialChecks(t, app) {
 		for _, m := range msgs {
 			if strings.Contains(m, "the live claude credential") {
-				t.Fatalf("global isolated mode must not report the real home's copy: %q", m)
+				t.Fatalf("the healthy real home must not be reported from a kae home: %q", m)
 			}
 		}
 	}
-	if row := claudeStatusRow(t, app); row.LiveCredential != "" {
-		t.Fatalf("live_credential %q in global isolated mode", row.LiveCredential)
+	seedClaudeOAuth(t, app, claudeTombstone)
+	if got := credentialChecks(t, app)[constants.CheckCredentialStale]; len(got) != 1 ||
+		!strings.Contains(got[0], "the live claude credential of active account main") {
+		t.Fatalf("the dead real home must be reported: %v", got)
 	}
 }
 
@@ -314,67 +341,103 @@ func TestLiveCredentialInJapanese(t *testing.T) {
 	}
 }
 
-// lockedSim serializes keychainSim for the concurrent Detects of kae status.
-type lockedSim struct {
-	mu  sync.Mutex
-	sim *keychainSim
+// serviceKeychain is a `security` double holding one item per service, safe for
+// kae status's concurrent Detects, counting every find-generic-password call —
+// payload reads and attribute-only probes alike.
+type serviceKeychain struct {
+	mu    sync.Mutex
+	items map[string]string // service -> payload
+	calls int
 }
 
-func (l *lockedSim) Run(ctx context.Context, name string, args ...string) (string, string, int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.sim.Run(ctx, name, args...)
+func (k *serviceKeychain) Run(_ context.Context, name string, args ...string) (string, string, int) {
+	if name != "security" || len(args) == 0 || args[0] != "find-generic-password" {
+		return "", "", 0
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.calls++
+	payload, ok := k.items[valueAfter(args, "-s")]
+	if !ok {
+		return "", "The specified item " + keychain.NotFoundMarker + " in the keychain.", 44
+	}
+	if slices.Contains(args, "-w") {
+		return payload + "\n", "", 0
+	}
+	return "keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"me\"\n", "", 0
 }
 
-func (l *lockedSim) RunInput(ctx context.Context, input string, name string, args ...string) (string, string, int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.sim.RunInput(ctx, input, name, args...)
+func (k *serviceKeychain) RunInput(ctx context.Context, _, name string, args ...string) (string, string, int) {
+	return k.Run(ctx, name, args...)
 }
 
-func (l *lockedSim) reads() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	n := l.sim.readW
-	l.sim.readW = 0
+func (k *serviceKeychain) take() int {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	n := k.calls
+	k.calls = 0
 	return n
 }
 
-// Judging the live copy costs no `security` call beyond Detect's, in kae status and
-// in kae doctor (the claude keychain driver).
-func TestLiveCredentialAddsNoKeychainRead(t *testing.T) {
-	sim := &lockedSim{sim: &keychainSim{}}
+// Judging the live copy costs no `security` call beyond what the command already
+// made, in kae status and in kae doctor: claude's keychain item, and codex's `auto`
+// store, whose resolution probes for its keychain item (here absent, so auth.json).
+func TestLiveCredentialAddsNoKeychainCall(t *testing.T) {
+	sim := &serviceKeychain{items: map[string]string{}}
 	runner.With(sim, func() {
 		app := testApp(t, map[string]string{"USER": "me"})
 		app.Env.GOOS = "darwin"
 		chdirTemp(t)
 		ctx := context.Background()
-		sim.sim.present, sim.sim.account = true, "me"
-		sim.sim.payload = claudeOAuthPayload(mainToken, app.Now().Add(time.Hour))
-		mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "main"), "capture main")
+		sim.items[claude.KeychainService] = claudeOAuthPayload(mainToken, app.Now().Add(time.Hour))
+		mustExit(t, constants.ExitOK, runCaptureQuiet(t, app, "main"), "capture claude main")
+		seedCodex(t, app, "codex-token")
+		writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"), "cli_auth_credentials_store = \"auto\"\n")
+		code, out := captureStdout(t, func() int {
+			return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if _, ok := sim.items[codex.KeychainService]; ok {
+			t.Fatal("the codex item must stay absent so `auto` resolves auth.json by probing")
+		}
 
-		sim.reads()
+		sim.take()
 		if _, err := detectTools(ctx, app.Env, app.enabledTools()); err != nil {
 			t.Fatal(err)
 		}
-		detectOnly := sim.reads()
+		detectOnly := sim.take()
 		row := claudeStatusRow(t, app)
-		if got := sim.reads(); got != detectOnly {
-			t.Errorf("kae status read the keychain %d times, Detect alone %d", got, detectOnly)
+		if got := sim.take(); got != detectOnly {
+			t.Errorf("kae status made %d keychain calls, Detect alone %d", got, detectOnly)
 		}
 		if row.LiveCredential != constants.CredentialOK {
 			t.Fatalf("the live copy must be judged from the cached read: %q", row.LiveCredential)
 		}
 
+		// claude end to end: the adapter's auth_present read is the only other one.
 		ad, err := adapter.ForTool(constants.ToolClaude)
 		if err != nil {
 			t.Fatal(err)
 		}
 		ad.Doctor(ctx, app.Env)
-		doctorOnly := sim.reads()
+		adapterOnly := sim.take()
 		buildDoctor(ctx, app, constants.ToolClaude, doctorOptIns{})
-		if got := sim.reads(); got != doctorOnly {
-			t.Errorf("kae doctor claude read the keychain %d times, the adapter's checks alone %d", got, doctorOnly)
+		if got := sim.take(); got != adapterOnly {
+			t.Errorf("kae doctor claude made %d keychain calls, the adapter's checks alone %d", got, adapterOnly)
+		}
+		// codex: doctor's other checks probe its store outside this cache, so pin the
+		// live half against the reads it shares one cache with.
+		cached := keychain.WithReadCache(ctx)
+		ad, err = adapter.ForTool(constants.ToolCodex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ad.Doctor(cached, app.Env)
+		app.credentialConflictLiveChecks(cached, constants.ToolCodex)
+		sim.take()
+		app.activeLiveCredentials(cached, constants.ToolCodex)
+		if got := sim.take(); got != 0 {
+			t.Errorf("the codex live half made %d keychain calls after Detect and the conflict read", got)
 		}
 	})
 }

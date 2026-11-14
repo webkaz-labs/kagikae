@@ -443,7 +443,7 @@ func TestDoctorConflictReadsEachSnapshotOnce(t *testing.T) {
 	writeSnapshotPayload(t, app, "codex", "main", mixedCodexLogins["every token main's"])
 	counter := &countingBackend{Backend: testBackend(t, app), gets: map[string]int{}}
 
-	checks := app.credentialHealthChecks(context.Background(), counter, constants.ToolCodex)
+	checks, _ := app.credentialHealthChecks(context.Background(), counter, constants.ToolCodex)
 	conflicts := 0
 	for _, c := range checks {
 		if c.Code == constants.CheckCredentialAccountConflict {

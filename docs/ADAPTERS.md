@@ -1554,10 +1554,10 @@ claims decoder is `internal/jwt`).
 
 ## Subscription windows
 
-`kae`, `kae ls` and `kae accounts` show the windows a tool has already written.
+`kae`, `kae ls` and `kae accounts` show the windows a tool's local record holds.
 The listing rules, the cache, and the network fallback are in
 [CLI.md](CLI.md) § Subscription windows in listings. This section is only where
-each tool writes the local record and how its adapter parses reset times.
+each tool's local record lives and how its adapter parses reset times.
 
 | Tool | Local record | What kae reads |
 |------|----------------|----------------|

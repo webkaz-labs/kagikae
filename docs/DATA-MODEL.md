@@ -409,10 +409,14 @@ apply) decides its no-op by comparing the target profile against `active`
 
 `usage-cache.json` sits in the same directory. It remembers subscription windows
 per tool and account: `origin` (`local` or `remote`), the source path and mtime
-of a local file, `observed_at`, and the windows. It holds no credential and no
+of a local file, `observed_at`, the windows, and an optional `probed_at`: when a
+usage request for the account last gave no reading, which holds the next request
+back for ten minutes. A new reading replaces the entry and clears it. An entry
+that only carries `probed_at` has no windows. It holds no credential and no
 account id, and never a reading the codex veto rejects.
 `kae`, `kae ls` and `kae accounts` write it when a reading is new, and `kae use`
-records a shared home's current local reading under the outgoing active account; a failure to
+records a shared home's current local reading under the outgoing active account
+(one entry per account, so a newer entry of that account is kept); a failure to
 write does not change the exit code, and the file is not under the `state` lock.
 The listing rules are in [CLI.md](CLI.md) § Subscription windows in listings.
 

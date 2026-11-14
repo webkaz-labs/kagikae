@@ -467,14 +467,17 @@ Whether a session in a `pin -s` directory reaches the global daemon is not measu
 ## kae run Semantics
 
 `kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> [-- <cmd...>]` (or
-`kae run [-s|-i|--env] <profile> [-- <cmd...>]`) executes
-the child with inherited stdio and returns the **child's exit code verbatim** on
+`kae run [-s|-i|--env] <profile> [-- <cmd...>]`) executes the child with
+inherited stdio and returns the **child's exit code verbatim** on
 success; the exit-code table below applies only to failures before the child
 starts and to a failed restore afterwards (which returns the kae error code of
 the failure cause, with `kae rollback` guidance). `-P <profile>` is sugar for
 `all <profile>` and takes no positional. A lone positional is a profile too, as in
-`kae use <profile>`: `kae run <profile> -- <cmd...>` is `kae run all <profile> --
-<cmd...>`. Otherwise exactly one tool/account pair is required. At most one of `-s`, `-i`, `--env` may be set.
+`kae use <profile>`: `kae run <profile> -- <cmd...>` is
+`kae run all <profile> -- <cmd...>`. So a lone tool name (`kae run claude`) is an
+undefined profile: it exits `7` (`not_found`), as `kae use claude` does, and names
+`kae run <tool> <account>` (§ Did-you-mean hints). Otherwise exactly one tool/account
+pair is required. At most one of `-s`, `-i`, `--env` may be set.
 
 **Default child**: with no `-- <cmd>`, a single-tool target runs that tool's
 upstream binary (`kae run claude main` ⇒ runs `claude`; cursor ⇒ `cursor-agent`;
@@ -649,10 +652,11 @@ the result into the account, and makes it active — or restores the previous lo
 `--restore`. If the flow exits
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
-of recording a duplicate of the previous account. The live login is then still
-the one from before the flow, which may be another account's or an expired one,
-so the message does not recommend `kae add --no-login` outright: it first tells
-the user to confirm the live login is the intended account and global store. That comparison, the capture, and
+of recording a duplicate of the previous account. The message first asks the
+user to confirm the live login is the intended account and global store, and only
+then names `kae add --no-login`; a global `kae relogin` of the active account
+names `kae relogin <tool>` instead, because capturing the stale copy again
+changes nothing. That comparison, the capture, and
 `--restore` all run against **re-resolved** specs, because the login flow itself can
 move the credential to the tool's other store (codex under
 `cli_auth_credentials_store = "auto"`): compared against the store the tool
@@ -1337,9 +1341,10 @@ directory's. It recomputes `KAE_PROFILE` from the new account set and re-applies
 that profile's companions in lockstep (cleared when the set is ad-hoc), so a
 one-tool re-bind never leaves a stale git/token identity bound; see
 [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md). In a directory with no binding,
-`kae pin <tool> <account>` exits `7` (`not_found`), as `kae unpin` and `kae relogin`
-do, and says how to bind one tool there: create a profile with
-`kae profile set <name> <tool> <account>`, then run `kae pin <name>`. `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
+`kae pin <tool> <account>` exits `7` (`not_found`), as `kae unpin` does, and says
+how to bind one tool there: create a profile with
+`kae profile set <name> <tool> <account>`, then run `kae pin <name>`. `kae p` is
+the alias. `kae unpin` deletes the kae-owned fragment and
 also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
@@ -2034,14 +2039,20 @@ appends nothing. Account names and flags are not suggested, and only one
 best-match candidate is named (no multi-candidate list).
 
 Two other usage mistakes get the command that works, with the same exit codes.
-A lone name that is no profile but is a tool (or a unique prefix of one) or a
-captured account name (`kae use main`, `kae use claude`) is read as a profile, so
-the `7`/`not_found` error also names the one-tool form: `kae use <tool> <account>`;
-for `run`, `kae run <tool> <account>`; for `pin`, create a profile with
-`kae profile set` and pin it. And an unknown subcommand of `kae account` or
-`kae profile` that users expect (`account add`, `account list`, `profile add`,
-`profile list`) names the real command: `kae add <tool> <account>`, `kae accounts`,
-`kae profile set <name> <tool> <account>`, `kae status`.
+
+- A lone name that is no profile but is a tool (or a unique prefix of one) or a
+  captured account name (`kae use main`, `kae use claude`) is read as a profile,
+  so the `7`/`not_found` error also names the one-tool form for the command that
+  failed, keeping the mode flags the user typed (`kae use -i main` names
+  `kae use -i claude main`): `kae use <tool> <account>`,
+  `kae run <tool> <account>`. For `pin` it depends on the directory. Where one is
+  bound, `kae pin <tool> <account>` re-binds that tool, whereas pinning a new
+  profile there would replace the whole binding. Where none is, create a profile
+  with `kae profile set` and pin it.
+- An unknown subcommand of `kae account` or `kae profile` that users expect
+  (`add`, `new`, `create`, `list`, `ls`) is named back as typed and the real
+  command follows: `kae add <tool> <account>`, `kae accounts`,
+  `kae profile set <name> <tool> <account>`, `kae status`.
 
 ## Exit Codes
 
@@ -2341,9 +2352,9 @@ Where the number comes from, in order:
    a request that was sent and gave no reading, kae does not ask for that
    account again for ten minutes (`probed_at`, [DATA-MODEL.md](DATA-MODEL.md)
    § State); an expired token sends nothing and leaves no such mark. A new reading
-clears the mark: a request that returns windows, or the tool's file rewritten
-(a new modification time), which is a new reading rather than the same file seen
-again.
+   clears the mark: a request that returns windows, or the tool's file rewritten
+   (a new modification time), which is a new reading rather than the same file
+   seen again.
 
 The cache write is best-effort and takes no lock. `--pins` does not read or
 write it.

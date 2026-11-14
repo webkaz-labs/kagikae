@@ -88,6 +88,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | capture time / Captured（見出し） | 登録日時 | 決定 | |
 | Identity（見出し） | 識別子 | 決定 | 本文の login identity は「ログイン識別子」 |
 | Active / In effect（見出し） | 有効 | 決定 | |
+| active / live / global | 有効（kae の記録上）/ 現在の（ツールがいま読む）/ グローバル | 提案 | CONTEXT.md の 3 語。active は記録、live は実際の認証。決まるまで、この区別に依存する新しい訳は確定しない |
 | Notes / Current / Source / Applies / Level / Kind / Root（見出し） | 備考 / 現在 / 取得元 / 適用先 / レベル / 種別 / ルート | 決定 | |
 | present / absent | あり / なし | 決定 | 人向けのセル語。JSON は bool |
 | re-login now / N day(s) left | 今すぐ再ログイン / 残り N 日 | 決定 | |

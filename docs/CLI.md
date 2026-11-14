@@ -40,6 +40,8 @@ kae relogin [<tool>]                 # log in again: in a bound directory, into 
                                      # tool's active global account
 kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
                                      # run cmd with an account applied (alias: kae r)
+kae run [-s|-i|--env] <profile> -- <cmd...>
+                                     # a lone <profile>, as in kae use <profile>
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
@@ -75,11 +77,14 @@ kae profile rm <name> [--force]      # delete a profile
 kae profile default [<name>|--clear] # show or set default_profile
 kae status [-f|--full] [--json]      # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
+kae preservation list [--json]       # list preserved credential records
+kae preservation restore <id>        # put a preserved credential back in its original store
+kae preservation rm <id>             # delete a preserved record, with confirmation
 kae rollback [--to <backup-id>]      # restore the most recent restorable (or given) backup
 kae use|add|rollback [...] --no-restart
                                      # leave codex's managed daemon and the ChatGPT app
                                      #   running as they are (warn instead)
-kae completion <bash|zsh|fish> [--install|--no-function]
+kae completion <bash|zsh|fish> [--install|--refresh|--no-function]
                                      # print (or register) a dynamic completion script;
                                      #   printed, it also defines the kae shell function
 kae version | --version | -v
@@ -118,12 +123,12 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 |------|----------|---------|
 | `--json` | structured commands | shorthand for `--format json` |
 | `--format text\|json` | structured commands | output format |
-| `--shared` / `-s` | `use`, `pin`, `run` | share the real home (default); credential private |
+| `--shared` / `-s` | `use`, `pin`, `run` | share the real home (default); credential private. On `kae ls` it names the tool's user level in the real home (`kae ls -s <tool>`, near `--home`); as a command, `kae s` is `status` |
 | `--isolated` / `-i` | `use`, `pin`, `run` | private home via a kae-owned mise fragment (global: `~/.config/mise/conf.d/kagikae.toml`; per-dir: `./.config/mise/conf.d/kagikae.toml`) |
 | `--tree` / `-t` | `pin` | one private store for the bound directory's tree, kept across account switches; claude only |
 | `--env` | `run` | inject env-profile vars only (no home redirect, no lock) |
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
-| `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
+| `--dry-run` | `add --no-login`, `use`, `rollback`, `uninstall`, `account`, `profile`, `preservation` | print planned actions, write nothing (`pin` does not take it) |
 | `--yes` | all | answer a command's confirmation yes without asking; what that consents to is per command — for example, `doctor` runs the networked `companion_token_drift` probe and `resident_drift`'s connection to codex's managed daemon, `preservation rm` and `uninstall` proceed past their confirmation, and `use`, `add` and `rollback` **quit and relaunch the ChatGPT desktop app** when the command changed codex's account (§ kae use Semantics) — so a script that already passes `--yes` to `kae use` quits a running app — unless `--no-restart`, `--dry-run` or the hook shape (`--auto`) is also given, each of which wins over `--yes` |
 | `--no-restart` | `use`, `add`, `rollback` | do not restart codex's managed daemon when it is not using the account the command leaves live, or quit the ChatGPT app when the command changed codex's account; warn instead (§ kae use Semantics) |
 | `--no-color` | all | disable color in human text output |
@@ -132,7 +137,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--auto` | bare `use` | preserve global isolated selections when applying a resolved profile; also marks the run as the hook shape, so codex's managed daemon and the ChatGPT app get a warning only, even with `--yes` (§ kae use Semantics) |
 | `--quiet` | bare `use` | suppress the success report (for hooks); errors still reported |
 | `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
-| `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
+| `--restore` / `--no-login` | `add` | `--restore`: after capturing `<account>`, put the previously live login back, so `<account>` is **not** made live (login flow only); `--no-login`: snapshot the current login without a login flow |
 | `--auto` / `--write` | `mise init` | add the enter hook (`kae use --auto --quiet`); write/update `.mise.toml` |
 | `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A `run-unattributable` backup is skipped by the default because it records a state kae *declined to adopt*, not one it changed; `--to` still reaches it, which is what the refusal that created it tells you to type) |
 
@@ -149,7 +154,9 @@ profile from `--profile`/`-P`, then `$KAE_PROFILE`, then config
 **idempotently**. When kae's recorded active state (`state.json active`) already
 matches and no target has global isolation selected, it exits `0` with
 `"changed": false`, taking no locks and writing no
-backups; external drift is neither verified nor repaired. Otherwise it performs a
+backups; external drift is neither verified nor repaired. The human line says the
+profile is active in kae's recorded state and names `kae use <profile>`, which
+applies it anyway. Otherwise it performs a
 full apply. `--quiet` suppresses the human success report (for enter hooks);
 with `--json` the report is still emitted so a script can read `changed`.
 Errors are still reported. Manual shared use clears the target tools' global
@@ -459,13 +466,15 @@ Whether a session in a `pin -s` directory reaches the global daemon is not measu
 
 ## kae run Semantics
 
-`kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> [-- <cmd...>]` executes
+`kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> [-- <cmd...>]` (or
+`kae run [-s|-i|--env] <profile> [-- <cmd...>]`) executes
 the child with inherited stdio and returns the **child's exit code verbatim** on
 success; the exit-code table below applies only to failures before the child
 starts and to a failed restore afterwards (which returns the kae error code of
 the failure cause, with `kae rollback` guidance). `-P <profile>` is sugar for
-`all <profile>` and takes no positional; otherwise exactly one tool/account pair
-is required. At most one of `-s`, `-i`, `--env` may be set.
+`all <profile>` and takes no positional. A lone positional is a profile too, as in
+`kae use <profile>`: `kae run <profile> -- <cmd...>` is `kae run all <profile> --
+<cmd...>`. Otherwise exactly one tool/account pair is required. At most one of `-s`, `-i`, `--env` may be set.
 
 **Default child**: with no `-- <cmd>`, a single-tool target runs that tool's
 upstream binary (`kae run claude main` ⇒ runs `claude`; cursor ⇒ `cursor-agent`;
@@ -640,7 +649,10 @@ the result into the account, and makes it active — or restores the previous lo
 `--restore`. If the flow exits
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
-of recording a duplicate of the previous account. That comparison, the capture, and
+of recording a duplicate of the previous account. The live login is then still
+the one from before the flow, which may be another account's or an expired one,
+so the message does not recommend `kae add --no-login` outright: it first tells
+the user to confirm the live login is the intended account and global store. That comparison, the capture, and
 `--restore` all run against **re-resolved** specs, because the login flow itself can
 move the credential to the tool's other store (codex under
 `cli_auth_credentials_store = "auto"`): compared against the store the tool
@@ -1324,7 +1336,10 @@ the directory, leaving the others, the mode and the sharing set intact (the v0.7
 directory's. It recomputes `KAE_PROFILE` from the new account set and re-applies
 that profile's companions in lockstep (cleared when the set is ad-hoc), so a
 one-tool re-bind never leaves a stale git/token identity bound; see
-[ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
+[ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md). In a directory with no binding,
+`kae pin <tool> <account>` exits `7` (`not_found`), as `kae unpin` and `kae relogin`
+do, and says how to bind one tool there: create a profile with
+`kae profile set <name> <tool> <account>`, then run `kae pin <name>`. `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
 also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
@@ -2018,6 +2033,16 @@ the best distance, an exact match, or a wildly different token (`kae zzzzz`)
 appends nothing. Account names and flags are not suggested, and only one
 best-match candidate is named (no multi-candidate list).
 
+Two other usage mistakes get the command that works, with the same exit codes.
+A lone name that is no profile but is a tool (or a unique prefix of one) or a
+captured account name (`kae use main`, `kae use claude`) is read as a profile, so
+the `7`/`not_found` error also names the one-tool form: `kae use <tool> <account>`;
+for `run`, `kae run <tool> <account>`; for `pin`, create a profile with
+`kae profile set` and pin it. And an unknown subcommand of `kae account` or
+`kae profile` that users expect (`account add`, `account list`, `profile add`,
+`profile list`) names the real command: `kae add <tool> <account>`, `kae accounts`,
+`kae profile set <name> <tool> <account>`, `kae status`.
+
 ## Exit Codes
 
 | Code | Token | Meaning |
@@ -2029,7 +2054,7 @@ best-match candidate is named (no multi-candidate list).
 | `4` | `lock_busy` | another kae process holds the per-tool, config, state, or per-directory pin lock |
 | `5` | `unsupported` | platform or tool operation not supported |
 | `6` | `cli_missing` | upstream CLI binary not found when required |
-| `7` | `not_found` | account / profile / backup not found |
+| `7` | `not_found` | account / profile / backup not found, or the directory is not bound (`unpin`, `pin <tool> <account>`) |
 | `8` | `permission` | file permission or access error |
 | `9` | `secret_store` | secret backend unavailable |
 | `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, a capture found a codex login that mixes two accounts, another account's login or a worse copy than an existing snapshot (§ kae add Semantics), the active account changed before a global `kae relogin`, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
@@ -2315,7 +2340,10 @@ Where the number comes from, in order:
    age, above), or `-` when there are none, and the exit code unchanged. After
    a request that was sent and gave no reading, kae does not ask for that
    account again for ten minutes (`probed_at`, [DATA-MODEL.md](DATA-MODEL.md)
-   § State); an expired token sends nothing and leaves no such mark.
+   § State); an expired token sends nothing and leaves no such mark. A new reading
+clears the mark: a request that returns windows, or the tool's file rewritten
+(a new modification time), which is a new reading rather than the same file seen
+again.
 
 The cache write is best-effort and takes no lock. `--pins` does not read or
 write it.

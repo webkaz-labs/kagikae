@@ -230,6 +230,9 @@ kae run claude main
 kae run -i claude side
 kae run codex main -- codex exec "go test ./..."
 
+# プロファイルの全ツールをまとめて適用する（`kae use` と同じく、名前 1 つはプロファイル）
+kae run main -- mise run test
+
 # 値は標準入力から渡す
 kae env set claude ci ANTHROPIC_API_KEY
 kae run --env claude ci -- claude -p "review this"

@@ -51,6 +51,9 @@ to change a name.
 | `companion` | a non-AI tool (git, gh, a cloud CLI) whose auth kae binds to a profile by driving env/config — not captured like an account; see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) |
 | `place` | a directory a user wants to reach: where a tool reads its settings and sessions (not only what kae created), a bound directory, a repository root, or kae's own directories. `kae ls` lists them; which directories count is [CLI.md](CLI.md) § kae ls Semantics. Not an account row, and not a file such as `CLAUDE.md` |
 | `session row` | claude's place under its user level, `projects/<name>`, holding the transcripts of sessions started in the current directory; the naming rule and reachability are in [CLI.md](CLI.md) § kae ls Semantics |
+| `active` | the account kae's own record (`state.json`) says a tool is switched to. A record of what kae did, not a reading of what the tool uses: `kae accounts` marks it, and inside a bound directory the directory's binding, not this record, decides what the tool uses |
+| `live` | the login a tool reads right now from its credential store (the real home's outside a bound directory, the directory's store inside one). It can differ from `active` after a login outside kae, an expiry or a rollback |
+| `global` | the real home and kae's own state, which `kae use` changes for every terminal; the contrast is a bound directory, which `kae pin` sets up |
 
 ## Mechanism terms
 

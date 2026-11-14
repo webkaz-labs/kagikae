@@ -172,6 +172,7 @@ macOS 上の Claude Code 2.1.284 で一度確かめた範囲では、切替後�
 ```bash
 kae run claude main
 kae run -i claude side
+kae run main -- mise run test
 kae use -i main
 kae use -s -P main
 ```

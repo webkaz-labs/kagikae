@@ -506,7 +506,7 @@ alternative exists (`secret-tool`).
   where its backup-and-restore is the whole point and means nothing per directory.
 
   **And the detection hook is already in the right place but blind.** The mise
-  `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact
+  `[hooks.enter]` runs `kae use --auto --quiet` on every directory change — the exact
   moment a human arrives in the worktree — and `--quiet` suppresses success reports
   but never warnings. Today that path does not look at the bound credential's
   freshness at all; inside a bound directory it instead warns about *itself*

@@ -2133,18 +2133,21 @@ its limit. Each window's percent has its own color: green below 80%, a warning
 color from 80%, and an error color at 100%; the countdown is dim. Color follows
 the same `NO_COLOR` rule as the rest of the table.
 
-With `--full`, a cell that has a reading ends with how long ago that reading was
-taken: `5h 16% (2h13m) · 7d 95% (3d4h) · 22h13m ago`. Every window in a cell
+A cell whose reading is older than ten minutes (the same threshold as the cache
+rule below) ends with how long ago that reading was taken, with or without
+`--full`; a younger reading shows no age unless `--full` is given. With `--full`,
+every cell that has a reading ends with that age: `5h 16% (2h13m) · 7d 95% (3d4h) · 22h13m ago`. Every window in a cell
 comes from one reading with one `observed_at`, so the age appears once, after the
 last window, joined by the same ` · `. It uses the countdown's format, truncated
 to the two largest units; under a minute, or an `observed_at` that is not in the
 past, reads `1m ago`. It is dim, like the countdown. `-` gets no age, and neither
 does a reading without `observed_at`. A codex local reading's `observed_at` is
 the session rollout file's modification time, so an event the tool appends after
-its last `rate_limits` makes the age shorter than the reading's. The age shows
-that a reading may be old; kae does not judge it stale or color it. Without `--full` the cell
-is unchanged, and `--json` is unchanged by `--full`: `observed_at` already
-carries the instant.
+its last `rate_limits` makes the age shorter than the reading's. A Claude local
+reading's `observed_at` is the file's modification time, which whatever writes the
+file may refresh without new data. The age shows how old a reading may be; kae
+does not color it. `--json` is unchanged by `--full` and by the age rule:
+`observed_at` already carries the instant.
 
 ```json
 "usage": {
@@ -2166,13 +2169,18 @@ The whole object is omitted when nothing remains. `schema_version` stays 1.
 
 Where the number comes from, in order:
 
-1. **The tool's own file.** Claude writes `<config dir>/usage-exact.json`
-   (`fiveHour` / `sevenDay`). Codex appends `rate_limits` to the newest session
+1. **The tool's own file.** kae reads `<config dir>/usage-exact.json`
+   (`fiveHour` / `sevenDay`) when something writes it; Claude Code itself does
+   not, so it is written by a user's statusline script from the statusline's
+   `rate_limits` input, and may be rewritten on every statusline refresh. Codex appends `rate_limits` to the newest session
    rollout under `<CODEX_HOME>/sessions`. A shared home does not name an account.
    kae keeps that file attributed to the account that owned it at that mtime, so
    switching accounts does not relabel the previous windows onto the new account
    until the tool rewrites the file. An isolated home belongs to the account in
-   its path.
+   its path. `kae use` records a shared home's current reading under the outgoing
+   active account before it switches (best-effort, no lock; a failure never
+   fails the switch), so a listing that comes only after the switch still
+   attributes that file to the account that owned it.
 
    **Codex veto.** A process that still holds the previous account after a
    switch (§ kae use Semantics, **Resident processes (codex)**) keeps appending
@@ -2204,16 +2212,17 @@ Where the number comes from, in order:
      processes — local acceptance (2026-10-06)).
 2. **The usage cache** (`usage-cache.json` next to `state.json`;
    [DATA-MODEL.md](DATA-MODEL.md) § State). A local reading is remembered so the
-   account still shows it after the shared home moves on. A remembered local
-   reading is not refreshed over the network. A remembered remote reading is
-   asked again after ten minutes. Windows that have already reset are not shown.
-3. **One usage request**, when the cache cannot answer: it is missing, every
-   window in it has reset, or it is a remote reading older than ten minutes.
-   The request uses an access token that has not expired. kae does not refresh
-   a token to learn the windows. It is skipped when it would not be allowed
-   (see [SECURITY.md](SECURITY.md)); a failure, a timeout, or an offline
-   machine leaves the previous still-valid windows in place, or `-` when there
-   are none, and the exit code unchanged.
+   account still shows it after the shared home moves on. A remembered reading,
+   local or remote, answers the listing only while it is younger than ten minutes
+   and no window in it has reset. Windows that have already reset are not shown.
+3. **One usage request**, when the cache cannot answer: it is missing, any
+   window in it has reset, or it is older than ten minutes. A reading this
+   process just read from the tool's own file is current and is not asked
+   again. The request uses an access token that has not expired. kae does not
+   refresh a token to learn the windows. It is skipped when it would not be
+   allowed (see [SECURITY.md](SECURITY.md)); a failure, a timeout, or an
+   offline machine leaves the previous still-valid windows in place (with their
+   age, above), or `-` when there are none, and the exit code unchanged.
 
 The cache write is best-effort and takes no lock. `--pins` does not read or
 write it.

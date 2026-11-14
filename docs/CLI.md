@@ -35,8 +35,9 @@ kae unpin [--purge]                  # delete the kae-owned mise fragment
                                      # --purge: also delete this directory's
                                      # per-directory keychain credentials
 kae uninstall [--dry-run] [--yes] [--dir <path> ...] # remove owned integrations, then an owned direct binary
-kae relogin [<tool>]                 # run the tool's login flow into this directory's
-                                     # bound store, then capture it back into the snapshot
+kae relogin [<tool>]                 # log in again: in a bound directory, into its store
+                                     # (captured back into the snapshot); elsewhere, the
+                                     # tool's active global account
 kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
                                      # run cmd with an account applied (alias: kae r)
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
@@ -653,6 +654,31 @@ account (`~/.gemini/google_accounts.json`) when omitted, like the other tools
 under the name without launching anything (it supports `--dry-run`; the
 login flow does not, and `--restore` requires the login flow).
 
+**`--restore` refuses the active account.** For the account that is already the
+tool's active one, the previous login `--restore` puts back is that same account's
+older copy — when its login expired, the expired copy goes back live and the new
+login stays only in the snapshot. So `kae add --restore <tool> <account>` with a named
+account equal to the active one exits `64` before the backup and the login flow,
+changing nothing, and names `kae relogin <tool>` (§ kae relogin Semantics), which logs
+the active account in again and keeps the new login live. With the account name
+omitted the account is known only after the flow, and this check does not apply.
+
+**An existing account is not given another account's login.** When the named (or
+detected) account already has a snapshot, kae compares the live login with it before
+capturing, through the switch-away recapture's attribution guards: claude's identity
+record (`accountUuid`, `emailAddress`, `organizationUuid`) and codex's owner
+comparison. When kae cannot confirm the login is the account that snapshot records —
+another account was picked in the login flow, or the two identity records cannot be
+read as records — it refuses with exit `10` (`unsafe_refused`) and writes no snapshot.
+The login form then restores the pre-login live state from its backup **with or
+without** `--restore`, so the other account's login is not left live; that login is
+not kept (it is a fresh login, so no earlier copy of anything is lost). `--no-login`
+changes nothing. The message names no id or email; it names `kae add <tool> <account>`
+for keeping that login under another name and `kae account rename` / `kae account rm`
+for giving this name to it on purpose. A snapshot that records no identity, an account
+never captured and a live login whose identity record is absent are not refused,
+which are the recapture guards' own rules. `--dry-run` does not run the check.
+
 **A codex login that mixes two accounts is refused.** When the live codex login's
 conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), both
 forms refuse the capture with exit `10` (`unsafe_refused`), write no snapshot and leave
@@ -712,7 +738,8 @@ verify both in the tool and its environment before login or capture.
 
 | Situation | Next step |
 |---|---|
-| Global snapshot stale or expiring | Confirm the account and intended global store outside a bound directory, stop other sessions using its credential, then use `kae add --restore <tool> <account>`. Select that account in the official login flow; kae captures it and restores the previous live state. |
+| Global snapshot stale or expiring, account active | Confirm the account and intended global store outside a bound directory, stop other sessions using its credential, then run `kae relogin <tool>`. Select that account in the official login flow; kae captures it and keeps it live. Do not use `--restore` here: it would put the account's own older copy back, so kae refuses it. |
+| Global snapshot stale or expiring, account not active | The same prerequisites, then `kae add --restore <tool> <account>`. Select that account in the official login flow; kae captures it and restores the previous live state. |
 | Snapshot, payload or recorded identity missing/invalid | Verify that the live tool is logged into the intended account in the global store before `kae add --no-login <tool> <account>`. Capture records that login; it does not renew expired authentication. If logged out, first take the login path above. |
 | Bound-directory credential needs login | Check the bound account with `kae status` there, stop other sessions using its credential, then run `kae relogin <tool>` in that directory and select the bound account. It selects the bound store itself and retains its attribution/refusal checks. |
 | Tool has no kae-driven login | For global recovery, log into that account through the tool first, then verify the global store and capture with `--no-login`. Before manual bound-directory login, verify mise activation, trust and the effective tool environment select the bound store; changing directory alone is insufficient. See § kae add Semantics and § kae relogin Semantics for supported flows. |
@@ -1549,7 +1576,9 @@ fragment.
 `kae relogin [<tool>]` runs the tool's own login flow **into the store the current
 directory is bound to**, then captures the result back into that account's
 snapshot. It is the bound-directory counterpart of `kae add`, and it is the remedy
-every bound-credential finding names.
+every bound-credential finding names. Outside a bound directory it logs the tool's
+**active global account** in again (§ Outside a bound directory below), so
+`kae relogin <tool>` is the one re-login command in both places.
 
 It exists because the string it replaced asked the user to remember two things a
 message cannot enforce.
@@ -1582,10 +1611,10 @@ Contract:
   kae has a login command for. Several candidates is a usage error (exit `64`)
   naming them: two interactive login flows from one word is not a default, and
   taking the first would log in the tool you did not mean.
-- Not pinned → exit `7`, naming `kae add --restore <tool> <account>` for the global
-  path. A tool this directory does not bind → exit `7`. An unpinned directory whose
-  store tree survives (`kae unpin` keeps it on purpose) is **not** pinned for this
-  purpose: what is bound comes from the mise fragment.
+- Not pinned → the global form below. A tool this directory does not bind → exit
+  `7`. An unpinned directory whose store tree survives (`kae unpin` keeps it on
+  purpose) is **not** pinned for this purpose: what is bound comes from the mise
+  fragment, so it gets the global form, which writes nothing into that store.
 - The bound store not being there → exit `7`, naming `kae pin <tool> <account>`.
   kae recomputes the store path from a hash of the directory's *current* path, while
   what the tool reads there is the literal value the fragment exports; a directory
@@ -1671,6 +1700,34 @@ Contract:
   older is invalidated by it.
 - Holds the **pin** lock across the flow, so a re-bind of this directory cannot
   overwrite the store mid-login.
+
+### Outside a bound directory
+
+Where the current directory has no mise fragment, `kae relogin [<tool>]` is
+`kae add <tool> <active account>` without `--restore`: the account is the tool's
+active one in the state, never an argument, and the rest is § kae add Semantics — the
+tool lock held across the flow, the `login` backup, `auth_unchanged` (exit `11`) for a
+flow that changed nothing, the refusal of another account's login (exit `10`, the live
+state restored from the backup), the capture, and the codex resident-process
+reconcile. The new login stays live and the active account does not change.
+
+- `<tool>` named with no active account → exit `7`, naming `kae add <tool> <account>`.
+  An active account with no snapshot → exit `7`, naming `kae add <tool> <account>`
+  for that account. A tool with no login command → exit `5`.
+- `<tool>` omitted: the single tool with an active account and a login command. None
+  → exit `7`; several → exit `64` naming them.
+- **Refused where the shell carries kae's isolation** (exit `64`, before the backup
+  and the flow). The login runs with the shell's environment, so a global login there
+  would land in the store a variable names rather than the real home kae compares and
+  captures. That is the case below a bound directory with mise active (the directory
+  itself is not bound, its parent's fragment exports the variables): any tool's
+  per-directory isolation variable, or the tool's own isolation or credential variable
+  pointing into kae's stores (a global isolated home included). The message names the
+  variable; run `kae relogin` in the bound directory itself or in a shell where that
+  binding is not active. Another tool's global isolated home does not redirect this
+  tool's login and is not refused.
+- The active account is read again under the tool lock; if it changed in between,
+  exit `10` before the flow.
 
 ## kae preservation Semantics
 
@@ -2407,10 +2464,13 @@ Credential-health checks (warn-level):
   directory one `bound to <dir>`.
 - `credential_expiring`: the lead-time half of the same question — the snapshot
   still opens a session, but the point where it stops doing so is **less than
-  seven days away**. It names the remaining days, the deadline, and
-  `kae add --restore <tool> <account>`: the one command that runs the tool's login
-  flow for *that* account and puts the currently-live login back afterwards, so
-  the account needing attention is refreshed without disturbing the one in use.
+  seven days away**. It names the remaining days, the deadline, and the login
+  command § Recovery guidance gives for that account: `kae add --restore <tool>
+  <account>` for an account that is not active — it runs the tool's login flow for
+  *that* account and puts the currently-live login back afterwards, so the account
+  needing attention is refreshed without disturbing the one in use — and
+  `kae relogin <tool>` for the active account, whose previous live login is its own
+  older copy. `credential_stale` chooses the same way.
   Mutually exclusive with `credential_stale` by construction — both read one
   deadline through one classifier, which is why this is a separate code and not a second band of that
   one: a consumer filtering on `credential_stale` to find broken accounts must not

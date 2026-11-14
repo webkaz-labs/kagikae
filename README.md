@@ -243,8 +243,13 @@ then `kae preservation restore <id>`; it never redirects to the global home
 ([docs/CLI.md](docs/CLI.md) § kae preservation Semantics).
 
 For expired authentication, first confirm which account and store need attention.
-Use `kae add --restore <tool> <account>` for a fresh global login with a supported
-tool, or `kae relogin <tool>` inside a bound directory for its bound account.
+With a supported tool, `kae relogin <tool>` logs in again: inside a bound directory
+as its bound account, elsewhere as the tool's active global account. For a global
+account that is not active, use `kae add --restore <tool> <account>`, which puts the
+active login back afterwards (kae refuses it for the active account, whose previous
+login would be its own expired copy). Both refuse (exit 10, live state put back) a
+login that kae cannot confirm is the account an existing snapshot of that name
+records, such as another account picked in the browser.
 Use `kae add --no-login` only after verifying the existing live login belongs to
 the account being captured. Stop other sessions using the credential before login.
 Rollback and preservation restore recover saved bytes; they do not renew a login.
@@ -286,7 +291,8 @@ kae pin claude main            # re-bind one tool in this dir (sessions/settings
 kae pin side --no-link         # no ./.config/<tool> store links here (removes kae's)
 kae unpin                      # remove the binding (deletes the kae-owned fragment)
 kae relogin                    # log this directory's account in again, into its own
-                               # store, and capture the result back
+                               # store, and capture the result back (outside a bound
+                               # directory: the active global account)
 kae use -i main                # global isolated: point every mise-activated
                                # terminal at a per-account private home;
                                # `kae use -s main` tears it down
@@ -532,7 +538,7 @@ binary does not imply support for every adapter.
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated; automatic hooks use `--auto --quiet`). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated, `-t` tree). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |
-| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
+| `kae relogin [<tool>]` | Outside a bound directory, log the tool's active global account in again and keep the new login live. In a bound directory, run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles, with each snapshot's credential freshness and subscription windows, then the places: bound directories, the directories each relevant tool reads settings from here, the repository root and kae's own directories. |

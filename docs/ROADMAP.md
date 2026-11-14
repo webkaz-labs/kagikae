@@ -467,18 +467,24 @@ alternative exists (`secret-tool`).
 
 - **Re-login UX: the bound-directory path is the one a human has to think about**
   (measured 2026-08-04; the bound-directory path **fixed in v0.17.0** by
-  `kae relogin`, the two global paths still as described). The three expiry paths
-  are not equally finished, and the worst one was the per-directory/per-worktree
-  case this release makes prominent:
-  - *Global account, still-working credential* — already one command and no `cd`:
-    `kae add --restore <tool> <account>` drives the tool's own login flow, captures,
-    and puts the previous login back (`expiringCredentialDetail`). Nothing to fix.
-  - *Global account, dead credential* — **two steps**, the tool's login then
-    `kae add --no-login` (`staleCredentialDetail`, which deliberately does not name
-    `--restore` because there is no live login worth preserving). Forgetting the
-    second step leaves the dead credential in the snapshot, so the next `kae use`
-    re-applies it. Worth checking whether plain `kae add <tool> <account>` (login
-    flow **and** capture, already one command) can be named here instead.
+  `kae relogin`; the global paths settled on 2026-11-15, below). The three expiry
+  paths were not equally finished, and the worst one was the per-directory/per-worktree
+  case:
+  - *Global accounts* — **settled 2026-11-15.** The remedy had become
+    `kae add --restore <tool> <account>` for every global snapshot, and for the
+    **active** account that restore put the account's own expired pre-login copy back
+    over the new login (a reported incident: still "Login expired" after following
+    kae's guidance). Decided by the operator, and now the contract in [CLI.md](CLI.md)
+    § Recovery guidance, § kae add Semantics and § kae relogin Semantics: the remedy
+    is chosen by active-ness (`kae relogin <tool>` for the active account,
+    `kae add --restore` otherwise); `--restore` refuses the active account before the
+    login; `kae relogin` outside a bound directory logs the active global account in
+    again, refusing where the shell carries kae's isolation; and a login is never
+    captured into an existing account whose snapshot records another one. Still open:
+    `kae add --restore <tool>` with the name omitted can detect the active account
+    only after the flow, so it still restores the older copy there; and `kae add`
+    inside a bound directory still runs its login with the directory's isolation
+    variables in the environment (`pinnedGlobalScope` only warns).
   - *Bound directory* — was `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
     carried two hazards neither the message nor the docs mentioned. Both are closed;
     the remedy is now `cd <dir> && kae relogin <tool>` ([CLI.md](CLI.md) § kae
@@ -510,6 +516,8 @@ alternative exists (`secret-tool`).
   bindings") was decided for the new verb: `--fix` would have to decide which of
   several findings to act on, and `kae add --restore` is about the *global* store,
   where its backup-and-restore is the whole point and means nothing per directory.
+  The same verb later took the active global account too (above), so a re-login is
+  `kae relogin <tool>` in both places.
 
   **And the detection hook is already in the right place but blind.** The mise
   `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact

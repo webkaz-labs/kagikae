@@ -473,7 +473,8 @@ overwriting the store the login is writing into. It is the tool's own lock that 
 deliberately does **not** take — the store it touches is this directory's, and
 blocking every `kae use <tool>` for the length of a human login would be the cost
 of covering only the snapshot write its harvest ends with (the same window the
-next paragraph describes).
+next paragraph describes). Outside a bound directory `kae relogin` is `kae add`'s
+login flow for the active account and takes the tool lock as `kae add` does.
 Ordinary binding writes rely on harvest rather than preservation records; what
 makes that safe is the **harvest**: the copy in the store can be newer than the
 snapshot (the tool refreshes it in place), so before overwriting or deleting one kae

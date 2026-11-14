@@ -21,12 +21,17 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
-// usageRemoteTTL is how long a network reading may answer a listing before
-// kae asks again. A local file is not on this timer: the tool rewrites it,
-// and a listing reads that file instead. Ten minutes keeps a burst of `kae`
-// and `kae ls` to one request, without leaving a remote-only account stuck
-// on a number from the start of a work session.
+// usageRemoteTTL is how long a remembered reading, local or remote, may answer
+// a listing before kae asks again, and how old a reading must be before its cell
+// shows its age. A file this process reads in the same listing is not on this
+// timer: it is the source. Ten minutes keeps a burst of `kae` and `kae ls` to
+// one request, without leaving an account stuck on a number from the start of a
+// work session.
 const usageRemoteTTL = 10 * time.Minute
+
+// usageOld reports whether a reading taken at observed is due to be asked
+// again, and old enough that a listing shows its age.
+func usageOld(observed, now time.Time) bool { return now.Sub(observed) >= usageRemoteTTL }
 
 // usageBodyLimit caps a usage response. The windows are a small JSON object;
 // anything larger is not a reading we asked for.
@@ -94,7 +99,8 @@ func (app *App) accountReadings(ctx context.Context, captured []account.Account,
 // accountUsages resolves a compact subscription-window reading for every
 // captured account that has one.
 //
-// Local first. Claude writes usage-exact.json in its config directory; Codex
+// Local first. A statusline script writes usage-exact.json in Claude's config
+// directory (Claude Code itself does not); Codex
 // appends rate_limits to the session rollout. A file that does not name an
 // account — the shared home, which the next switch keeps until the tool
 // rewrites it — stays attributed to the account that owned it at that mtime.
@@ -107,11 +113,12 @@ func (app *App) accountReadings(ctx context.Context, captured []account.Account,
 // Cache second. An account with no current local file keeps the last reading,
 // until every window in it has reset. A file the tool rewrote so that every
 // window has reset drops that memory; a network reading taken after the
-// rewrite is kept. A reading that came from the network is asked again after
-// usageRemoteTTL; a reading that came from a local file is not, because the
-// file is the source and the cache is only its memory.
+// rewrite is kept. A remembered reading, whatever its origin, is asked again
+// once it is usageRemoteTTL old or any window in it has reset; a file this
+// listing just read is current and is not.
 //
-// Network last, and only for that gap. Failure leaves the listing as it was.
+// Network last, and only for that gap. Failure leaves the still-valid
+// remembered windows as they were.
 // The token never reaches the report. usageClient nil skips the network,
 // which is how tests stay offline.
 func (app *App) accountUsages(ctx context.Context, captured []account.Account, st *state.State) map[toolAccount]usageView {
@@ -170,22 +177,14 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 				len(usagelimit.Fresh(prev.Windows, now)) > 0 {
 				continue
 			}
-			cache.upsert(usageEntry{
-				Tool: key.tool, Account: key.account, Origin: constants.UsageOriginLocal,
-				SourcePath: reading.Path, ModTimeUnix: reading.ModTime.UnixNano(),
-				ObservedAt: reading.ModTime.UTC(), Windows: usagelimit.Normalize(reading.Windows),
-			})
+			cache.upsert(localUsageEntry(key, reading))
 			continue
 		}
 		local[key] = usageView{
 			Source: constants.UsageSourceLocal, ObservedAt: reading.ModTime.UTC(),
 			Windows: usagelimit.Normalize(fresh),
 		}
-		cache.upsert(usageEntry{
-			Tool: key.tool, Account: key.account, Origin: constants.UsageOriginLocal,
-			SourcePath: reading.Path, ModTimeUnix: reading.ModTime.UnixNano(),
-			ObservedAt: reading.ModTime.UTC(), Windows: usagelimit.Normalize(reading.Windows),
-		})
+		cache.upsert(localUsageEntry(key, reading))
 	}
 	views := map[toolAccount]usageView{}
 	for key, view := range local {
@@ -202,27 +201,19 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 		if found {
 			fresh = usagelimit.Fresh(entry.Windows, now)
 		}
+		cached := usageView{
+			Source: constants.UsageSourceCache, ObservedAt: entry.ObservedAt,
+			Windows: usagelimit.Normalize(fresh),
+		}
+		current := found && len(fresh) > 0 && len(fresh) == len(entry.Windows) &&
+			!usageOld(entry.ObservedAt, now)
 		switch {
-		case found && len(fresh) > 0 && entry.Origin == constants.UsageOriginLocal:
-			views[key] = usageView{
-				Source: constants.UsageSourceCache, ObservedAt: entry.ObservedAt,
-				Windows: usagelimit.Normalize(fresh),
-			}
-		case found && len(fresh) > 0 && entry.Origin == constants.UsageOriginRemote &&
-			(app.usageClient == nil || now.Sub(entry.ObservedAt) < usageRemoteTTL):
-			views[key] = usageView{
-				Source: constants.UsageSourceCache, ObservedAt: entry.ObservedAt,
-				Windows: usagelimit.Normalize(fresh),
-			}
-		default:
-			if app.usageClient != nil {
-				probe = append(probe, acc)
-			} else if len(fresh) > 0 {
-				views[key] = usageView{
-					Source: constants.UsageSourceCache, ObservedAt: entry.ObservedAt,
-					Windows: usagelimit.Normalize(fresh),
-				}
-			}
+		case current:
+			views[key] = cached
+		case app.usageClient != nil:
+			probe = append(probe, acc)
+		case len(fresh) > 0:
+			views[key] = cached
 		}
 	}
 	if len(probe) > 0 {
@@ -257,6 +248,78 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 		saveUsageCache(app.Paths.UsageCacheFile(), cache)
 	}
 	return views
+}
+
+// localUsageEntry is the cache's memory of a local file's reading for key.
+func localUsageEntry(key toolAccount, reading usagelimit.Reading) usageEntry {
+	return usageEntry{
+		Tool: key.tool, Account: key.account, Origin: constants.UsageOriginLocal,
+		SourcePath: reading.Path, ModTimeUnix: reading.ModTime.UnixNano(),
+		ObservedAt: reading.ModTime.UTC(), Windows: usagelimit.Normalize(reading.Windows),
+	}
+}
+
+// recordSharedUsage runs before `kae use` switches tools: each shared usage
+// home's current file is remembered under the account that is active now, so a
+// listing that first comes after the switch does not attribute it to the new
+// account. It is the cache write a listing would have made, under the same
+// codex veto, and never overwrites a reading observed after the file. Best
+// effort and lock-free like every usage cache write: any failure is ignored.
+func (app *App) recordSharedUsage(ctx context.Context, st *state.State, targets map[string]string) {
+	if st == nil {
+		return
+	}
+	captured, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		return
+	}
+	cache, writable := loadUsageCache(app.Paths.UsageCacheFile())
+	if !writable {
+		return
+	}
+	keys := &credentialKeys{app: app, captured: captured}
+	changed := false
+	for tool, candidates := range app.usageHomes(captured, st) {
+		outgoing := st.Active[tool]
+		if outgoing == "" || outgoing == targets[tool] {
+			continue
+		}
+		if _, switching := targets[tool]; !switching {
+			continue
+		}
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			continue
+		}
+		reader, ok := ad.(adapter.LocalUsage)
+		if !ok {
+			continue
+		}
+		for _, home := range candidates {
+			if home.pathOwned || home.account != outgoing {
+				continue
+			}
+			reading, ok := reader.LocalUsage(home.path)
+			if !ok {
+				continue
+			}
+			if _, seen := cache.bySource(reading.Path, reading.ModTime); seen {
+				continue
+			}
+			key := toolAccount{tool, outgoing}
+			if keys.vetoes(ctx, ad, key, reading) {
+				continue
+			}
+			if prev, found := cache.byAccount(tool, outgoing); found && prev.ObservedAt.After(reading.ModTime) {
+				continue
+			}
+			cache.upsert(localUsageEntry(key, reading))
+			changed = true
+		}
+	}
+	if changed {
+		saveUsageCache(app.Paths.UsageCacheFile(), cache)
+	}
 }
 
 // usageHomes lists the directories that can hold a tool's own window record,

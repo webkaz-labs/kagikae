@@ -480,8 +480,8 @@ func orDash(s string) string {
 // then warning at 80%, error at 100% — and the countdown is dim. A missing
 // reading is the same "-" as every other unknown cell.
 //
-// With full, the cell ends with the reading's age ("· 22h13m ago"), once,
-// because every window in it shares one observed_at. It is parsed back from
+// A reading older than usageRemoteTTL, or any reading with full, ends the cell
+// with its age ("· 22h13m ago"), once, because every window in it shares one observed_at. It is parsed back from
 // the report's own field, like credentialCell, so the table and --json cannot
 // disagree; a reading without one gets no age.
 func limitCell(usage *usageJSON, now time.Time, color, full bool) string {
@@ -507,10 +507,8 @@ func limitCell(usage *usageJSON, now time.Time, color, full bool) string {
 			countdown,
 		)
 	}
-	if full {
-		if observed, err := time.Parse(time.RFC3339, usage.ObservedAt); err == nil {
-			texts = append(texts, dim(l10n.Sprintf("%s ago", usagelimit.CompactDuration(now.Sub(observed))), color))
-		}
+	if observed, err := time.Parse(time.RFC3339, usage.ObservedAt); err == nil && (full || usageOld(observed, now)) {
+		texts = append(texts, dim(l10n.Sprintf("%s ago", usagelimit.CompactDuration(now.Sub(observed))), color))
 	}
 	return strings.Join(texts, usagelimit.Separator)
 }

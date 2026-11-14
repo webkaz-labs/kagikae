@@ -266,6 +266,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 	// later switch back applies a live token. Must run before applySnapshot
 	// overwrites the live credential. Best-effort; never aborts the switch.
 	app.recaptureActiveBeforeSwitch(ctx, be, st, plans, meta.ID)
+	app.recordSharedUsage(ctx, st, switchTargetsOf(plans))
 
 	appliedTools := map[string]bool{}
 	for _, plan := range plans {
@@ -293,6 +294,15 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil
+}
+
+// switchTargetsOf maps each planned tool to the account it switches to.
+func switchTargetsOf(plans []toolPlan) map[string]string {
+	targets := make(map[string]string, len(plans))
+	for _, plan := range plans {
+		targets[plan.Tool] = plan.Account
+	}
+	return targets
 }
 
 // warnBeforeApply emits every switch warning on stderr, before the first

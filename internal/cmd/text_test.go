@@ -77,7 +77,7 @@ func limitCellWindows() []usagelimit.Window {
 
 func TestLimitCellColorsEachWindowAndDimsTheCountdown(t *testing.T) {
 	now := limitCellNow
-	usage := &usageJSON{ObservedAt: now.Add(-time.Hour).Format(time.RFC3339), Windows: limitCellWindows()}
+	usage := &usageJSON{ObservedAt: now.Add(-5 * time.Minute).Format(time.RFC3339), Windows: limitCellWindows()}
 	if got, want := limitCell(usage, now, false, false), "5h 16% (2h13m) · 7d 95% (3d4h)"; got != want {
 		t.Fatalf("plain = %q, want %q", got, want)
 	}

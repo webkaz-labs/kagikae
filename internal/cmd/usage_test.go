@@ -116,9 +116,9 @@ func TestLsAndStatusShowLocalUsage(t *testing.T) {
 }
 
 // A remembered reading (the usage cache in the shape the listing writes it,
-// observed_at with nanoseconds) shows its age only under --full, and --json
-// is byte-identical with and without it.
-func TestFullListingsShowTheRememberedReadingAge(t *testing.T) {
+// observed_at with nanoseconds) older than ten minutes shows its age with or
+// without --full, and --json is byte-identical with and without it.
+func TestListingsShowTheRememberedReadingAge(t *testing.T) {
 	app, ctx := seedActiveClaudeMain(t)
 	// app.Now() is 2026-06-11T01:23:45Z. The report truncates observed_at to
 	// seconds, so the reading is 22h13m30s old; the five-hour window has
@@ -142,7 +142,7 @@ func TestFullListingsShowTheRememberedReadingAge(t *testing.T) {
 }
 `)
 	text := func(full bool) commonOpts { return commonOpts{Format: formatText, NoColor: true, Full: full} }
-	const plain, aged = "7d 23% (4d8h)", "7d 23% (4d8h) · 22h13m ago"
+	const aged = "7d 23% (4d8h) · 22h13m ago"
 	listings := map[string]func(commonOpts) int{
 		"ls":       func(o commonOpts) int { return runLs(ctx, app, o) },
 		"accounts": func(o commonOpts) int { return runAccounts(ctx, app, o) },
@@ -151,8 +151,8 @@ func TestFullListingsShowTheRememberedReadingAge(t *testing.T) {
 	for name, run := range listings {
 		code, out := captureStdout(t, func() int { return run(text(false)) })
 		mustExit(t, constants.ExitOK, code, out)
-		if !strings.Contains(out, plain) || strings.Contains(out, " ago") || strings.Contains(out, "5h ") {
-			t.Fatalf("%s without --full:\n%s", name, out)
+		if !strings.Contains(out, aged) || strings.Count(out, " ago") != 1 || strings.Contains(out, "5h ") {
+			t.Fatalf("%s without --full (22h13m old):\n%s", name, out)
 		}
 		code, out = captureStdout(t, func() int { return run(text(true)) })
 		mustExit(t, constants.ExitOK, code, out)

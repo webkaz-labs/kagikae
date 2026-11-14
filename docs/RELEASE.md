@@ -1,10 +1,16 @@
 # Release Process
 
-## Current release — kae v0.24.1
+## Current release — kae v0.25.0
 
-Patch release restoring the Codex API usage countdown using
-`reset_after_seconds`. Candidate assessment: [ACCEPTANCE.md](ACCEPTANCE.md)
-§ v0.24.1 candidate.
+Minor release. `kae relogin [<tool>]` outside a bound directory re-logs the
+active global account, recovery guidance names it for the active account, and
+`kae add --restore` refuses the active account instead of restoring its expired
+copy. Captures into an existing account refuse another account's login and a copy
+worse than the stored one. `kae status` and `kae doctor` report the active
+account's live login when it is worse than the snapshot. Remembered usage readings
+are asked again after ten minutes or a window reset and show their age. `kae run
+<profile>` is accepted like `kae use <profile>`, and help and guidance point at
+working commands ([CLI.md](CLI.md)).
 
 ## Release procedure
 

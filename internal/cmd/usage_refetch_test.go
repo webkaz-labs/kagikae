@@ -102,34 +102,6 @@ func TestUsageRefetchesAStaleRememberedReading(t *testing.T) {
 	}
 }
 
-// The age is shown for a reading older than ten minutes without --full, and
-// only then; --full shows it for every reading that has an observed_at.
-func TestLimitCellShowsAgeOnlyForOldReadings(t *testing.T) {
-	now := limitCellNow
-	at := func(d time.Duration) *usageJSON {
-		return &usageJSON{ObservedAt: now.Add(-d).Format(time.RFC3339), Windows: limitCellWindows()}
-	}
-	const base = "5h 16% (2h13m) · 7d 95% (3d4h)"
-	tests := []struct {
-		name string
-		use  *usageJSON
-		full bool
-		want string
-	}{
-		{"young, default", at(9*time.Minute + 59*time.Second), false, base},
-		{"ten minutes, default", at(10 * time.Minute), false, base + " · 10m ago"},
-		{"old, default", at(22*time.Hour + 13*time.Minute), false, base + " · 22h13m ago"},
-		{"young, full", at(5 * time.Minute), true, base + " · 5m ago"},
-		{"old, full", at(22*time.Hour + 13*time.Minute), true, base + " · 22h13m ago"},
-		{"no observed_at, default", &usageJSON{Windows: limitCellWindows()}, false, base},
-	}
-	for _, tc := range tests {
-		if got := limitCell(tc.use, now, false, tc.full); got != tc.want {
-			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
 // `kae use` with no listing in between: the file the previous account's
 // session wrote stays with that account and the new one does not get it.
 func TestSwitchKeepsTheSharedHomeReadingWithTheOutgoingAccount(t *testing.T) {

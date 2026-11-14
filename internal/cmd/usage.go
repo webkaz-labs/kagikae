@@ -21,17 +21,17 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
-// usageRemoteTTL is how long a remembered reading, local or remote, may answer
-// a listing before kae asks again, and how old a reading must be before its cell
-// shows its age. A file this process reads in the same listing is not on this
-// timer: it is the source. Ten minutes keeps a burst of `kae` and `kae ls` to
-// one request, without leaving an account stuck on a number from the start of a
+// usageReadingTTL is how long a remembered reading, local or remote, may answer
+// a listing before kae asks again, how long kae waits after a failed request
+// before asking again, and how old a reading must be before its cell shows its
+// age. A file this process reads in the same listing is not on this timer: it
+// is the source. Ten minutes keeps a burst of `kae` and `kae ls` to one
+// request, without leaving an account stuck on a number from the start of a
 // work session.
-const usageRemoteTTL = 10 * time.Minute
+const usageReadingTTL = 10 * time.Minute
 
-// usageOld reports whether a reading taken at observed is due to be asked
-// again, and old enough that a listing shows its age.
-func usageOld(observed, now time.Time) bool { return now.Sub(observed) >= usageRemoteTTL }
+// usageOld reports whether a reading taken at observed is ten minutes old.
+func usageOld(observed, now time.Time) bool { return now.Sub(observed) >= usageReadingTTL }
 
 // usageBodyLimit caps a usage response. The windows are a small JSON object;
 // anything larger is not a reading we asked for.
@@ -86,6 +86,10 @@ type usageEntry struct {
 	ModTimeUnix int64               `json:"mod_time_unix,omitempty"`
 	ObservedAt  time.Time           `json:"observed_at"`
 	Windows     []usagelimit.Window `json:"windows"`
+	// ProbedAt is when a usage request for this account last failed. It holds
+	// the next request back for usageReadingTTL. A new reading replaces the
+	// entry and clears it.
+	ProbedAt *time.Time `json:"probed_at,omitempty"`
 }
 
 // accountReadings is what the inventory listings call: each account's
@@ -99,9 +103,9 @@ func (app *App) accountReadings(ctx context.Context, captured []account.Account,
 // accountUsages resolves a compact subscription-window reading for every
 // captured account that has one.
 //
-// Local first. A statusline script writes usage-exact.json in Claude's config
-// directory (Claude Code itself does not); Codex
-// appends rate_limits to the session rollout. A file that does not name an
+// Local first. usage-exact.json in Claude's config directory is written by a
+// user's statusline script, not by Claude Code; Codex appends rate_limits to
+// the session rollout. A file that does not name an
 // account — the shared home, which the next switch keeps until the tool
 // rewrites it — stays attributed to the account that owned it at that mtime.
 // A path that is the account's own home (global isolated, or an isolated pin)
@@ -114,12 +118,12 @@ func (app *App) accountReadings(ctx context.Context, captured []account.Account,
 // until every window in it has reset. A file the tool rewrote so that every
 // window has reset drops that memory; a network reading taken after the
 // rewrite is kept. A remembered reading, whatever its origin, is asked again
-// once it is usageRemoteTTL old or any window in it has reset; a file this
-// listing just read is current and is not.
+// once it is usageReadingTTL old or any window in it has reset; a file this
+// listing just read is current and is not. A failed request holds the next one
+// back for usageReadingTTL (usageEntry.ProbedAt).
 //
 // Network last, and only for that gap. Failure leaves the still-valid
-// remembered windows as they were.
-// The token never reaches the report. usageClient nil skips the network,
+// remembered windows as they were. The token never reaches the report. usageClient nil skips the network,
 // which is how tests stay offline.
 func (app *App) accountUsages(ctx context.Context, captured []account.Account, st *state.State) map[toolAccount]usageView {
 	now := app.Now()
@@ -132,11 +136,7 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 	newest := map[toolAccount]usagelimit.Reading{}
 	keys := &credentialKeys{app: app, captured: captured}
 	for tool, candidates := range homes {
-		ad, err := adapter.ForTool(tool)
-		if err != nil {
-			continue
-		}
-		reader, ok := ad.(adapter.LocalUsage)
+		ad, reader, ok := localUsageReader(tool)
 		if !ok {
 			continue
 		}
@@ -177,12 +177,11 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 				len(usagelimit.Fresh(prev.Windows, now)) > 0 {
 				continue
 			}
-			cache.upsert(localUsageEntry(key, reading))
-			continue
-		}
-		local[key] = usageView{
-			Source: constants.UsageSourceLocal, ObservedAt: reading.ModTime.UTC(),
-			Windows: usagelimit.Normalize(fresh),
+		} else {
+			local[key] = usageView{
+				Source: constants.UsageSourceLocal, ObservedAt: reading.ModTime.UTC(),
+				Windows: usagelimit.Normalize(fresh),
+			}
 		}
 		cache.upsert(localUsageEntry(key, reading))
 	}
@@ -205,19 +204,36 @@ func (app *App) accountUsages(ctx context.Context, captured []account.Account, s
 			Source: constants.UsageSourceCache, ObservedAt: entry.ObservedAt,
 			Windows: usagelimit.Normalize(fresh),
 		}
-		current := found && len(fresh) > 0 && len(fresh) == len(entry.Windows) &&
-			!usageOld(entry.ObservedAt, now)
+		backedOff := found && entry.ProbedAt != nil && !usageOld(*entry.ProbedAt, now)
+		current := found && len(fresh) == len(entry.Windows) && !usageOld(entry.ObservedAt, now)
 		switch {
-		case current:
+		case len(fresh) > 0 && (current || backedOff):
 			views[key] = cached
-		case app.usageClient != nil:
+		case app.usageClient != nil && !backedOff:
 			probe = append(probe, acc)
 		case len(fresh) > 0:
 			views[key] = cached
 		}
 	}
 	if len(probe) > 0 {
-		probed := app.probeUsages(ctx, probe, now)
+		probed, failed := app.probeUsages(ctx, probe, now)
+		for key := range failed {
+			if _, ok := probed[key]; ok {
+				continue
+			}
+			// Nothing came back: hold the next request back, on the entry the
+			// listing shows or, with none, on an entry that shows nothing.
+			entry, found := cache.byAccount(key.tool, key.account)
+			if !found {
+				entry = usageEntry{
+					Tool: key.tool, Account: key.account, Origin: constants.UsageOriginRemote,
+					Windows: []usagelimit.Window{},
+				}
+			}
+			probedAt := now.UTC()
+			entry.ProbedAt = &probedAt
+			cache.upsert(entry)
+		}
 		for key, view := range probed {
 			views[key] = view
 			cache.upsert(usageEntry{
@@ -269,9 +285,15 @@ func (app *App) recordSharedUsage(ctx context.Context, st *state.State, targets 
 	if st == nil {
 		return
 	}
-	captured, err := account.List(app.Paths.AccountsDir())
+	all, err := account.List(app.Paths.AccountsDir())
 	if err != nil {
 		return
+	}
+	var captured []account.Account
+	for _, acc := range all {
+		if _, switching := targets[acc.Tool]; switching {
+			captured = append(captured, acc)
+		}
 	}
 	cache, writable := loadUsageCache(app.Paths.UsageCacheFile())
 	if !writable {
@@ -284,14 +306,7 @@ func (app *App) recordSharedUsage(ctx context.Context, st *state.State, targets 
 		if outgoing == "" || outgoing == targets[tool] {
 			continue
 		}
-		if _, switching := targets[tool]; !switching {
-			continue
-		}
-		ad, err := adapter.ForTool(tool)
-		if err != nil {
-			continue
-		}
-		reader, ok := ad.(adapter.LocalUsage)
+		ad, reader, ok := localUsageReader(tool)
 		if !ok {
 			continue
 		}
@@ -320,6 +335,16 @@ func (app *App) recordSharedUsage(ctx context.Context, st *state.State, targets 
 	if changed {
 		saveUsageCache(app.Paths.UsageCacheFile(), cache)
 	}
+}
+
+// localUsageReader is tool's adapter and its local usage reader, when it has one.
+func localUsageReader(tool string) (adapter.Adapter, adapter.LocalUsage, bool) {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return nil, nil, false
+	}
+	reader, ok := ad.(adapter.LocalUsage)
+	return ad, reader, ok
 }
 
 // usageHomes lists the directories that can hold a tool's own window record,
@@ -494,16 +519,20 @@ func (k *credentialKeys) forTool(ctx context.Context, holder adapter.ResidentHol
 	return keys
 }
 
-func (app *App) probeUsages(ctx context.Context, captured []account.Account, now time.Time) map[toolAccount]usageView {
+// probeUsages asks for each account's windows and returns the readings, and
+// the accounts whose request was sent and gave no reading. An account whose
+// token is not eligible is in neither: it cost no request.
+func (app *App) probeUsages(ctx context.Context, captured []account.Account, now time.Time) (map[toolAccount]usageView, map[toolAccount]bool) {
 	be, err := app.secretBackend()
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	be = secret.Cached(be)
 	type result struct {
-		key  toolAccount
-		view usageView
-		ok   bool
+		key       toolAccount
+		view      usageView
+		ok        bool
+		attempted bool
 	}
 	results := make([]result, len(captured))
 	var wg sync.WaitGroup
@@ -511,28 +540,31 @@ func (app *App) probeUsages(ctx context.Context, captured []account.Account, now
 		wg.Add(1)
 		go func(i int, acc account.Account) {
 			defer wg.Done()
-			view, ok := app.probeAccountUsage(ctx, be, acc, now)
-			results[i] = result{key: toolAccount{acc.Tool, acc.Name}, view: view, ok: ok}
+			view, ok, attempted := app.probeAccountUsage(ctx, be, acc, now)
+			results[i] = result{key: toolAccount{acc.Tool, acc.Name}, view: view, ok: ok, attempted: attempted}
 		}(i, acc)
 	}
 	wg.Wait()
 	views := map[toolAccount]usageView{}
+	failed := map[toolAccount]bool{}
 	for _, r := range results {
 		if r.ok {
 			views[r.key] = r.view
+		} else if r.attempted {
+			failed[r.key] = true
 		}
 	}
-	return views
+	return views, failed
 }
 
-func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc account.Account, now time.Time) (usageView, bool) {
+func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc account.Account, now time.Time) (view usageView, ok, attempted bool) {
 	ad, err := adapter.ForTool(acc.Tool)
 	if err != nil {
-		return usageView{}, false
+		return usageView{}, false, false
 	}
-	prober, ok := ad.(adapter.UsageProber)
-	if !ok {
-		return usageView{}, false
+	prober, isProber := ad.(adapter.UsageProber)
+	if !isProber {
+		return usageView{}, false, false
 	}
 	for _, name := range acc.ArtifactNames() {
 		art := acc.Artifacts[name]
@@ -543,12 +575,13 @@ func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc ac
 		if err != nil || !found {
 			continue
 		}
-		req, ok := prober.ProbeUsage(data, now)
-		if !ok {
+		req, eligible := prober.ProbeUsage(data, now)
+		if !eligible {
 			continue
 		}
-		reading, ok := app.doUsageProbe(ctx, prober, req, now)
-		if !ok {
+		attempted = true
+		reading, got := app.doUsageProbe(ctx, prober, req, now)
+		if !got {
 			continue
 		}
 		fresh := usagelimit.Fresh(reading.Windows, now)
@@ -558,9 +591,9 @@ func (app *App) probeAccountUsage(ctx context.Context, be secret.Backend, acc ac
 		return usageView{
 			Source: constants.UsageSourceCache, ObservedAt: now.UTC(),
 			Windows: usagelimit.Normalize(fresh),
-		}, true
+		}, true, true
 	}
-	return usageView{}, false
+	return usageView{}, false, attempted
 }
 
 func (app *App) doUsageProbe(ctx context.Context, prober adapter.UsageProber, req *http.Request, now time.Time) (usagelimit.Reading, bool) {

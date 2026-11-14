@@ -14,9 +14,10 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
-// usageExactFile is the subscription-window record Claude Code writes in its
-// config directory. The sibling names with a random suffix are its temp files;
-// only the stable name is a record.
+// usageExactFile is the subscription-window record in Claude's config
+// directory. Claude Code does not write it: a user's statusline script does,
+// from the statusline's rate_limits input. Names with a random suffix are temp
+// files; only the stable name is a record.
 const usageExactFile = "usage-exact.json"
 
 // usageEndpoint is the read Claude Code's own usage view makes. The beta

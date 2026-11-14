@@ -480,10 +480,11 @@ func orDash(s string) string {
 // then warning at 80%, error at 100% — and the countdown is dim. A missing
 // reading is the same "-" as every other unknown cell.
 //
-// A reading older than usageRemoteTTL, or any reading with full, ends the cell
-// with its age ("· 22h13m ago"), once, because every window in it shares one observed_at. It is parsed back from
-// the report's own field, like credentialCell, so the table and --json cannot
-// disagree; a reading without one gets no age.
+// A reading ten minutes old (usageOld), or any reading with full, ends the cell
+// with its age ("· 22h13m ago"), once, because every window in it shares one
+// observed_at. It is parsed back from the report's own field, like
+// credentialCell, so the table and --json cannot disagree; a reading without
+// one gets no age.
 func limitCell(usage *usageJSON, now time.Time, color, full bool) string {
 	if usage == nil {
 		return "-"

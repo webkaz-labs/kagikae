@@ -175,6 +175,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		be = secret.Cached(be)
 	}
 	staleTools := []string{}
+	active := app.activeAccounts()
 	for _, plan := range plans {
 		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
@@ -182,7 +183,8 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 			Warnings: plan.Warnings,
 		}
 		if beErr == nil {
-			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && !w.Empty() {
+			if w, state, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta,
+				!opts.DryRun || isActive(active, plan.Meta)); err == nil && !w.Empty() {
 				res.Warnings = append(res.Warnings, w)
 				if state == constants.CredentialStale {
 					// Only a credential that cannot log in at all belongs in the roll-up

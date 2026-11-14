@@ -62,7 +62,7 @@ func TestJSONBytesDoNotDependOnTheLanguage(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("claude/side: found %v, err %v", found, err)
 	}
-	useWarning, _, err := app.snapshotFreshnessWarning(ctx, be, side)
+	useWarning, _, err := app.snapshotFreshnessWarning(ctx, be, side, true)
 	if err != nil {
 		t.Fatal(err)
 	}

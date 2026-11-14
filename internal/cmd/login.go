@@ -4,11 +4,11 @@ import (
 	"context"
 	"flag"
 
-	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -166,13 +166,10 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool)), nil, message{}
 	}
 	// The login runs with the shell's environment, which kae cannot strip a
-	// variable from: inside a bound directory (or an isolated home) the tool would
-	// write the login into the store kae's own variable names, while kae compares
-	// and captures the global one.
-	if envVar := app.kaeIsolationVar(tool); envVar != "" {
-		return finish(opts, errf(constants.ExitUsage,
-			"this shell carries kae's isolation (%s points into kae's stores, as a bound directory or an isolated home sets it), so the %s login flow would write into that store instead of the global one; run kae add outside the bound directory, in a shell where its binding is not active; to log in a bound directory's account, run kae relogin %s in that directory",
-			envVar, tool, tool)), nil, message{}
+	// variable from: under kae's isolation the tool would write the login into the
+	// store kae's own variable names, while kae compares and captures the global one.
+	if refusal := app.errKaeIsolatedShell(tool, req.activeOnly); refusal != nil {
+		return finish(opts, refusal), nil, message{}
 	}
 	// Plan the tool before the name is known; only plan.Account (set after login)
 	// depends on it, and that is not read until captureSnapshot below.
@@ -198,14 +195,12 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	// the backup and the login flow, so a refusal changes nothing.
 	active := st.Active[tool]
 	if restore && explicitName != "" && explicitName == active {
-		// --restore would put the pre-login copy of this same account back over
-		// the login just made, which leaves an expired login expired.
 		return finish(opts, errRestoreActiveAccount(tool, explicitName)), nil, message{}
 	}
 	if req.activeOnly && explicitName != active {
 		return finish(opts, errf(constants.ExitUnsafeRefused,
-			"the active %s account changed before login (it is no longer %s/%s); the login flow was not started; to log in again as the active account, run: kae relogin %s",
-			tool, tool, explicitName, tool)), nil, message{}
+			"the active %s account changed before login (it is no longer %s/%s); the login flow was not started; %s",
+			tool, tool, explicitName, reloginRemedy(tool))), nil, message{}
 	}
 	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, constants.BackupReasonLogin)
 	if err != nil {
@@ -224,6 +219,10 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	} else if code != 0 {
 		infof("%s exited with %d; capturing whatever auth state is live now", command[0], code)
 	}
+	// The login child has exited, so from here on the live store changes only
+	// through kae's own writes, which invalidate the cache: the comparison, the
+	// detection, the capture guard and the capture read each keychain item once.
+	ctx = keychain.WithReadCache(ctx)
 
 	// A login flow can move the credential to the tool's other store — codex under
 	// `cli_auth_credentials_store = "auto"` writes its keychain item and deletes
@@ -257,21 +256,18 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	plan.Account = accountName
 	plan.Identity = identity
 
-	// An existing account whose snapshot names another login is not overwritten:
-	// the login flow lets the user pick any account, and filing that one under
-	// this name cannot be detected afterwards. The live state goes back to the
-	// pre-login backup whether or not --restore was given, so the other account's
-	// login is not left live under this account's record.
-	// The same holds for a live copy worse than the snapshot it would replace.
-	if refusal, err := app.captureIntoExistingRefusal(ctx, be, plan); err != nil {
+	// A refused capture puts the pre-login backup back whether or not --restore
+	// was given, so another account's login is not left live under this account's
+	// record (captureIntoExistingRefusal).
+	if refusal, err := app.captureIntoExistingRefusal(ctx, be, plan, accountName == active); err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err), nil, message{}
 	} else if refusal != nil {
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return finish(opts, doubleFailure(loginStepCapture.phrase(),
-				refusal(msgf("nothing was captured")), restoreErr, meta.ID)), nil, message{}
+				refusal.err(msgf("nothing was captured"), true), restoreErr, meta.ID)), nil, message{}
 		}
-		return finish(opts, refusal(
-			msgf("nothing was captured and the previous login was restored from backup %s", meta.ID),
+		return finish(opts, refusal.err(
+			msgf("nothing was captured and the previous login was restored from backup %s", meta.ID), true,
 		)), nil, message{}
 	}
 
@@ -280,10 +276,8 @@ func loginFlow(ctx context.Context, app *App, opts commonOpts, req loginRequest)
 	}
 
 	if restore && explicitName == "" && accountName == active {
-		// The detected account is the one that was active before the flow, so the
-		// previous login --restore would put back is this account's own older copy
-		// (the case a named account refuses before the flow, errRestoreActiveAccount).
-		// The new login passed the attribution guard above, so it stays live.
+		// errRestoreActiveAccount's case, known only now; the new login passed the
+		// attribution guard above, so it stays live.
 		return constants.ExitOK, backupCredential(be, meta, tool),
 			msgf("Captured %s/%s; it is the active account, so the new login stays live instead of restoring its previous copy (kept in backup %s)",
 				tool, accountName, meta.ID)
@@ -393,70 +387,35 @@ func (st loginStep) phrase() message {
 // errRestoreActiveAccount refuses `kae add --restore` for the account that is
 // already active: the previous live state it would put back is that same account's
 // older copy, so an expired login would stay expired with the new one only in the
-// snapshot. The remedy is the active-account re-login (globalLoginRemedy names the
-// same command).
+// snapshot.
 func errRestoreActiveAccount(tool, accountName string) *cmdError {
 	return errf(constants.ExitUsage,
-		"%s/%s is the active account, so --restore would put its previous login back over the new one; nothing was changed; to log in again as the active account outside a bound directory, run: kae relogin %s",
-		tool, accountName, tool)
+		"%s/%s is the active account, so --restore would put its previous login back over the new one; nothing was changed; %s",
+		tool, accountName, reloginRemedy(tool))
 }
 
-// errAccountOwnerMismatch refuses to capture a login into an existing account
-// whose snapshot names another login. outcome says what kae did with the live
-// state. The message names no identity value: the tool, the account name and the
-// commands are enough to act on.
-func errAccountOwnerMismatch(tool, accountName string, outcome message) *cmdError {
-	return errf(constants.ExitUnsafeRefused,
-		"kae did not capture the %s login as %s/%s: kae cannot confirm it is the account that snapshot records (another account may have been selected in the login flow); %s; to add that login as another account, run: kae add %s <account>; to reuse the name %s for it on purpose, first run: kae account rename %s %s <new-name> or kae account rm %s %s",
-		tool, tool, accountName, outcome, tool, accountName, tool, accountName, tool, accountName)
-}
-
-// errCaptureWouldDowngrade refuses to capture a live copy that is worse than the
-// existing snapshot of the same account; why is recaptureWouldDowngrade's reason.
-func errCaptureWouldDowngrade(tool, accountName string, why, outcome message) *cmdError {
-	return errf(constants.ExitUnsafeRefused,
-		"kae did not capture the %s login as %s/%s: %s; %s; check that the login you meant is in the intended global store; to log in again as that account outside a bound directory, run kae relogin %s if it is the active account, otherwise kae add --restore %s %s",
-		tool, tool, accountName, why, outcome, tool, tool, accountName)
-}
-
-// captureIntoExistingRefusal returns the refusal for capturing the live login into
-// plan.Account's existing snapshot, or nil when the capture may proceed. outcome,
-// passed by the caller, says what kae did with the live state.
-//
-// It asks the switch-away recapture's questions before a capture, through the same
-// guards, so their semantics carry over:
-//   - **another login** (errAccountOwnerMismatch): keepSnapshotIdentity for an
-//     identity record beside the credential, liveOwnerDiffers for an identity inside
-//     it. An account never captured, a snapshot that records no identity and an
-//     absent live identity all allow the capture. Only whether a guard declined is
-//     used; their reasons are worded for a recapture.
-//   - **a worse copy** (errCaptureWouldDowngrade): recaptureWouldDowngrade, which
-//     orders the two through supersedes. Nothing backs up an account snapshot
-//     (docs/CREDENTIAL-RULES.md), so overwriting a usable or later copy with a dead
-//     or older one is unrecoverable.
-func (app *App) captureIntoExistingRefusal(ctx context.Context, be secret.Backend, plan toolPlan) (func(outcome message) *cmdError, error) {
-	acc, found, err := account.Load(app.Paths.AccountDir(plan.Tool, plan.Account))
-	if err != nil {
-		return nil, err
+// errKaeIsolatedShell is the login flow's refusal of a shell whose environment
+// carries kae's isolation (kaeIsolationVar), or nil when it carries none. relogin
+// is the global form of kae relogin, which is never inside a bound directory, so
+// its remedy is the bound directory above; kae add's is a shell outside it. Under
+// tool's global isolated home there is no bound directory to name, and no shell
+// kae can name either (docs/ROADMAP.md § Re-login under global isolated mode).
+func (app *App) errKaeIsolatedShell(tool string, relogin bool) *cmdError {
+	envVar, globalIsolated := app.kaeIsolationVar(tool)
+	switch {
+	case envVar == "":
+		return nil
+	case globalIsolated:
+		return errf(constants.ExitUsage,
+			"kae's global isolated home for %s is active in this shell (%s points into it, as kae use -i sets it), so a global %s login here would write into that home instead of the global store kae captures; kae cannot log %s in globally until that isolation is off in this shell",
+			tool, envVar, tool, tool)
+	case relogin:
+		return errf(constants.ExitUsage,
+			"this directory is not bound, but this shell carries a bound directory's isolation (%s points into kae's stores), so a global %s login here would land in that store; run kae relogin in the bound directory itself, or in a shell where that binding is not active",
+			envVar, tool)
+	default:
+		return errf(constants.ExitUsage,
+			"this shell carries a bound directory's isolation (%s points into kae's stores), so the %s login flow would write into that store instead of the global one; run kae add outside the bound directory, in a shell where its binding is not active; to log in a bound directory's account, run kae relogin %s in that directory",
+			envVar, tool, tool)
 	}
-	if !found {
-		return nil, nil
-	}
-	values, _, err := readLiveValues(ctx, plan.Specs)
-	if err != nil {
-		return nil, err
-	}
-	otherLogin := func(outcome message) *cmdError { return errAccountOwnerMismatch(plan.Tool, plan.Account, outcome) }
-	if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, acc, values); !why.Empty() {
-		return otherLogin, nil
-	}
-	if liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, acc, values) {
-		return otherLogin, nil
-	}
-	if why, _ := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, acc, values); !why.Empty() {
-		return func(outcome message) *cmdError {
-			return errCaptureWouldDowngrade(plan.Tool, plan.Account, why, outcome)
-		}, nil
-	}
-	return nil, nil
 }

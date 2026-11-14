@@ -95,10 +95,11 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 
 	// The same refusal as the login form (loginFlow), with nothing to restore:
 	// this form changes no live state.
-	if refusal, err := app.captureIntoExistingRefusal(ctx, be, plan); err != nil {
+	active := app.activeAccounts()[tool] == accountName
+	if refusal, err := app.captureIntoExistingRefusal(ctx, be, plan, active); err != nil {
 		return nil, err
 	} else if refusal != nil {
-		return nil, refusal(msgf("nothing was changed"))
+		return nil, refusal.err(msgf("nothing was changed"), false)
 	}
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return nil, err

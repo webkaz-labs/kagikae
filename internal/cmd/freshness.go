@@ -104,15 +104,16 @@ const reloginLeadTime = 7 * 24 * time.Hour
 // credential deserves: the stale message once it can no
 // longer open a session without an interactive re-login, the expiring notice while
 // that deadline is still ahead but within reloginLeadTime, and "" when the
-// credential is fine, undated, or not-datable. acc is the account the switch makes
-// active, so the remedy is the active account's re-login.
+// credential is fine, undated, or not-datable. active says whether acc is the
+// tool's active account once the switch is done, which picks the remedy
+// (globalLoginRemedy): a dry-run makes nothing active.
 //
 // It returns the state token rather than a "was it stale" bool so the caller reads
 // the same vocabulary every other freshness surface uses, and a third band would
 // add a case rather than change this signature. Only a credential that cannot log
 // in at all makes the switch unusable, and that is the one the caller's roll-up
 // line counts; a switch to an account with five days left works today.
-func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg message, state string, err error) {
+func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account, active bool) (msg message, state string, err error) {
 	info, err := app.accountFreshness(ctx, be, acc)
 	if err != nil {
 		return message{}, "", err
@@ -121,9 +122,9 @@ func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend,
 	cred := credentialStateAt(info, now)
 	switch cred.State {
 	case constants.CredentialStale:
-		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name, true)), cred.State, nil
+		return msgf("snapshot credential is stale: %s", staleCredentialDetail(info, acc.Tool, acc.Name, active)), cred.State, nil
 	case constants.CredentialExpiring:
-		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, true)), cred.State, nil
+		return msgf("snapshot credential %s", expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, active)), cred.State, nil
 	}
 	return message{}, cred.State, nil
 }
@@ -704,6 +705,103 @@ func outsideLoginReason(tool, accountName string) message {
 	)
 }
 
+// recordedIdentityDiffers reports whether a live identity record names another
+// account than the identity record acc's snapshot holds: keepSnapshotIdentity's
+// attribution question without its "kae cannot tell" case for a recorded payload
+// that is not a record. Such a payload names no account (identityComparable), so it
+// counts as no recorded identity, which is what `kae doctor`'s
+// identity_record_invalid remedy (`kae add --no-login`) needs in order to repair it.
+// A recorded record against a live payload that is not one still differs: the live
+// side then cannot be shown to be this account. An absent live identity says
+// nothing, as in keepSnapshotIdentity.
+func recordedIdentityDiffers(ctx context.Context, be secret.Backend, specs []artifact.Spec,
+	acc account.Account, values []artifact.Value,
+) bool {
+	for i, sp := range specs {
+		if !sp.IdentityOnly || !values[i].Present {
+			continue
+		}
+		stored, ok := storedPayload(ctx, be, acc, sp.Name)
+		if !ok {
+			continue
+		}
+		if _, isRecord := freshness.DecodeObject(stored); !isRecord {
+			continue
+		}
+		if identityDiffers(sp, stored, values[i].Data) {
+			return true
+		}
+	}
+	return false
+}
+
+// captureRefusal is why a capture into an existing account snapshot was refused
+// (captureIntoExistingRefusal): another account's login when downgrade is empty,
+// otherwise recaptureWouldDowngrade's reason for a worse copy.
+type captureRefusal struct {
+	tool, account string
+	downgrade     message
+	active        bool // the account is the tool's active one, which picks the remedy
+}
+
+// err is the refusal as a command error. outcome says what kae did with the live
+// state; afterLogin says a login flow ran, so the other account may have been
+// picked in it. The message names no identity value: the tool, the account name
+// and the commands are enough to act on.
+func (r *captureRefusal) err(outcome message, afterLogin bool) *cmdError {
+	if !r.downgrade.Empty() {
+		return errf(constants.ExitUnsafeRefused,
+			"kae did not capture the %s login as %s/%s: %s; %s; check that the login you meant is in the intended global store; %s",
+			r.tool, r.tool, r.account, r.downgrade, outcome, accountLoginRemedy(r.tool, r.account, r.active))
+	}
+	if afterLogin {
+		outcome = msgf("another account may have been selected in the login flow; %s", outcome)
+	}
+	return errf(constants.ExitUnsafeRefused,
+		"kae did not capture the %s login as %s/%s: kae cannot confirm it is the account that snapshot records; %s; to add that login as another account, run: kae add %s <account>; to reuse the name %s for it on purpose, first run: kae account rename %s %s <new-name> or kae account rm %s %s",
+		r.tool, r.tool, r.account, outcome, r.tool, r.account, r.tool, r.account, r.tool, r.account)
+}
+
+// captureIntoExistingRefusal returns the refusal for capturing the live login into
+// plan.Account's existing snapshot, or nil when the capture may proceed. active
+// says whether plan.Account is the tool's active account. Both `kae add` forms ask
+// it under the tool lock, before captureSnapshot.
+//
+// It asks the switch-away recapture's questions, through the same guards:
+//   - **another login**: recordedIdentityDiffers for an identity record beside the
+//     credential, liveOwnerDiffers for an identity inside it. An account never
+//     captured, a recorded identity that is absent or not a record and an absent
+//     live identity all allow the capture.
+//   - **a worse copy**: recaptureWouldDowngrade, which orders the two through
+//     supersedes. Nothing backs up an account snapshot (docs/CREDENTIAL-RULES.md),
+//     so overwriting a usable or later copy with a dead or older one is
+//     unrecoverable.
+//
+// With no live credential at all there is nothing to refuse: captureSnapshot
+// reports auth_missing, as it does for a new name.
+func (app *App) captureIntoExistingRefusal(ctx context.Context, be secret.Backend, plan toolPlan, active bool) (*captureRefusal, error) {
+	acc, found, err := account.Load(app.Paths.AccountDir(plan.Tool, plan.Account))
+	if err != nil || !found {
+		return nil, err
+	}
+	values, anyPresent, err := readLiveValues(ctx, plan.Specs)
+	if err != nil || !anyPresent {
+		return nil, err
+	}
+	// The three guards read the same snapshot payloads; read each once.
+	ctx = secret.WithReadCache(ctx)
+	be = secret.Cached(be)
+	refusal := &captureRefusal{tool: plan.Tool, account: plan.Account, active: active}
+	if recordedIdentityDiffers(ctx, be, plan.Specs, acc, values) || liveOwnerDiffers(ctx, be, plan.Tool, plan.Specs, acc, values) {
+		return refusal, nil
+	}
+	if why, _ := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, acc, values); !why.Empty() {
+		refusal.downgrade = why
+		return refusal, nil
+	}
+	return nil, nil
+}
+
 // supersedes reports whether copy a of one account's credential is provably the
 // later of the two — which, for a tool whose refresh token rotates single-use
 // (rotatesSingleUse), means b can no longer refresh at all, so writing b over a is
@@ -895,6 +993,26 @@ func errUncapturedWithRemedy(tool, accountName string) *cmdError {
 		tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }
 
+// isActive reports whether acc is its tool's active account in active (a state's
+// Active map), which picks the login command a remedy names (globalLoginRemedy).
+func isActive(active map[string]string, acc account.Account) bool {
+	return active[acc.Tool] == acc.Name
+}
+
+// reloginRemedy is the active account's global re-login, as a remedy clause.
+func reloginRemedy(tool string) message {
+	return msgf("to log in again as the active account outside a bound directory, run: kae relogin %s (captures the new login and keeps it live)", tool)
+}
+
+// accountLoginRemedy is the global login for accountName as a remedy clause, chosen
+// by active-ness as globalLoginRemedy says. Only for a tool with a login command.
+func accountLoginRemedy(tool, accountName string, active bool) message {
+	if active {
+		return reloginRemedy(tool)
+	}
+	return msgf("to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", tool, accountName)
+}
+
 // globalLoginRemedy names the global login for one account snapshot. Which command
 // depends on whether the account is the tool's active one: `kae add --restore` puts
 // the previous live login back after capturing, and for the active account that
@@ -902,11 +1020,9 @@ func errUncapturedWithRemedy(tool, accountName string) *cmdError {
 // `kae relogin <tool>`, which keeps the new login live (docs/CLI.md § Recovery
 // guidance).
 func globalLoginRemedy(tool, accountName string, active bool) message {
-	if loginCommand(tool) != nil && active {
-		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in again as that account (the active one), run: kae relogin %s (captures the new login and keeps it live)", accountName, tool)
-	}
 	if loginCommand(tool) != nil {
-		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
+		return msgf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, %s",
+			accountName, accountLoginRemedy(tool, accountName, active))
 	}
 	return msgf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }

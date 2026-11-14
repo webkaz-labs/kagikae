@@ -16,9 +16,10 @@ var jaChecks = map[string]string{
 	"%d hour(s)":    "%d 時間",
 	"under an hour": "1 時間未満",
 	" (%s)":         "（%s）",
-	"confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in again as that account (the active one), run: kae relogin %s (captures the new login and keeps it live)":      "固定したディレクトリの外で、アカウント %s と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、有効なアカウントであるそのアカウントで再ログインするには kae relogin %s を実行してください（新しいログインを登録し、そのまま使います）",
-	"confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)": "固定したディレクトリの外で、アカウント %s と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、そのアカウントでログインするには kae add --restore %s %s を実行してください（新しいログインを登録し、直前の状態に戻します）",
-	"kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s":                                                                                                                   "kae は %s のログインを起動できません。固定したディレクトリの外で、意図したグローバルの認証ストアを使って、%s でアカウント %s として再度ログインしてください。%s",
+	"confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, %s":  "固定したディレクトリの外で、アカウント %s と意図したグローバルの認証ストアを確認してください。その認証情報を使っている他のセッションを止めてから、%s",
+	"to log in again as the active account outside a bound directory, run: kae relogin %s (captures the new login and keeps it live)":  "固定したディレクトリの外で有効なアカウントに再ログインするには kae relogin %s を実行してください（新しいログインを登録し、そのまま使います）",
+	"to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)":            "そのアカウントでログインするには kae add --restore %s %s を実行してください（新しいログインを登録し、直前の状態に戻します）",
+	"kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s": "kae は %s のログインを起動できません。固定したディレクトリの外で、意図したグローバルの認証ストアを使って、%s でアカウント %s として再度ログインしてください。%s",
 
 	// config (internal/config) and doctor.go.
 	"unknown config key %q ignored":                                   "設定ファイルの不明なキー %q は無視しました。",

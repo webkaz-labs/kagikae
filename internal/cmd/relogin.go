@@ -394,7 +394,8 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 				"kae has no login command for %s, so it cannot log this directory in (see docs/ADAPTERS.md)", explicitTool)
 		}
 		return "", errf(constants.ExitNotFound,
-			"this directory does not bind %s; it binds %s", explicitTool, boundToolList(fragment))
+			"this directory does not bind %s; it binds %s; to log in the active global %s account again, run kae relogin %s outside a bound directory",
+			explicitTool, boundToolList(fragment), explicitTool, explicitTool)
 	}
 	switch len(candidates) {
 	case 0:

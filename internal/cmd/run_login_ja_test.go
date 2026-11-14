@@ -86,8 +86,8 @@ func failureCases() []failureCase {
 					fragmentInfo{Accounts: map[string]string{"codex": "main", "agy": "side"}}, "claude")
 				return err
 			},
-			en:   "this directory does not bind claude; it binds codex, agy",
-			ja:   "このディレクトリは claude を固定していません（固定しているツール: codex、agy）",
+			en:   "this directory does not bind claude; it binds codex, agy; to log in the active global claude account again, run kae relogin claude outside a bound directory",
+			ja:   "このディレクトリは claude を固定していません（固定しているツール: codex、agy）。グローバルで有効な claude のアカウントに再ログインするには、固定したディレクトリの外で kae relogin claude を実行してください",
 			exit: constants.ExitNotFound,
 		},
 		{

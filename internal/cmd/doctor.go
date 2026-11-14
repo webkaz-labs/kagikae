@@ -379,7 +379,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 					Tool: acc.Tool, Code: constants.CheckCredentialStale,
 					Status: constants.StatusWarn,
 					Message: msgf("snapshot %q is stale: %s",
-						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name, active[acc.Tool] == acc.Name)),
+						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name, isActive(active, acc))),
 				})
 			case constants.CredentialExpiring:
 				// Ahead of the deadline, so this is the window in which a re-login is
@@ -389,7 +389,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
 					Status: constants.StatusWarn,
 					Message: msgf("snapshot %q %s",
-						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, active[acc.Tool] == acc.Name)),
+						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name, isActive(active, acc))),
 				})
 			}
 		}

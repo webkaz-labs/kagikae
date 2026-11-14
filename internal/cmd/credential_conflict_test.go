@@ -345,6 +345,26 @@ func TestDoctorFlagsAMixedLiveLoginAndSnapshot(t *testing.T) {
 	}
 }
 
+// The snapshot finding's remedy follows active-ness: a mixed snapshot of the
+// active account is logged in again with kae relogin, any other with
+// kae add --restore (globalLoginRemedy).
+func TestDoctorConflictRemedyFollowsActiveness(t *testing.T) {
+	for _, tc := range []struct{ snapshot, want, avoid string }{
+		{"main", "kae add --restore codex main", "kae relogin"},
+		{"side", "kae relogin codex", "--restore"}, // side is the active account
+	} {
+		t.Run(tc.snapshot, func(t *testing.T) {
+			app := testApp(t, nil)
+			seedCodexAccounts(t, app)
+			writeSnapshotPayload(t, app, "codex", tc.snapshot, mixedCodexLogins["every token main's"])
+			rows := doctorConflictRows(t, app)
+			if len(rows) != 1 || !strings.Contains(rows[0].Message, tc.want) || strings.Contains(rows[0].Message, tc.avoid) {
+				t.Fatalf("want one snapshot finding naming %q, got %+v", tc.want, rows)
+			}
+		})
+	}
+}
+
 func TestDoctorConflictMessagesInJapanese(t *testing.T) {
 	app := testApp(t, nil)
 	seedCodexAccounts(t, app)

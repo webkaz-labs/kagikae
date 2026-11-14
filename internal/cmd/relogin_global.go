@@ -17,9 +17,8 @@ import (
 // are. `kae add --restore` cannot do it: the previous login it puts back is this
 // account's own older copy.
 //
-// The login runs with the shell's environment, so it refuses where that
-// environment carries kae's own isolation: a global login there would land in the
-// store the variable names, not the real home kae compares and captures.
+// The login flow refuses a shell carrying kae's isolation with this form's own
+// remedy (errKaeIsolatedShell).
 func runGlobalRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool string) int {
 	st, err := app.loadState()
 	if err != nil {
@@ -28,11 +27,6 @@ func runGlobalRelogin(ctx context.Context, app *App, opts commonOpts, explicitTo
 	tool, err := globalReloginTool(st.Active, explicitTool)
 	if err != nil {
 		return finish(opts, err)
-	}
-	if envVar := app.kaeIsolationVar(tool); envVar != "" {
-		return finish(opts, errf(constants.ExitUsage,
-			"this directory is not bound, but this shell carries kae's isolation (%s points into kae's stores, as a bound directory above this one or an isolated home sets it), so a global %s login here would land in that store; run kae relogin in the bound directory itself, or in a shell where that binding is not active",
-			envVar, tool))
 	}
 	active := st.Active[tool]
 	if _, found, err := account.Load(app.Paths.AccountDir(tool, active)); err != nil {
@@ -79,36 +73,4 @@ func globalReloginTool(active map[string]string, explicitTool string) (string, e
 			"%s each have an active global account; name the one to log in again; run: kae relogin <tool>",
 			l10n.List(candidates))
 	}
-}
-
-// kaeIsolationVar names a variable in this shell that points into kae's own
-// stores in a way that would redirect a global login of tool: any tool's
-// per-directory binding (the shell is inside, or below, a bound directory), or
-// tool's own isolation or credential variable set by kae (a bound directory or
-// an isolated home). "" when the shell's environment is the real one for tool.
-//
-// It reads the shell's environment as it was before applyGlobalScope masked kae's
-// own values, since a child process inherits that one.
-func (app *App) kaeIsolationVar(tool string) string {
-	getenv := app.Env.Getenv
-	if app.shellEnv != nil {
-		getenv = app.shellEnv.Getenv
-	}
-	for _, t := range constants.Tools {
-		envVar := isolationEnvVar(t)
-		if envVar == "" {
-			continue
-		}
-		value := getenv(envVar)
-		if _, perDirectory := bindModeFor(app.kaeManagedHomeKind(value)); perDirectory {
-			return envVar
-		}
-		if t == tool && app.isKaeManagedHome(value) {
-			return envVar
-		}
-	}
-	if credVar := credentialEnvVar(tool); credVar != "" && app.isKaeManagedCredStore(getenv(credVar)) {
-		return credVar
-	}
-	return ""
 }

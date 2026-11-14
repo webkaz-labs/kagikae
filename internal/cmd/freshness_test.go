@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,26 +96,38 @@ func TestSwitchAwaySkipsRecaptureWhenMatching(t *testing.T) {
 // Switching to an account whose snapshot is expired with no refresh token
 // warns and names kae add, but still proceeds.
 func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
+	// The switch makes the target active, so its remedy is the active re-login; a
+	// dry-run makes nothing active, so it names the inactive account's login.
+	for _, tc := range []struct {
+		dryRun      bool
+		want, avoid string
+	}{
+		{false, "kae relogin claude", "--restore"},
+		{true, "kae add --restore claude stale", "kae relogin"},
+	} {
+		t.Run(fmt.Sprintf("dry-run=%v", tc.dryRun), func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
 
-	// expiresAt 2020-01-01 (past app.Now of 2026), no refresh token.
-	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}`)
-	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "stale") })
-	// A fresh current account so the switch actually moves away from it.
-	seedClaude(t, app, sideToken, "side-uuid")
-	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
-	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+			// expiresAt 2020-01-01 (past app.Now of 2026), no refresh token.
+			seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}`)
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "stale") })
+			// A fresh current account so the switch actually moves away from it.
+			seedClaude(t, app, sideToken, "side-uuid")
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
+			captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
 
-	report, err := buildSwitch(ctx, app, opts, "claude", "stale")
-	if err != nil {
-		t.Fatalf("switch to stale must proceed, got error: %v", err)
-	}
-	warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
-	// The switch makes the target active, so its remedy is the active re-login.
-	if !strings.Contains(warnings, "expired") || !strings.Contains(warnings, "kae relogin claude") {
-		t.Fatalf("expected stale warning naming kae relogin, got: %q", warnings)
+			opts.DryRun = tc.dryRun
+			report, err := buildSwitch(ctx, app, opts, "claude", "stale")
+			if err != nil {
+				t.Fatalf("switch to stale must proceed, got error: %v", err)
+			}
+			warnings := strings.Join(l10ntest.English(report.Results[0].Warnings), " | ")
+			if !strings.Contains(warnings, "expired") || !strings.Contains(warnings, tc.want) || strings.Contains(warnings, tc.avoid) {
+				t.Fatalf("expected a stale warning naming %q, got: %q", tc.want, warnings)
+			}
+		})
 	}
 }
 

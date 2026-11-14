@@ -173,6 +173,41 @@ func isolationEnvVar(tool string) string {
 	}
 }
 
+// kaeIsolationVar names a variable in this shell that points into kae's own
+// stores in a way that would redirect a global login of tool: any tool's
+// per-directory binding (the shell is inside, or below, a bound directory), or
+// tool's own isolation or credential variable set by kae (a bound directory or
+// tool's global isolated home). "" when the shell's environment is the real one
+// for tool. globalIsolated says the redirection is tool's global isolated home
+// (kae use -i) rather than a bound directory.
+//
+// It reads the shell's environment as it was before applyGlobalScope masked kae's
+// own values, since a child process inherits that one.
+func (app *App) kaeIsolationVar(tool string) (envVar string, globalIsolated bool) {
+	getenv := app.Env.Getenv
+	if app.shellEnv != nil {
+		getenv = app.shellEnv.Getenv
+	}
+	ownHomeIsGlobal := app.kaeManagedHomeKind(getenv(isolationEnvVar(tool))) == constants.ModeSync
+	for _, t := range constants.Tools {
+		name := isolationEnvVar(t)
+		if name == "" {
+			continue
+		}
+		value := getenv(name)
+		if _, perDirectory := bindModeFor(app.kaeManagedHomeKind(value)); perDirectory {
+			return name, false
+		}
+		if t == tool && app.isKaeManagedHome(value) {
+			return name, ownHomeIsGlobal
+		}
+	}
+	if credVar := credentialEnvVar(tool); credVar != "" && app.isKaeManagedCredStore(getenv(credVar)) {
+		return credVar, ownHomeIsGlobal
+	}
+	return "", false
+}
+
 // credentialEnvVar returns the env var that points a tool at an alternate
 // *credential* store without moving its home, or "" when the tool has no way to
 // separate the two. Only claude has one; docs/ADAPTERS.md § "Credential storage

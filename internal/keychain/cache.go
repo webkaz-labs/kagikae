@@ -26,6 +26,10 @@ type readCache struct {
 	mu       sync.Mutex
 	items    map[string]itemEntry
 	accounts map[string]acctEntry
+	// exists holds attribute-only presence probes (ItemExistsForAccount), keyed
+	// like items. A cached payload read answers the same question, so the probe
+	// consults items first.
+	exists map[string]bool
 }
 
 type itemEntry struct {
@@ -49,6 +53,7 @@ func WithReadCache(ctx context.Context) context.Context {
 	return context.WithValue(ctx, cacheKey{}, &readCache{
 		items:    map[string]itemEntry{},
 		accounts: map[string]acctEntry{},
+		exists:   map[string]bool{},
 	})
 }
 
@@ -68,6 +73,19 @@ func (c *readCache) storeItem(key string, e itemEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items[key] = e
+}
+
+func (c *readCache) lookupExists(key string) (bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	found, ok := c.exists[key]
+	return found, ok
+}
+
+func (c *readCache) storeExists(key string, found bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.exists[key] = found
 }
 
 func (c *readCache) lookupAccount(service string) (acctEntry, bool) {
@@ -93,6 +111,11 @@ func (c *readCache) invalidate(service string) {
 	for k := range c.items {
 		if k == service || strings.HasPrefix(k, service+"\x00") {
 			delete(c.items, k)
+		}
+	}
+	for k := range c.exists {
+		if k == service || strings.HasPrefix(k, service+"\x00") {
+			delete(c.exists, k)
 		}
 	}
 	delete(c.accounts, service)

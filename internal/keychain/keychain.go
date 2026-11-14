@@ -112,12 +112,27 @@ func decodeHexPayload(s string) ([]byte, bool) {
 // mode reads the keyring item when it exists and auth.json only when it does
 // not, so kae has to ask the same question to resolve the same store.
 //
-// ponytail: no read cache, unlike readItem/ItemAccount. The probe runs once per
-// artifact resolution and reads no payload; cache it here (keyed like itemKey,
-// with invalidate extended to prefix-match accounts) if it ever shows up as
-// repeated subprocesses in a profile.
+// It goes through the read cache (WithReadCache) like readItem, keyed by itemKey:
+// every artifact resolution of codex's `auto` store asks it, so a command that
+// resolves the store twice — Detect, then `kae status`'s live freshness read —
+// would otherwise pay the subprocess twice. A cached payload read of the same key
+// answers it too. Writes invalidate it with the payload entries.
 func ItemExistsForAccount(ctx context.Context, service, account string) (bool, error) {
-	return itemExists(ctx, service, account)
+	key := itemKey(service, account)
+	c := cacheFrom(ctx)
+	if c != nil {
+		if e, ok := c.lookupItem(key); ok {
+			return e.found, nil
+		}
+		if found, ok := c.lookupExists(key); ok {
+			return found, nil
+		}
+	}
+	found, err := itemExists(ctx, service, account)
+	if err == nil && c != nil {
+		c.storeExists(key, found)
+	}
+	return found, err
 }
 
 // ItemExists reports whether the service has any item, attributes only. It is the

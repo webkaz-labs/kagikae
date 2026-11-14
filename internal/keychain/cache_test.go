@@ -116,3 +116,48 @@ func TestReadCacheAbsentWithoutOptIn(t *testing.T) {
 		}
 	})
 }
+
+// The attribute-only probe codex's `auto` store resolution asks is coalesced too,
+// answered by a cached payload read of the same key, and dropped by a write.
+func TestReadCacheCoalescesExistenceProbes(t *testing.T) {
+	cr := &countingRunner{payload: `{"a":1}`}
+	runner.With(cr, func() {
+		ctx := WithReadCache(context.Background())
+		for range 2 {
+			if found, err := ItemExistsForAccount(ctx, "svc", "acct"); err != nil || !found {
+				t.Fatalf("probe: found=%v err=%v", found, err)
+			}
+		}
+		if got := cr.calls["find-generic-password"]; got != 1 {
+			t.Fatalf("expected 1 coalesced probe, got %d", got)
+		}
+		if err := WriteItem(ctx, "svc", "acct", []byte(`{"a":2}`)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ItemExistsForAccount(ctx, "svc", "acct"); err != nil {
+			t.Fatal(err)
+		}
+		if got := cr.calls["find-generic-password"]; got != 2 {
+			t.Fatalf("a write must drop the cached probe, got %d probes", got)
+		}
+		if _, _, err := ReadItemForAccount(ctx, "other", "acct"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ItemExistsForAccount(ctx, "other", "acct"); err != nil {
+			t.Fatal(err)
+		}
+		if got := cr.calls["find-generic-password"]; got != 3 {
+			t.Fatalf("a cached payload read must answer the probe, got %d calls", got)
+		}
+	})
+	// Without a cache every probe runs.
+	cr2 := &countingRunner{}
+	runner.With(cr2, func() {
+		for range 2 {
+			_, _ = ItemExistsForAccount(context.Background(), "svc", "acct")
+		}
+		if got := cr2.calls["find-generic-password"]; got != 2 {
+			t.Fatalf("uncached probes must each run, got %d", got)
+		}
+	})
+}

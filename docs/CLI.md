@@ -2562,8 +2562,10 @@ Credential-health checks (warn-level):
   worse than that account's snapshot (or the snapshot cannot be judged), so the
   ordinary case — both copies of one login nearing the same deadline — stays one
   finding. Its remedy is `kae relogin <tool>`, through the active branch of
-  § Recovery guidance. It needs no secret backend and its store read is coalesced
-  with `credential_account_conflict`'s. The halves are told apart by the message:
+  § Recovery guidance. It needs no secret backend, and outside a bound directory its
+  store read is coalesced with the ones `auth_present` and
+  `credential_account_conflict` make (inside one those read the bound store, so the
+  real home's item is one more read). The halves are told apart by the message:
   the snapshot one names `snapshot "<account>"`, the directory one `bound to <dir>`,
   the live one `the live <tool> credential of active account <account>`.
 - `credential_expiring`: the lead-time half of the same question — the snapshot

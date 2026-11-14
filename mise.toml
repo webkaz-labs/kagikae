@@ -31,7 +31,7 @@ set -eu
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 . tools/devtools/shell/cache-root.sh
 export STATICCHECK_CACHE="$cache_root/staticcheck"
-go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 '-checks=SA*' ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 '-checks=SA*' ./...
 """
 
 [tasks.golangci-lint]
@@ -42,7 +42,7 @@ set -eu
 cache_name=kae-lint cache_override=${GOCLI_LINT_CACHE_DIR:-}
 . tools/devtools/shell/cache-root.sh
 export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run ./...
 """
 
 [tasks.shellcheck]

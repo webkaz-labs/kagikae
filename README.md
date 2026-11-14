@@ -249,7 +249,9 @@ account that is not active, use `kae add --restore <tool> <account>`, which puts
 active login back afterwards (kae refuses it for the active account, whose previous
 login would be its own expired copy). Both refuse (exit 10, live state put back) a
 login that kae cannot confirm is the account an existing snapshot of that name
-records, such as another account picked in the browser.
+records, such as another account picked in the browser, and a copy worse than the
+snapshot's (an expired login over a usable one). Run `kae add` outside bound
+directories: inside one its login would land in the directory's store, so kae refuses.
 Use `kae add --no-login` only after verifying the existing live login belongs to
 the account being captured. Stop other sessions using the credential before login.
 Rollback and preservation restore recover saved bytes; they do not renew a login.

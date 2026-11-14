@@ -661,7 +661,9 @@ login stays only in the snapshot. So `kae add --restore <tool> <account>` with a
 account equal to the active one exits `64` before the backup and the login flow,
 changing nothing, and names `kae relogin <tool>` (§ kae relogin Semantics), which logs
 the active account in again and keeps the new login live. With the account name
-omitted the account is known only after the flow, and this check does not apply.
+omitted the account is known only after the flow: when the detected account is the one
+that was active before it, kae captures the login and keeps it live instead of
+restoring, and the result line says so and names the backup holding the previous copy.
 
 **An existing account is not given another account's login.** When the named (or
 detected) account already has a snapshot, kae compares the live login with it before
@@ -677,7 +679,28 @@ changes nothing. The message names no id or email; it names `kae add <tool> <acc
 for keeping that login under another name and `kae account rename` / `kae account rm`
 for giving this name to it on purpose. A snapshot that records no identity, an account
 never captured and a live login whose identity record is absent are not refused,
-which are the recapture guards' own rules. `--dry-run` does not run the check.
+which are the recapture guards' own rules. An auto-detected name takes the email's local
+part, so two accounts can land on one name; the second is refused by this check.
+
+**Nor a copy worse than the one it holds.** In the same place and with the same
+consequences (exit `10`, no snapshot written, the login form restoring its backup), kae
+refuses a live copy that needs a re-login while the snapshot's copy is usable, and,
+for a tool whose refresh token rotates single-use, one the snapshot's copy supersedes
+or that kae cannot order against it — the switch-away recapture's downgrade guard
+([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Ordering two copies of one credential).
+Nothing backs up a snapshot, so that overwrite could not be undone. The message carries
+the guard's reason and names `kae relogin <tool>` for the active account and
+`kae add --restore <tool> <account>` otherwise. A newer copy is captured as before.
+`--dry-run` runs neither check.
+
+**The login form refuses kae's isolation in the shell.** The login runs with the
+shell's environment, so inside a bound directory (or under a global isolated home of
+that tool) it would write into the store kae's own variable names while kae compares
+and captures the global store. Where any tool's per-directory isolation variable, or
+this tool's isolation or credential variable, points into kae's stores, `kae add`
+exits `64` before the backup and the flow, naming the variable, and points at running
+it outside the bound directory or `kae relogin <tool>` inside it. `kae add --no-login`
+is not refused: it reads the global store with kae's own variables hidden.
 
 **A codex login that mixes two accounts is refused.** When the live codex login's
 conflict verdict is a Conflict ([ADAPTERS.md](ADAPTERS.md) § Resident processes), both

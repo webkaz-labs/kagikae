@@ -480,11 +480,10 @@ alternative exists (`secret-tool`).
     `kae add --restore` otherwise); `--restore` refuses the active account before the
     login; `kae relogin` outside a bound directory logs the active global account in
     again, refusing where the shell carries kae's isolation; and a login is never
-    captured into an existing account whose snapshot records another one. Still open:
-    `kae add --restore <tool>` with the name omitted can detect the active account
-    only after the flow, so it still restores the older copy there; and `kae add`
-    inside a bound directory still runs its login with the directory's isolation
-    variables in the environment (`pinnedGlobalScope` only warns).
+    captured into an existing account whose snapshot records another one or a copy
+    worse than its own; `kae add --restore <tool>` with the name omitted keeps the new
+    login live when the detected account was the active one; and the `kae add` login
+    flow refuses a shell carrying kae's isolation.
   - *Bound directory* — was `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
     carried two hazards neither the message nor the docs mentioned. Both are closed;
     the remedy is now `cd <dir> && kae relogin <tool>` ([CLI.md](CLI.md) § kae

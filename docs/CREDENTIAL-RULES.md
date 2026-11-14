@@ -323,11 +323,12 @@ durable record of that account with nothing to recover it from — and the two c
 that state (an upstream `expiresAt` type change, where the live copy really is newest;
 a truncated payload, where it is worthless) want opposite answers and are
 indistinguishable offline.
-**`kae add` into an existing account asks the recaptures' attribution question before
-it captures** (`keepSnapshotIdentity` and `liveOwnerDiffers`, with their rules for a
-missing identity), because a login flow lets the user pick any account and the name
-would otherwise file it undetectably. Its refusal restores the pre-login backup and so
-discards the login it declined. That is not the loss this rule guards against: the
+**`kae add` into an existing account asks the recaptures' attribution and ordering
+questions before it captures** (`keepSnapshotIdentity` and `liveOwnerDiffers`, with
+their rules for a missing identity, then `recaptureWouldDowngrade`), because a login
+flow lets the user pick any account, an auto-detected name can collide, and the one
+copy that is never backed up is the snapshot it would overwrite. Its refusal restores
+the pre-login backup and so discards the login it declined. That is not the loss this rule guards against: the
 declined copy is a login minted moments earlier by that flow, so no earlier copy of any
 account is destroyed, and the message says the login was not captured rather than kept
 ([CLI.md](CLI.md) § kae add Semantics).

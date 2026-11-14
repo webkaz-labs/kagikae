@@ -118,6 +118,33 @@ func TestUsageFailedRequestBacksOffForTheReadingTTL(t *testing.T) {
 		}
 	})
 
+	t.Run("a rewritten local file does not carry the mark over", func(t *testing.T) {
+		hits, status := 0, 500
+		app, captured := setup(t, validToken, &status, &hits)
+		file := filepath.Join(app.Env.Home, ".claude", "usage-exact.json")
+		writeFile(t, file, `{"fiveHour":{"usedPercent":16,"resetsAt":1000000000},"sevenDay":{"usedPercent":95,"resetsAt":1000003600}}`)
+		modTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+		if err := os.Chtimes(file, modTime, modTime); err != nil {
+			t.Fatal(err)
+		}
+		st := state.New()
+		st.Active[constants.ToolClaude] = "main"
+		app.accountUsages(context.Background(), captured, st)
+		app.accountUsages(context.Background(), captured, st)
+		if hits != 1 {
+			t.Fatalf("hits = %d, want 1 while the same file is only seen again", hits)
+		}
+		// The tool rewrote the file: a new modification time is a new reading.
+		modTime = modTime.Add(24 * time.Hour)
+		if err := os.Chtimes(file, modTime, modTime); err != nil {
+			t.Fatal(err)
+		}
+		app.accountUsages(context.Background(), captured, st)
+		if hits != 2 {
+			t.Fatalf("hits = %d, want 2 after the file was rewritten", hits)
+		}
+	})
+
 	t.Run("a reading clears the mark", func(t *testing.T) {
 		hits, status := 0, 500
 		app, captured := setup(t, validToken, &status, &hits)

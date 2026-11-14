@@ -187,7 +187,8 @@ child could rotate the live credential unseen — a cached value would be stale.
   checks parse a credential payload to read its expiry. **Offline**, no network.
   Their messages carry only timestamps, a tool name, an account name or a directory
   path, and a suggested command — never a token, and a redaction test pins each of
-  the three message builders plus the switch-time warning against exactly that.
+  the three message builders, the active account's live-login half and the
+  switch-time warning against exactly that.
   `credential_superseded` reads more payloads than the other two — the account
   snapshot **and** every bound store of that account, since it compares copies rather
   than reading one deadline — so it is the widest of the three, and its canary is a

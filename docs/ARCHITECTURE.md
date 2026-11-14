@@ -207,12 +207,13 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   not-datable. `internal/freshness` holds only the shared parsing primitives —
   no per-tool knowledge — so it stays a leaf package (no `adapter` import).
 
-  Five consumers, one deadline, one classifier. `cmd.reloginDeadline` turns an
+  Six consumers, one deadline, one classifier. `cmd.reloginDeadline` turns an
   `Info` into the instant the credential stops being able to open a session without
   an interactive login; `cmd.credentialStateAt` is the only thing that decides which
   band it is in (`ok` / `expiring` / `stale`). The switch-time warnings,
   `doctor credential_stale`, `doctor credential_expiring`, the
-  `kae ls`/`accounts`/`status` freshness column and the bound-directory sweep all
+  `kae ls`/`accounts`/`status` freshness column, the active account's live login
+  (`kae status` and doctor) and the bound-directory sweep all
   route through it, so none of them can disagree with another about the same
   credential — that branch was written three times briefly, which is exactly how a
   boundary drifts (two predicates on separate bodies had already drifted once on the
